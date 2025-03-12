@@ -1,0 +1,19 @@
+[project]
+name = "clerk"
+version = "0.0.1"
+description = "Add your description here"
+readme = "README.md"
+authors = [{ name = "Philip James", email = "phildini@phildini.net" }]
+requires-python = ">=3.12"
+dependencies = [
+    "click>=8.1.8",
+    "pluggy>=1.5.0",
+    "sqlite-utils>=3.38",
+]
+
+[project.scripts]
+clerk = "clerk:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
