@@ -7,17 +7,11 @@ from hashlib import sha256
 from sqlite3 import OperationalError
 
 import click
-import pluggy
 import sqlite_utils
 
-from .hookspecs import ClerkSpec
-
-from .utils import assert_db_exists
+from .utils import assert_db_exists, pm
 
 STORAGE_DIR = "sites"
-
-pm = pluggy.PluginManager("civicband.clerk")
-pm.add_hookspecs(ClerkSpec)
 
 
 @click.group()

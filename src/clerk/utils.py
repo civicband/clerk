@@ -1,4 +1,10 @@
+import pluggy
 import sqlite_utils
+
+from .hookspecs import ClerkSpec
+
+pm = pluggy.PluginManager("civicband.clerk")
+pm.add_hookspecs(ClerkSpec)
 
 STORAGE_DIR = "sites"
 
