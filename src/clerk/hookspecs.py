@@ -18,9 +18,13 @@ class ClerkSpec:
         """Deploys the necessary files for serving a municipality"""
 
     @hookspec
-    def post_deploy(self, subdomain):
+    def post_deploy(self, site):
         """Runs actions after the deploy of a municipality"""
 
     @hookspec
     def upload_static_file(self, file_path, storage_path):
         """Uploads a file to static storage, like S3 or a CDN"""
+
+    @hookspec
+    def post_create(self, subdomain):
+        """Runs actions actions after the creation of a site"""

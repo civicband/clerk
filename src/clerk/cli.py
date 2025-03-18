@@ -11,7 +11,7 @@ import sqlite_utils
 
 from .utils import assert_db_exists, pm
 
-STORAGE_DIR = "sites"
+STORAGE_DIR = os.environ.get("STORAGE_DIR", "sites")
 
 
 @click.group()
@@ -30,17 +30,17 @@ def new():
         "select * from sites where subdomain =?", (subdomain,)
     ).fetchone()
     if exists:
-        click.echo(f"Site {subdomain} already exists")
+        click.secho(f"Site {subdomain} already exists", fg="red")
         return
 
-    name = click.prompt("Name")
-    state = click.prompt("State")
-    country = click.prompt("Country", default="US")
-    kind = click.prompt("Kind")
-    start_year = click.prompt("Start year")
+    name = click.prompt("Name", type=str)
+    state = click.prompt("State", type=str)
+    country = click.prompt("Country", default="US", type=str)
+    kind = click.prompt("Kind", type=str)
+    start_year = click.prompt("Start year", type=int)
     all_agendas = click.prompt("Fetch all agendas", type=bool, default=False)
     lat_lng = click.prompt("Lat, Lng")
-    scraper = click.prompt("Scraper")
+    scraper = click.prompt("Scraper", type=str)
 
     extra = pm.hook.fetcher_extra(label=scraper)
     extra = list(filter(None, extra))
@@ -66,6 +66,7 @@ def new():
 
     click.echo(f"Site {subdomain} created")
     update_site_internal(subdomain, all_years=True, all_agendas=all_agendas)
+    pm.hook.post_create(subdomain=subdomain)
 
 
 @cli.command()
@@ -77,9 +78,10 @@ def new():
 @click.option("-a", "--all-years", is_flag=True)
 @click.option("--skip-fetch", is_flag=True)
 @click.option("--all-agendas", is_flag=True)
-def update_site(
+def update(
     subdomain, next_site=False, all_years=False, skip_fetch=False, all_agendas=False
 ):
+    """Update a site"""
     update_site_internal(
         subdomain,
         next_site,
@@ -117,7 +119,6 @@ def update_site_internal(
     fetcher.ocr()
 
     update_page_count(subdomain)
-    remove_image_dir(subdomain)
     db["sites"].update(
         subdomain,
         {
@@ -127,7 +128,6 @@ def update_site_internal(
     )
     site = db["sites"].get(subdomain)
     rebuild_site_fts_internal(subdomain)
-
     pm.hook.deploy_municipality(subdomain=subdomain)
     db["sites"].update(
         subdomain,
@@ -136,7 +136,7 @@ def update_site_internal(
             "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
         },
     )
-    pm.hook.post_deploy(subdomain=subdomain)
+    pm.hook.post_deploy(site=site)
 
 
 def get_fetcher(site, all_years=False, all_agendas=False):
@@ -175,7 +175,13 @@ def fetch_internal(subdomain, fetcher):
             "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
         },
     )
+    st = time.time()
     fetcher.fetch_events()
+    et = time.time()
+    elapsed_time = et - st
+    click.echo(
+        click.style(subdomain, fg="cyan") + ": " + f"Fetch time: {elapsed_time} seconds"
+    )
     status = "needs_ocr"
     db["sites"].update(
         subdomain,
@@ -186,22 +192,13 @@ def fetch_internal(subdomain, fetcher):
     )
 
 
-def delete_old_triggers(subdomain):
-    db = assert_db_exists()
-    site = db["sites"].get(subdomain)
-    if site["site_db"] == "meetings.db":
-        site_db = sqlite_utils.Database(f"{STORAGE_DIR}/{subdomain}/{site['site_db']}")
-        site_db.execute("drop trigger if exists pages_ai").fetchall()
-        site_db.execute("drop trigger if exists pages_ad").fetchall()
-        site_db.execute("drop trigger if exists pages_au").fetchall()
-
-
 @cli.command()
 @click.option(
     "-s",
     "--subdomain",
 )
 def build_db_from_text(subdomain):
+    """Build database from text files"""
     build_db_from_text_internal(subdomain)
 
 
@@ -211,8 +208,8 @@ def build_db_from_text_internal(subdomain):
     site = sites_db["sites"].get(subdomain)
     minutes_txt_dir = f"{STORAGE_DIR}/{subdomain}/txt"
     agendas_txt_dir = f"{STORAGE_DIR}/{subdomain}/_agendas/txt"
-    database = f"{STORAGE_DIR}/{subdomain}/{site['site_db']}"
-    db_backup = f"{STORAGE_DIR}/{subdomain}/{site['site_db']}.bk"
+    database = f"{STORAGE_DIR}/{subdomain}/meetings.db"
+    db_backup = f"{STORAGE_DIR}/{subdomain}/meetings.db.bk"
     shutil.copy(database, db_backup)
     os.remove(database)
     # TODO: copy and delete old db first
@@ -245,7 +242,7 @@ def build_db_from_text_internal(subdomain):
         build_table_from_text(subdomain, agendas_txt_dir, db, "agendas")
     et = time.time()
     elapsed_time = et - st
-    print("Execution time:", elapsed_time, "seconds")
+    click.echo(f"Execution time: {elapsed_time} seconds")
 
 
 def build_table_from_text(subdomain, txt_dir, db, table_name):
@@ -254,9 +251,8 @@ def build_table_from_text(subdomain, txt_dir, db, table_name):
         for directory in sorted(os.listdir(txt_dir))
         if directory != ".DS_Store"
     ]
-    sentence_id = 1
     for meeting in directories:
-        print(f"Processing {meeting}")
+        click.echo(click.style(subdomain, fg="cyan") + ": " + f"Processing {meeting}")
         meeting_dates = [
             meeting_date
             for meeting_date in sorted(os.listdir(f"{txt_dir}/{meeting}"))
@@ -301,35 +297,26 @@ def build_table_from_text(subdomain, txt_dir, db, table_name):
         db[table_name].insert_all(entries)
 
 
-def remove_image_dir(subdomain):
-    image_dir = f"{STORAGE_DIR}/{subdomain}/images"
-    if os.path.exists(image_dir):
-        shutil.rmtree(image_dir)
-    agendas_image_dir = f"{STORAGE_DIR}/{subdomain}/_agendas/images"
-    if os.path.exists(agendas_image_dir):
-        shutil.rmtree(agendas_image_dir)
-
-
 def rebuild_site_fts_internal(subdomain):
     site = assert_db_exists()["sites"].get(subdomain)
-    site_db = sqlite_utils.Database(f"{STORAGE_DIR}/{subdomain}/{site['site_db']}")
+    site_db = sqlite_utils.Database(f"{STORAGE_DIR}/{subdomain}/meetings.db")
     for table_name in site_db.table_names():
         if table_name.startswith("pages_"):
             site_db[table_name].drop(ignore=True)
     try:
         site_db["agendas"].enable_fts(["text"])
     except OperationalError as e:
-        print(e)
+        click.echo(click.echo(subdomain, "cyan") + ": " + click.style(e, fg="red"))
     try:
         site_db["minutes"].enable_fts(["text"])
     except OperationalError as e:
-        print(e)
+        click.echo(click.echo(subdomain, "cyan") + ": " + click.style(e, fg="red"))
 
 
 def update_page_count(subdomain):
     db = assert_db_exists()
     site = db["sites"].get(subdomain)
-    site_db = sqlite_utils.Database(f"{STORAGE_DIR}/{subdomain}/{site['site_db']}")
+    site_db = sqlite_utils.Database(f"{STORAGE_DIR}/{subdomain}/meetings.db")
     agendas_count = site_db["agendas"].count
     minutes_count = site_db["minutes"].count
     page_count = agendas_count + minutes_count
@@ -343,4 +330,4 @@ def update_page_count(subdomain):
 
 
 cli.add_command(new)
-cli.add_command(update_site)
+cli.add_command(update)
