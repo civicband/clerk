@@ -58,7 +58,6 @@ def new():
             "start_year": start_year,
             "extra": extra,
             "status": "new",
-            "site_db": "meetings.db",
             "lat": lat_lng.split(",")[0].strip(),
             "lng": lat_lng.split(",")[1].strip(),
         }
@@ -95,12 +94,17 @@ def update_site_internal(
     subdomain, next_site=False, all_years=False, skip_fetch=False, all_agendas=False
 ):
     db = assert_db_exists()
-    yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
 
     # Get site to operate on
     if next_site:
+        num_sites_in_ocr = db.execute(
+            "select count(*) from sites where status = 'needs_ocr'"
+        ).fetchone()[0]
+        if num_sites_in_ocr >= 5:
+            click.echo("Too many sites in progress. Going to sleep.")
+            return
         subdomain_query = db.execute(
-            f"select subdomain from sites where last_updated < '{yesterday}' and status = 'deployed' order by last_updated asc limit 1"
+            f"select subdomain from sites where status = 'deployed' order by last_updated asc limit 1"
         ).fetchone()
         if not subdomain_query:
             click.echo("No more sites to update today")

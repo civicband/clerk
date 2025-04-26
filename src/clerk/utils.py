@@ -1,3 +1,5 @@
+import os
+
 import pluggy
 import sqlite_utils
 
@@ -6,7 +8,7 @@ from .hookspecs import ClerkSpec
 pm = pluggy.PluginManager("civicband.clerk")
 pm.add_hookspecs(ClerkSpec)
 
-STORAGE_DIR = "sites"
+STORAGE_DIR = os.environ.get("STORAGE_DIR", "sites")
 
 
 def assert_db_exists():
