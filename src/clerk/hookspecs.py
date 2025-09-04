@@ -18,7 +18,7 @@ class ClerkSpec:
         """Deploys the necessary files for serving a municipality"""
 
     @hookspec
-    def post_deploy(self, subdomain):
+    def post_deploy(self, site):
         """Runs actions after the deploy of a municipality"""
 
     @hookspec
