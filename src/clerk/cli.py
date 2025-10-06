@@ -121,6 +121,7 @@ def update_site_internal(
     if not skip_fetch:
         fetch_internal(subdomain, fetcher)
     fetcher.ocr()
+    fetcher.transform()
 
     update_page_count(subdomain)
     db["sites"].update(
