@@ -77,8 +77,14 @@ def new():
 @click.option("-a", "--all-years", is_flag=True)
 @click.option("--skip-fetch", is_flag=True)
 @click.option("--all-agendas", is_flag=True)
+@click.option("--backfill", is_flag=True)
 def update(
-    subdomain, next_site=False, all_years=False, skip_fetch=False, all_agendas=False
+    subdomain,
+    next_site=False,
+    all_years=False,
+    skip_fetch=False,
+    all_agendas=False,
+    backfill=False,
 ):
     """Update a site"""
     update_site_internal(
@@ -87,13 +93,26 @@ def update(
         all_years=all_years,
         skip_fetch=skip_fetch,
         all_agendas=all_agendas,
+        backfill=backfill,
     )
 
 
 def update_site_internal(
-    subdomain, next_site=False, all_years=False, skip_fetch=False, all_agendas=False
+    subdomain,
+    next_site=False,
+    all_years=False,
+    skip_fetch=False,
+    all_agendas=False,
+    backfill=False,
 ):
     db = assert_db_exists()
+
+    query_normal = f"select subdomain from sites where status = 'deployed' order by last_updated asc limit 1"
+    query_backfill = f"select subdomain from sites order by last_updated asc limit 1"
+
+    query = query_normal
+    if backfill:
+        query = query_backfill
 
     # Get site to operate on
     if next_site:
@@ -103,9 +122,7 @@ def update_site_internal(
         if num_sites_in_ocr >= 5:
             click.echo("Too many sites in progress. Going to sleep.")
             return
-        subdomain_query = db.execute(
-            f"select subdomain from sites where status = 'deployed' order by last_updated asc limit 1"
-        ).fetchone()
+        subdomain_query = db.execute(query).fetchone()
         if not subdomain_query:
             click.echo("No more sites to update today")
             return
