@@ -11,7 +11,7 @@ import sqlite_utils
 
 from .utils import assert_db_exists, pm
 
-STORAGE_DIR = os.environ.get("STORAGE_DIR", "sites")
+STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
 
 
 @click.group()
@@ -47,7 +47,7 @@ def new():
     if len(extra):
         extra = extra[0]
 
-    db["sites"].insert(
+    db["sites"].insert(  # pyright: ignore[reportAttributeAccessIssue]
         {
             "subdomain": subdomain,
             "name": name,
@@ -107,8 +107,8 @@ def update_site_internal(
 ):
     db = assert_db_exists()
 
-    query_normal = f"select subdomain from sites where status = 'deployed' order by last_updated asc limit 1"
-    query_backfill = f"select subdomain from sites order by last_updated asc limit 1"
+    query_normal = "select subdomain from sites where status = 'deployed' order by last_updated asc limit 1"
+    query_backfill = "select subdomain from sites order by last_updated asc limit 1"
 
     query = query_normal
     if backfill:
@@ -127,7 +127,7 @@ def update_site_internal(
             click.echo("No more sites to update today")
             return
         subdomain = subdomain_query[0]
-    site = db["sites"].get(subdomain)
+    site = db["sites"].get(subdomain)  # type: ignore
     if not site:
         click.echo("No site found matching criteria")
         return
@@ -137,21 +137,21 @@ def update_site_internal(
     fetcher = get_fetcher(site, all_years=all_years, all_agendas=all_agendas)
     if not skip_fetch:
         fetch_internal(subdomain, fetcher)
-    fetcher.ocr()
-    fetcher.transform()
+    fetcher.ocr()  # type: ignore
+    fetcher.transform()  # type: ignore
 
     update_page_count(subdomain)
-    db["sites"].update(
+    db["sites"].update(  # type: ignore
         subdomain,
         {
             "status": "needs_deploy",
             "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
         },
     )
-    site = db["sites"].get(subdomain)
+    site = db["sites"].get(subdomain)  # type: ignore
     rebuild_site_fts_internal(subdomain)
     pm.hook.deploy_municipality(subdomain=subdomain)
-    db["sites"].update(
+    db["sites"].update(  # type: ignore
         subdomain,
         {
             "status": "deployed",
@@ -179,7 +179,7 @@ def get_fetcher(site, all_years=False, all_agendas=False):
         fetcher_class = fetcher_class[0]
 
     if fetcher_class:
-        return fetcher_class(site, start_year, all_agendas)
+        return fetcher_class(site, start_year, all_agendas)  # pyright: ignore[reportCallIssue]
     if site["scraper"] == "custom":
         import importlib
 
@@ -190,7 +190,7 @@ def get_fetcher(site, all_years=False, all_agendas=False):
 
 def fetch_internal(subdomain, fetcher):
     db = assert_db_exists()
-    db["sites"].update(
+    db["sites"].update(  # pyright: ignore[reportAttributeAccessIssue]
         subdomain,
         {
             "status": "fetching",
@@ -205,7 +205,7 @@ def fetch_internal(subdomain, fetcher):
         click.style(subdomain, fg="cyan") + ": " + f"Fetch time: {elapsed_time} seconds"
     )
     status = "needs_ocr"
-    db["sites"].update(
+    db["sites"].update(  # pyright: ignore[reportAttributeAccessIssue]
         subdomain,
         {
             "status": status,
@@ -226,8 +226,6 @@ def build_db_from_text(subdomain):
 
 def build_db_from_text_internal(subdomain):
     st = time.time()
-    sites_db = assert_db_exists()
-    site = sites_db["sites"].get(subdomain)
     minutes_txt_dir = f"{STORAGE_DIR}/{subdomain}/txt"
     agendas_txt_dir = f"{STORAGE_DIR}/{subdomain}/_agendas/txt"
     database = f"{STORAGE_DIR}/{subdomain}/meetings.db"
@@ -236,7 +234,7 @@ def build_db_from_text_internal(subdomain):
     os.remove(database)
     # TODO: copy and delete old db first
     db = sqlite_utils.Database(database)
-    db["minutes"].create(
+    db["minutes"].create(  # pyright: ignore[reportAttributeAccessIssue]
         {
             "id": str,
             "meeting": str,
@@ -247,7 +245,7 @@ def build_db_from_text_internal(subdomain):
         },
         pk=("id"),
     )
-    db["agendas"].create(
+    db["agendas"].create(  # pyright: ignore[reportAttributeAccessIssue]
         {
             "id": str,
             "meeting": str,
@@ -267,7 +265,7 @@ def build_db_from_text_internal(subdomain):
     click.echo(f"Execution time: {elapsed_time} seconds")
 
 
-def build_table_from_text(subdomain, txt_dir, db, table_name):
+def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None):
     directories = [
         directory
         for directory in sorted(os.listdir(txt_dir))
@@ -295,14 +293,19 @@ def build_table_from_text(subdomain, txt_dir, db, table_name):
                         key_hash["kind"] = "agenda"
                         page_image_path = f"/_agendas/{meeting}/{meeting_date}/{page.split('.')[0]}.png"
                     text = page_file.read()
-                    key_hash.update(
+                    page_number = int(page.split(".")[0])
+                    key_hash.update(  # type: ignore
                         {
                             "meeting": meeting,
                             "date": meeting_date,
-                            "page": int(page.split(".")[0]),
+                            "page": page_number,
                             "text": text,
-                        }
+                        }  # pyright: ignore[reportArgumentType]
                     )
+                    if municipality:
+                        key_hash.update(
+                            {"subdomain": subdomain, "municipality": municipality}
+                        )
                     key = sha256(
                         json.dumps(key_hash, sort_keys=True).encode("utf-8")
                     ).hexdigest()
@@ -320,7 +323,6 @@ def build_table_from_text(subdomain, txt_dir, db, table_name):
 
 
 def rebuild_site_fts_internal(subdomain):
-    site = assert_db_exists()["sites"].get(subdomain)
     site_db = sqlite_utils.Database(f"{STORAGE_DIR}/{subdomain}/meetings.db")
     for table_name in site_db.table_names():
         if table_name.startswith("pages_"):
@@ -328,21 +330,95 @@ def rebuild_site_fts_internal(subdomain):
     try:
         site_db["agendas"].enable_fts(["text"])
     except OperationalError as e:
-        click.echo(click.echo(subdomain, "cyan") + ": " + click.style(e, fg="red"))
+        click.echo(click.echo(subdomain, "cyan") + ": " + click.style(e, fg="red"))  # pyright: ignore[reportOperatorIssue, reportArgumentType]
     try:
         site_db["minutes"].enable_fts(["text"])
     except OperationalError as e:
-        click.echo(click.echo(subdomain, "cyan") + ": " + click.style(e, fg="red"))
+        click.echo(click.echo(subdomain, "cyan") + ": " + click.style(e, fg="red"))  # pyright: ignore[reportArgumentType, reportOperatorIssue]
+
+
+@cli.command()
+def build_full_db():
+    sites_db = assert_db_exists()
+    database = database = f"{STORAGE_DIR}/meetings.db"
+    db_backup = f"{STORAGE_DIR}/meetings.db.bk"
+    try:
+        shutil.copy(database, db_backup)
+        os.remove(database)
+    except FileNotFoundError:
+        pass
+    db = sqlite_utils.Database(database)
+    db["minutes"].create(  # pyright: ignore[reportAttributeAccessIssue]
+        {
+            "id": str,
+            "subdomain": str,
+            "municipality": str,
+            "meeting": str,
+            "date": str,
+            "page": int,
+            "text": str,
+            "page_image": str,
+        },
+        pk=("id"),
+    )
+    db["agendas"].create(  # pyright: ignore[reportAttributeAccessIssue]
+        {
+            "id": str,
+            "subdomain": str,
+            "municipality": str,
+            "meeting": str,
+            "date": str,
+            "page": int,
+            "text": str,
+            "page_image": str,
+        },
+        pk=("id"),
+    )
+    for site in sites_db.query("select subdomain, name from sites"):
+        subdomain = site["subdomain"]
+        municipality = site["name"]
+        st = time.time()
+        minutes_txt_dir = f"{STORAGE_DIR}/{subdomain}/txt"
+        agendas_txt_dir = f"{STORAGE_DIR}/{subdomain}/_agendas/txt"
+        if os.path.exists(minutes_txt_dir):
+            build_table_from_text(
+                subdomain=subdomain,
+                txt_dir=minutes_txt_dir,
+                db=db,
+                table_name="minutes",
+                municipality=municipality,
+            )
+        if os.path.exists(agendas_txt_dir):
+            build_table_from_text(
+                subdomain=subdomain,
+                txt_dir=agendas_txt_dir,
+                db=db,
+                table_name="agendas",
+                municipality=municipality,
+            )
+    for table_name in db.table_names():
+        if table_name.startswith("pages_"):
+            db[table_name].drop(ignore=True)
+    try:
+        db["agendas"].enable_fts(["text"])
+    except OperationalError as e:
+        click.echo(click.echo(subdomain, "cyan") + ": " + click.style(e, fg="red"))  # type: ignore
+    try:
+        db["minutes"].enable_fts(["text"])
+    except OperationalError as e:
+        click.echo(click.echo(subdomain, "cyan") + ": " + click.style(e, fg="red"))  # type: ignore
+    et = time.time()
+    elapsed_time = et - st
+    click.echo(f"Execution time: {elapsed_time} seconds")
 
 
 def update_page_count(subdomain):
     db = assert_db_exists()
-    site = db["sites"].get(subdomain)
     site_db = sqlite_utils.Database(f"{STORAGE_DIR}/{subdomain}/meetings.db")
     agendas_count = site_db["agendas"].count
     minutes_count = site_db["minutes"].count
     page_count = agendas_count + minutes_count
-    db["sites"].update(
+    db["sites"].update(  # type: ignore
         subdomain,
         {
             "pages": page_count,

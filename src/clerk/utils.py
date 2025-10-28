@@ -8,13 +8,13 @@ from .hookspecs import ClerkSpec
 pm = pluggy.PluginManager("civicband.clerk")
 pm.add_hookspecs(ClerkSpec)
 
-STORAGE_DIR = os.environ.get("STORAGE_DIR", "sites")
+STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
 
 
 def assert_db_exists():
     db = sqlite_utils.Database("civic.db")
     if not db["sites"].exists():
-        db["sites"].create(
+        db["sites"].create(  # pyright: ignore[reportAttributeAccessIssue]
             {
                 "subdomain": str,
                 "name": str,
@@ -33,11 +33,11 @@ def assert_db_exists():
             pk="subdomain",
         )
     if not db["feed_entries"].exists():
-        db["feed_entries"].create(
+        db["feed_entries"].create(  # pyright: ignore[reportAttributeAccessIssue]
             {"subdomain": str, "date": str, "kind": str, "name": str},
         )
-    db["sites"].transform(drop={"ocr_class"})
-    db["sites"].transform(drop={"docker_port"})
-    db["sites"].transform(drop={"save_agendas"})
-    db["sites"].transform(drop={"site_db"})
+    db["sites"].transform(drop={"ocr_class"})  # pyright: ignore[reportAttributeAccessIssue]
+    db["sites"].transform(drop={"docker_port"})  # pyright: ignore[reportAttributeAccessIssue]
+    db["sites"].transform(drop={"save_agendas"})  # pyright: ignore[reportAttributeAccessIssue]
+    db["sites"].transform(drop={"site_db"})  # pyright: ignore[reportAttributeAccessIssue]
     return db
