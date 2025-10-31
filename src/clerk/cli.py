@@ -339,6 +339,7 @@ def rebuild_site_fts_internal(subdomain):
 
 @cli.command()
 def build_full_db():
+    st = time.time()
     sites_db = assert_db_exists()
     database = database = f"{STORAGE_DIR}/meetings.db"
     db_backup = f"{STORAGE_DIR}/meetings.db.bk"
@@ -374,10 +375,9 @@ def build_full_db():
         },
         pk=("id"),
     )
-    for site in sites_db.query("select subdomain, name from sites"):
+    for site in sites_db.query("select subdomain, name from sites order by subdomain"):
         subdomain = site["subdomain"]
         municipality = site["name"]
-        st = time.time()
         minutes_txt_dir = f"{STORAGE_DIR}/{subdomain}/txt"
         agendas_txt_dir = f"{STORAGE_DIR}/{subdomain}/_agendas/txt"
         if os.path.exists(minutes_txt_dir):
