@@ -1,5 +1,6 @@
 import os
 
+import logfire
 import pluggy
 import sqlite_utils
 
@@ -11,6 +12,7 @@ pm.add_hookspecs(ClerkSpec)
 STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
 
 
+@logfire.instrument("assert_db_exists")
 def assert_db_exists():
     db = sqlite_utils.Database("civic.db")
     if not db["sites"].exists():
