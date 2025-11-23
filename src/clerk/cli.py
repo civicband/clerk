@@ -7,6 +7,7 @@ from hashlib import sha256
 from sqlite3 import OperationalError
 
 import click
+import logfire
 import sqlite_utils
 
 from .utils import assert_db_exists, pm
@@ -21,6 +22,7 @@ def cli():
 
 
 @cli.command()
+@logfire.instrument("create_new_site")
 def new():
     """Create a new site"""
     db = assert_db_exists()
@@ -97,6 +99,7 @@ def update(
     )
 
 
+@logfire.instrument("update_site", extract_args=True)
 def update_site_internal(
     subdomain,
     next_site=False,
@@ -106,6 +109,7 @@ def update_site_internal(
     backfill=False,
 ):
     db = assert_db_exists()
+    logfire.info("Starting site update", subdomain=subdomain, all_years=all_years, all_agendas=all_agendas)
 
     query_normal = "select subdomain from sites where status = 'deployed' order by last_updated asc limit 1"
     query_backfill = "select subdomain from sites order by last_updated asc limit 1"
@@ -188,8 +192,10 @@ def get_fetcher(site, all_years=False, all_agendas=False):
         return fetcher.custom_fetcher(site, start_year, all_agendas)
 
 
+@logfire.instrument("fetch_site_data", extract_args=True)
 def fetch_internal(subdomain, fetcher):
     db = assert_db_exists()
+    logfire.info("Starting fetch", subdomain=subdomain)
     db["sites"].update(  # pyright: ignore[reportAttributeAccessIssue]
         subdomain,
         {
@@ -201,6 +207,7 @@ def fetch_internal(subdomain, fetcher):
     fetcher.fetch_events()
     et = time.time()
     elapsed_time = et - st
+    logfire.info("Fetch completed", subdomain=subdomain, elapsed_time=elapsed_time)
     click.echo(
         click.style(subdomain, fg="cyan") + ": " + f"Fetch time: {elapsed_time} seconds"
     )
@@ -224,8 +231,10 @@ def build_db_from_text(subdomain):
     build_db_from_text_internal(subdomain)
 
 
+@logfire.instrument("build_db_from_text", extract_args=True)
 def build_db_from_text_internal(subdomain):
     st = time.time()
+    logfire.info("Building database from text", subdomain=subdomain)
     minutes_txt_dir = f"{STORAGE_DIR}/{subdomain}/txt"
     agendas_txt_dir = f"{STORAGE_DIR}/{subdomain}/_agendas/txt"
     database = f"{STORAGE_DIR}/{subdomain}/meetings.db"
@@ -262,10 +271,13 @@ def build_db_from_text_internal(subdomain):
         build_table_from_text(subdomain, agendas_txt_dir, db, "agendas")
     et = time.time()
     elapsed_time = et - st
+    logfire.info("Database build completed", subdomain=subdomain, elapsed_time=elapsed_time)
     click.echo(f"Execution time: {elapsed_time} seconds")
 
 
+@logfire.instrument("build_table_from_text", extract_args=True)
 def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None):
+    logfire.info("Building table from text", subdomain=subdomain, table_name=table_name, municipality=municipality)
     directories = [
         directory
         for directory in sorted(os.listdir(txt_dir))
@@ -322,7 +334,9 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None)
         db[table_name].insert_all(entries)
 
 
+@logfire.instrument("rebuild_site_fts", extract_args=True)
 def rebuild_site_fts_internal(subdomain):
+    logfire.info("Rebuilding FTS indexes", subdomain=subdomain)
     site_db = sqlite_utils.Database(f"{STORAGE_DIR}/{subdomain}/meetings.db")
     for table_name in site_db.table_names():
         if table_name.startswith("pages_"):
@@ -338,6 +352,7 @@ def rebuild_site_fts_internal(subdomain):
 
 
 @cli.command()
+@logfire.instrument("build_full_db")
 def build_full_db():
     st = time.time()
     sites_db = assert_db_exists()
@@ -409,15 +424,18 @@ def build_full_db():
         click.echo(click.echo(subdomain, "cyan") + ": " + click.style(e, fg="red"))  # type: ignore
     et = time.time()
     elapsed_time = et - st
+    logfire.info("Full database build completed", elapsed_time=elapsed_time)
     click.echo(f"Execution time: {elapsed_time} seconds")
 
 
+@logfire.instrument("update_page_count", extract_args=True)
 def update_page_count(subdomain):
     db = assert_db_exists()
     site_db = sqlite_utils.Database(f"{STORAGE_DIR}/{subdomain}/meetings.db")
     agendas_count = site_db["agendas"].count
     minutes_count = site_db["minutes"].count
     page_count = agendas_count + minutes_count
+    logfire.info("Page count updated", subdomain=subdomain, agendas=agendas_count, minutes=minutes_count, total=page_count)
     db["sites"].update(  # type: ignore
         subdomain,
         {
