@@ -1,0 +1,89 @@
+[
+  {
+    "subdomain": "berkeleyca.civic.band",
+    "name": "Berkeley City Council",
+    "state": "CA",
+    "country": "US",
+    "kind": "city-council",
+    "scraper": "granicus",
+    "pages": 1250,
+    "start_year": 2015,
+    "extra": {
+      "granicus_id": "berkeley",
+      "timezone": "America/Los_Angeles"
+    },
+    "status": "deployed",
+    "last_updated": "2024-01-15T10:30:00",
+    "lat": "37.8715",
+    "lng": "-122.2730"
+  },
+  {
+    "subdomain": "austintx.civic.band",
+    "name": "Austin City Council",
+    "state": "TX",
+    "country": "US",
+    "kind": "city-council",
+    "scraper": "legistar",
+    "pages": 2100,
+    "start_year": 2018,
+    "extra": {
+      "legistar_client": "austin",
+      "timezone": "America/Chicago"
+    },
+    "status": "deployed",
+    "last_updated": "2024-01-14T14:20:00",
+    "lat": "30.2672",
+    "lng": "-97.7431"
+  },
+  {
+    "subdomain": "portlandor.civic.band",
+    "name": "Portland Planning Commission",
+    "state": "OR",
+    "country": "US",
+    "kind": "planning-commission",
+    "scraper": "custom",
+    "pages": 850,
+    "start_year": 2019,
+    "extra": null,
+    "status": "needs_deploy",
+    "last_updated": "2024-01-10T09:15:00",
+    "lat": "45.5152",
+    "lng": "-122.6784"
+  },
+  {
+    "subdomain": "newyorkny.civic.band",
+    "name": "New York City Council",
+    "state": "NY",
+    "country": "US",
+    "kind": "city-council",
+    "scraper": "legistar",
+    "pages": 5400,
+    "start_year": 2016,
+    "extra": {
+      "legistar_client": "nyc",
+      "timezone": "America/New_York",
+      "special_handling": true
+    },
+    "status": "deployed",
+    "last_updated": "2024-01-15T11:00:00",
+    "lat": "40.7128",
+    "lng": "-74.0060"
+  },
+  {
+    "subdomain": "seattlewa.civic.band",
+    "name": "Seattle City Council",
+    "state": "WA",
+    "country": "US",
+    "kind": "city-council",
+    "scraper": "granicus",
+    "pages": 0,
+    "start_year": 2023,
+    "extra": {
+      "granicus_id": "seattle"
+    },
+    "status": "new",
+    "last_updated": "2024-01-01T00:00:00",
+    "lat": "47.6062",
+    "lng": "-122.3321"
+  }
+]

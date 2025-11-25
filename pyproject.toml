@@ -1,7 +1,7 @@
 [project]
 name = "clerk"
 version = "0.0.1"
-description = "Add your description here"
+description = "Data pipeline library for civic.band - manages fetching, processing, and deploying civic meeting data"
 readme = "README.md"
 authors = [{ name = "Philip James", email = "phildini@phildini.net" }]
 requires-python = ">=3.12"
@@ -12,9 +12,76 @@ dependencies = [
     "sqlite-utils>=3.38",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
+    "pytest-click>=1.1.0",
+    "ruff>=0.1.0",
+    "mypy>=1.7.0",
+    "pre-commit>=3.5.0",
+    "faker>=20.0.0",
+]
+
 [project.scripts]
 clerk = "clerk:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--cov=src/clerk", "--cov-report=term-missing"]
+markers = [
+    "unit: Unit tests with mocked dependencies",
+    "integration: Integration tests with real databases and files",
+]
+
+[tool.coverage.run]
+source = ["src/clerk"]
+omit = ["tests/*", "**/__pycache__/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if __name__ == .__main__.:",
+    "raise AssertionError",
+    "raise NotImplementedError",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101"]  # Allow assert in tests
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false  # Start lenient, tighten over time
+ignore_missing_imports = true
+files = ["src/clerk"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
