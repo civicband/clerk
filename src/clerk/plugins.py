@@ -4,13 +4,10 @@ from .hookspecs import hookimpl
 
 
 class DummyPlugins:
-
     @hookimpl
     def deploy_municipality(self, subdomain):
         click.echo(
-            click.style(subdomain, "cyan")
-            + ": "
-            + f"Dummy deploy_municipality for {subdomain}"
+            click.style(subdomain, "cyan") + ": " + f"Dummy deploy_municipality for {subdomain}"
         )
 
     @hookimpl
@@ -22,11 +19,9 @@ class DummyPlugins:
         click.echo(
             click.style(site["subdomain"], "cyan")
             + ": "
-            + f"Dummy post_deploy for {site["subdomain"]}"
+            + f"Dummy post_deploy for {site['subdomain']}"
         )
 
     @hookimpl
     def post_create(self, subdomain):
-        click.echo(
-            click.style(subdomain, "cyan") + ": " + f"Dummy post_create for {subdomain}"
-        )
+        click.echo(click.style(subdomain, "cyan") + ": " + f"Dummy post_create for {subdomain}")

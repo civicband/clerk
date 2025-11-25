@@ -28,9 +28,7 @@ def new():
     db = assert_db_exists()
 
     subdomain = click.prompt("Subdomain")
-    exists = db.execute(
-        "select * from sites where subdomain =?", (subdomain,)
-    ).fetchone()
+    exists = db.execute("select * from sites where subdomain =?", (subdomain,)).fetchone()
     if exists:
         click.secho(f"Site {subdomain} already exists", fg="red")
         return
@@ -109,9 +107,13 @@ def update_site_internal(
     backfill=False,
 ):
     db = assert_db_exists()
-    logfire.info("Starting site update", subdomain=subdomain, all_years=all_years, all_agendas=all_agendas)
+    logfire.info(
+        "Starting site update", subdomain=subdomain, all_years=all_years, all_agendas=all_agendas
+    )
 
-    query_normal = "select subdomain from sites where status = 'deployed' order by last_updated asc limit 1"
+    query_normal = (
+        "select subdomain from sites where status = 'deployed' order by last_updated asc limit 1"
+    )
     query_backfill = "select subdomain from sites order by last_updated asc limit 1"
 
     query = query_normal
@@ -169,9 +171,7 @@ def get_fetcher(site, all_years=False, all_agendas=False):
     start_year = site["start_year"]
     fetcher_class = None
     try:
-        start_year = datetime.datetime.strptime(
-            site["last_updated"], "%Y-%m-%dT%H:%M:%S"
-        ).year
+        start_year = datetime.datetime.strptime(site["last_updated"], "%Y-%m-%dT%H:%M:%S").year
     except TypeError:
         start_year = site["start_year"]
     if all_years:
@@ -208,9 +208,7 @@ def fetch_internal(subdomain, fetcher):
     et = time.time()
     elapsed_time = et - st
     logfire.info("Fetch completed", subdomain=subdomain, elapsed_time=elapsed_time)
-    click.echo(
-        click.style(subdomain, fg="cyan") + ": " + f"Fetch time: {elapsed_time} seconds"
-    )
+    click.echo(click.style(subdomain, fg="cyan") + ": " + f"Fetch time: {elapsed_time} seconds")
     status = "needs_ocr"
     db["sites"].update(  # pyright: ignore[reportAttributeAccessIssue]
         subdomain,
@@ -277,11 +275,14 @@ def build_db_from_text_internal(subdomain):
 
 @logfire.instrument("build_table_from_text", extract_args=True)
 def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None):
-    logfire.info("Building table from text", subdomain=subdomain, table_name=table_name, municipality=municipality)
+    logfire.info(
+        "Building table from text",
+        subdomain=subdomain,
+        table_name=table_name,
+        municipality=municipality,
+    )
     directories = [
-        directory
-        for directory in sorted(os.listdir(txt_dir))
-        if directory != ".DS_Store"
+        directory for directory in sorted(os.listdir(txt_dir)) if directory != ".DS_Store"
     ]
     for meeting in directories:
         click.echo(click.style(subdomain, fg="cyan") + ": " + f"Processing {meeting}")
@@ -297,13 +298,13 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None)
                     continue
                 key_hash = {"kind": "minutes"}
                 page_file_path = f"{txt_dir}/{meeting}/{meeting_date}/{page}"
-                with open(page_file_path, "r") as page_file:
-                    page_image_path = (
-                        f"/{meeting}/{meeting_date}/{page.split('.')[0]}.png"
-                    )
+                with open(page_file_path) as page_file:
+                    page_image_path = f"/{meeting}/{meeting_date}/{page.split('.')[0]}.png"
                     if table_name == "agendas":
                         key_hash["kind"] = "agenda"
-                        page_image_path = f"/_agendas/{meeting}/{meeting_date}/{page.split('.')[0]}.png"
+                        page_image_path = (
+                            f"/_agendas/{meeting}/{meeting_date}/{page.split('.')[0]}.png"
+                        )
                     text = page_file.read()
                     page_number = int(page.split(".")[0])
                     key_hash.update(  # type: ignore
@@ -315,12 +316,8 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None)
                         }  # pyright: ignore[reportArgumentType]
                     )
                     if municipality:
-                        key_hash.update(
-                            {"subdomain": subdomain, "municipality": municipality}
-                        )
-                    key = sha256(
-                        json.dumps(key_hash, sort_keys=True).encode("utf-8")
-                    ).hexdigest()
+                        key_hash.update({"subdomain": subdomain, "municipality": municipality})
+                    key = sha256(json.dumps(key_hash, sort_keys=True).encode("utf-8")).hexdigest()
                     key = key[:12]
                     key_hash.update(
                         {
@@ -435,7 +432,13 @@ def update_page_count(subdomain):
     agendas_count = site_db["agendas"].count
     minutes_count = site_db["minutes"].count
     page_count = agendas_count + minutes_count
-    logfire.info("Page count updated", subdomain=subdomain, agendas=agendas_count, minutes=minutes_count, total=page_count)
+    logfire.info(
+        "Page count updated",
+        subdomain=subdomain,
+        agendas=agendas_count,
+        minutes=minutes_count,
+        total=page_count,
+    )
     db["sites"].update(  # type: ignore
         subdomain,
         {
@@ -447,3 +450,4 @@ def update_page_count(subdomain):
 
 cli.add_command(new)
 cli.add_command(update)
+cli.add_command(build_full_db)

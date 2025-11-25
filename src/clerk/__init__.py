@@ -1,8 +1,10 @@
 import logfire
 
-from .cli import cli
-from .hookspecs import ClerkSpec, hookimpl, hookspec
-from .utils import pm
+from .cli import cli as cli
+from .hookspecs import ClerkSpec as ClerkSpec
+from .hookspecs import hookimpl as hookimpl
+from .hookspecs import hookspec as hookspec
+from .utils import pm as pm
 
 # Initialize Logfire
 logfire.configure()
