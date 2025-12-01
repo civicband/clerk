@@ -2,6 +2,7 @@
 
 import datetime
 import json
+import sys
 
 import pluggy
 import pytest
@@ -10,6 +11,17 @@ import sqlite_utils
 from clerk.hookspecs import ClerkSpec
 from tests.mocks.mock_fetchers import MockFetcher
 from tests.mocks.mock_plugins import TestPlugin
+
+
+@pytest.fixture
+def cli_module():
+    """Get the actual clerk.cli module (not the Click group).
+
+    Due to clerk/__init__.py exporting 'cli', `import clerk.cli` returns the
+    Click group, not the module. This fixture provides access to the actual module.
+    """
+    import clerk.cli  # noqa: F401 - ensures module is loaded
+    return sys.modules["clerk.cli"]
 
 
 @pytest.fixture
@@ -221,8 +233,13 @@ def mock_plugin_manager():
 
 @pytest.fixture
 def monkeypatch_storage_dir(tmp_storage_dir, monkeypatch):
-    """Monkeypatch the STORAGE_DIR environment variable."""
+    """Monkeypatch the STORAGE_DIR environment variable and module-level constant."""
     monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
+    # Also patch the module-level STORAGE_DIR that was set at import time
+    import clerk.cli
+    import clerk.utils
+    monkeypatch.setattr(clerk.cli, "STORAGE_DIR", str(tmp_storage_dir))
+    monkeypatch.setattr(clerk.utils, "STORAGE_DIR", str(tmp_storage_dir))
     return tmp_storage_dir
 
 

@@ -341,11 +341,11 @@ def rebuild_site_fts_internal(subdomain):
     try:
         site_db["agendas"].enable_fts(["text"])
     except OperationalError as e:
-        click.echo(click.echo(subdomain, "cyan") + ": " + click.style(e, fg="red"))  # pyright: ignore[reportOperatorIssue, reportArgumentType]
+        click.echo(click.style(subdomain, fg="cyan") + ": " + click.style(str(e), fg="red"))
     try:
         site_db["minutes"].enable_fts(["text"])
     except OperationalError as e:
-        click.echo(click.echo(subdomain, "cyan") + ": " + click.style(e, fg="red"))  # pyright: ignore[reportArgumentType, reportOperatorIssue]
+        click.echo(click.style(subdomain, fg="cyan") + ": " + click.style(str(e), fg="red"))
 
 
 @cli.command()
@@ -414,11 +414,11 @@ def build_full_db():
     try:
         db["agendas"].enable_fts(["text"])
     except OperationalError as e:
-        click.echo(click.echo(subdomain, "cyan") + ": " + click.style(e, fg="red"))  # type: ignore
+        click.echo(click.style(subdomain, fg="cyan") + ": " + click.style(str(e), fg="red"))
     try:
         db["minutes"].enable_fts(["text"])
     except OperationalError as e:
-        click.echo(click.echo(subdomain, "cyan") + ": " + click.style(e, fg="red"))  # type: ignore
+        click.echo(click.style(subdomain, fg="cyan") + ": " + click.style(str(e), fg="red"))
     et = time.time()
     elapsed_time = et - st
     logfire.info("Full database build completed", elapsed_time=elapsed_time)

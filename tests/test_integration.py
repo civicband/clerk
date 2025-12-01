@@ -11,11 +11,11 @@ from clerk.cli import cli
 class TestEndToEndWorkflow:
     """End-to-end integration tests for complete workflows."""
 
-    def test_new_site_creation(self, tmp_path, monkeypatch, mock_plugin_manager):
+    def test_new_site_creation(self, tmp_path, tmp_storage_dir, monkeypatch, mock_plugin_manager, cli_module):
         """Test creating a new site from scratch."""
         monkeypatch.chdir(tmp_path)
-        import clerk.cli as cli_module
-
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
         monkeypatch.setattr(cli_module, "pm", mock_plugin_manager)
 
         runner = CliRunner()
@@ -39,20 +39,22 @@ class TestEndToEndWorkflow:
         site = civic_db["sites"].get("test.civic.band")
         assert site["name"] == "Test City"
         assert site["state"] == "CA"
-        assert site["status"] == "new"
+        # After full new workflow (create + update), status should be "deployed"
+        assert site["status"] == "deployed"
 
     def test_database_build_workflow(
-        self, tmp_path, tmp_storage_dir, sample_text_files, monkeypatch
+        self, tmp_path, tmp_storage_dir, sample_text_files, monkeypatch, cli_module
     ):
         """Test the complete database building workflow."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
 
         subdomain = "example.civic.band"
 
-        # Create a minimal existing database
+        # Create a minimal existing database (directory already exists from sample_text_files)
         site_dir = tmp_storage_dir / subdomain
-        site_dir.mkdir()
+        site_dir.mkdir(exist_ok=True)
         db_path = site_dir / "meetings.db"
         db = sqlite_utils.Database(db_path)
         db["temp"].insert({"id": 1})
@@ -77,12 +79,12 @@ class TestEndToEndWorkflow:
         # Check FTS is working (if rebuild_fts was called)
         # This depends on the workflow implementation
 
-    def test_full_pipeline(self, tmp_path, tmp_storage_dir, monkeypatch, mock_plugin_manager):
+    def test_full_pipeline(self, tmp_path, tmp_storage_dir, monkeypatch, mock_plugin_manager, cli_module):
         """Test a complete pipeline: create → fetch → build → deploy."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
 
-        import clerk.cli as cli_module
         from tests.mocks.mock_fetchers import FilesystemFetcher
 
         # Register filesystem fetcher that creates actual files
@@ -154,9 +156,10 @@ class TestEndToEndWorkflow:
 class TestDatabaseOperations:
     """Integration tests for database operations."""
 
-    def test_fts_search_works_end_to_end(self, tmp_storage_dir, monkeypatch):
+    def test_fts_search_works_end_to_end(self, tmp_storage_dir, monkeypatch, cli_module):
         """Test that full-text search works after building database."""
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
 
         subdomain = "search-test.civic.band"
         site_dir = tmp_storage_dir / subdomain
@@ -186,20 +189,21 @@ class TestDatabaseOperations:
         # Test search
         db = sqlite_utils.Database(db_path)
 
-        # Search for "parks"
-        results = list(db["minutes"].rows_where("text MATCH 'parks'"))
+        # Search for "parks" using sqlite-utils .search() method
+        results = list(db["minutes"].search("parks"))
         assert len(results) == 1
         assert "recreation" in results[0]["text"]
 
         # Search for "budget"
-        results = list(db["minutes"].rows_where("text MATCH 'budget'"))
+        results = list(db["minutes"].search("budget"))
         assert len(results) == 1
         assert "infrastructure" in results[0]["text"]
 
-    def test_aggregate_database_combines_sites(self, tmp_path, tmp_storage_dir, monkeypatch):
+    def test_aggregate_database_combines_sites(self, tmp_path, tmp_storage_dir, monkeypatch, cli_module):
         """Test that aggregate database correctly combines multiple sites."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
 
         # Create civic.db with multiple sites
         civic_db = sqlite_utils.Database("civic.db")
@@ -245,10 +249,10 @@ class TestDatabaseOperations:
             minutes_dir.mkdir(parents=True)
             (minutes_dir / "1.txt").write_text(f"Meeting for {site['name']}")
 
-        # Build aggregate database
-        from clerk.cli import build_full_db
-
-        build_full_db()
+        # Build aggregate database using CLI runner (build_full_db is a Click command)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["build-full-db"])
+        assert result.exit_code == 0, f"build-full-db failed: {result.output}"
 
         # Check aggregate database
         agg_db_path = tmp_storage_dir / "meetings.db"
@@ -274,14 +278,13 @@ class TestDatabaseOperations:
 class TestPluginIntegration:
     """Integration tests for plugin system."""
 
-    def test_plugin_hooks_called_during_workflow(self, tmp_path, monkeypatch):
+    def test_plugin_hooks_called_during_workflow(self, tmp_path, monkeypatch, cli_module):
         """Test that plugin hooks are called at appropriate times."""
         monkeypatch.chdir(tmp_path)
 
         # Create plugin manager and register test plugin
         import pluggy
 
-        import clerk.cli as cli_module
         from clerk.hookspecs import ClerkSpec
         from tests.mocks.mock_plugins import TestPlugin
 
@@ -329,9 +332,10 @@ class TestPluginIntegration:
 class TestErrorHandling:
     """Integration tests for error handling."""
 
-    def test_rebuild_fts_handles_missing_tables(self, tmp_storage_dir, monkeypatch):
+    def test_rebuild_fts_handles_missing_tables(self, tmp_storage_dir, monkeypatch, cli_module):
         """Test that rebuild_fts handles missing tables gracefully."""
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
 
         subdomain = "empty.civic.band"
         site_dir = tmp_storage_dir / subdomain
@@ -347,9 +351,10 @@ class TestErrorHandling:
         # Should not raise an exception
         rebuild_site_fts_internal(subdomain)
 
-    def test_build_db_creates_backup(self, tmp_storage_dir, monkeypatch):
+    def test_build_db_creates_backup(self, tmp_storage_dir, monkeypatch, cli_module):
         """Test that building database creates a backup of existing db."""
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
 
         subdomain = "backup-test.civic.band"
         site_dir = tmp_storage_dir / subdomain

@@ -1,8 +1,11 @@
 """Mock fetcher classes for testing."""
 
+import os
 import time
 from pathlib import Path
 from typing import Any
+
+import sqlite_utils
 
 
 class MockFetcher:
@@ -48,9 +51,28 @@ class MockFetcher:
         self.ocr_complete = True
 
     def transform(self):
-        """Simulate transform processing."""
+        """Simulate transform processing and create meetings.db."""
         time.sleep(0.01)
         self.transform_complete = True
+
+        # Create a minimal meetings.db for update_page_count to work
+        storage_dir = os.environ.get("STORAGE_DIR", "../sites")
+        subdomain = self.site["subdomain"]
+        site_dir = Path(storage_dir) / subdomain
+        site_dir.mkdir(parents=True, exist_ok=True)
+
+        db_path = site_dir / "meetings.db"
+        db = sqlite_utils.Database(db_path)
+        db["minutes"].create(
+            {"id": str, "meeting": str, "date": str, "page": int, "text": str, "page_image": str},
+            pk="id",
+            if_not_exists=True,
+        )
+        db["agendas"].create(
+            {"id": str, "meeting": str, "date": str, "page": int, "text": str, "page_image": str},
+            pk="id",
+            if_not_exists=True,
+        )
 
 
 class FailingFetcher(MockFetcher):
