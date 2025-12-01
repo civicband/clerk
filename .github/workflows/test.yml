@@ -31,7 +31,6 @@ jobs:
       - name: Run tests
         run: |
           pytest tests/ -v --cov --cov-report=xml --cov-report=term
-        continue-on-error: true  # TODO: Fix test suite issues (import order, STORAGE_DIR handling)
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
