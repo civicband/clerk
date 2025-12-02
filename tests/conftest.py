@@ -21,6 +21,7 @@ def cli_module():
     Click group, not the module. This fixture provides access to the actual module.
     """
     import clerk.cli  # noqa: F401 - ensures module is loaded
+
     return sys.modules["clerk.cli"]
 
 
@@ -238,6 +239,7 @@ def monkeypatch_storage_dir(tmp_storage_dir, monkeypatch):
     # Also patch the module-level STORAGE_DIR that was set at import time
     import clerk.cli
     import clerk.utils
+
     monkeypatch.setattr(clerk.cli, "STORAGE_DIR", str(tmp_storage_dir))
     monkeypatch.setattr(clerk.utils, "STORAGE_DIR", str(tmp_storage_dir))
     return tmp_storage_dir

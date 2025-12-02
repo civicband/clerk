@@ -207,7 +207,9 @@ class TestUpdatePageCount:
 class TestGetFetcher:
     """Unit tests for get_fetcher function."""
 
-    def test_get_fetcher_from_plugin(self, sample_site_data, mock_plugin_manager, monkeypatch, cli_module):
+    def test_get_fetcher_from_plugin(
+        self, sample_site_data, mock_plugin_manager, monkeypatch, cli_module
+    ):
         """Test getting a fetcher class from a plugin."""
         # pm is imported from clerk.utils into clerk.cli, so we patch it there
         monkeypatch.setattr(cli_module, "pm", mock_plugin_manager)
@@ -331,7 +333,9 @@ class TestBuildDbFromTextInternal:
 class TestBuildFullDb:
     """Integration tests for build_full_db command."""
 
-    def test_build_full_db_cli(self, tmp_path, tmp_storage_dir, sample_text_files, monkeypatch, cli_module):
+    def test_build_full_db_cli(
+        self, tmp_path, tmp_storage_dir, sample_text_files, monkeypatch, cli_module
+    ):
         """Test the build_full_db CLI command."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))

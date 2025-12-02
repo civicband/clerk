@@ -11,7 +11,9 @@ from clerk.cli import cli
 class TestEndToEndWorkflow:
     """End-to-end integration tests for complete workflows."""
 
-    def test_new_site_creation(self, tmp_path, tmp_storage_dir, monkeypatch, mock_plugin_manager, cli_module):
+    def test_new_site_creation(
+        self, tmp_path, tmp_storage_dir, monkeypatch, mock_plugin_manager, cli_module
+    ):
         """Test creating a new site from scratch."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
@@ -79,7 +81,9 @@ class TestEndToEndWorkflow:
         # Check FTS is working (if rebuild_fts was called)
         # This depends on the workflow implementation
 
-    def test_full_pipeline(self, tmp_path, tmp_storage_dir, monkeypatch, mock_plugin_manager, cli_module):
+    def test_full_pipeline(
+        self, tmp_path, tmp_storage_dir, monkeypatch, mock_plugin_manager, cli_module
+    ):
         """Test a complete pipeline: create → fetch → build → deploy."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
@@ -199,7 +203,9 @@ class TestDatabaseOperations:
         assert len(results) == 1
         assert "infrastructure" in results[0]["text"]
 
-    def test_aggregate_database_combines_sites(self, tmp_path, tmp_storage_dir, monkeypatch, cli_module):
+    def test_aggregate_database_combines_sites(
+        self, tmp_path, tmp_storage_dir, monkeypatch, cli_module
+    ):
         """Test that aggregate database correctly combines multiple sites."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
