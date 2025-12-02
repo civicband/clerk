@@ -46,7 +46,9 @@ class TestBuildTableFromText:
         assert len(records) == 2
         assert records[0]["meeting"] == "City Council"
         assert records[0]["date"] == "2024-01-15"
-        assert "called to order" in records[0]["text"]
+        # Check that expected text exists in one of the records (order is not guaranteed)
+        all_text = " ".join(r["text"] for r in records)
+        assert "called to order" in all_text
 
     def test_build_table_with_municipality(self, tmp_storage_dir, sample_text_files):
         """Test building table with municipality field for aggregate DB."""
@@ -90,9 +92,10 @@ class TestBuildTableFromText:
 class TestRebuildSiteFts:
     """Unit tests for rebuild_site_fts_internal function."""
 
-    def test_rebuild_fts_enables_search(self, tmp_storage_dir, monkeypatch):
+    def test_rebuild_fts_enables_search(self, tmp_storage_dir, monkeypatch, cli_module):
         """Test that rebuilding FTS enables full-text search."""
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
 
         subdomain = "example.civic.band"
         site_dir = tmp_storage_dir / subdomain
@@ -128,12 +131,12 @@ class TestRebuildSiteFts:
         # Rebuild FTS
         rebuild_site_fts_internal(subdomain)
 
-        # Check that FTS tables were created
+        # Check that FTS tables were created (sqlite-utils creates *_fts tables)
         table_names = db.table_names()
-        assert any("pages_" in name for name in table_names)
+        assert any("_fts" in name for name in table_names)
 
         # Test FTS search works
-        results = list(db.execute("SELECT * FROM minutes WHERE text MATCH 'meeting'").fetchall())
+        results = list(db["minutes"].search("meeting"))
         assert len(results) > 0
 
 
@@ -141,10 +144,11 @@ class TestRebuildSiteFts:
 class TestUpdatePageCount:
     """Unit tests for update_page_count function."""
 
-    def test_update_page_count(self, tmp_path, tmp_storage_dir, monkeypatch, sample_db):
+    def test_update_page_count(self, tmp_path, tmp_storage_dir, monkeypatch, sample_db, cli_module):
         """Test that update_page_count updates the page count correctly."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
 
         subdomain = "example.civic.band"
         site_dir = tmp_storage_dir / subdomain
@@ -203,10 +207,11 @@ class TestUpdatePageCount:
 class TestGetFetcher:
     """Unit tests for get_fetcher function."""
 
-    def test_get_fetcher_from_plugin(self, sample_site_data, mock_plugin_manager, monkeypatch):
+    def test_get_fetcher_from_plugin(
+        self, sample_site_data, mock_plugin_manager, monkeypatch, cli_module
+    ):
         """Test getting a fetcher class from a plugin."""
-        import clerk.cli as cli_module
-
+        # pm is imported from clerk.utils into clerk.cli, so we patch it there
         monkeypatch.setattr(cli_module, "pm", mock_plugin_manager)
 
         sample_site_data["scraper"] = "test_scraper"
@@ -291,13 +296,15 @@ class TestFetchInternal:
 class TestBuildDbFromTextInternal:
     """Integration tests for build_db_from_text_internal."""
 
-    def test_build_db_from_text(self, tmp_storage_dir, sample_text_files, monkeypatch):
+    def test_build_db_from_text(self, tmp_storage_dir, sample_text_files, monkeypatch, cli_module):
         """Test building a complete database from text files."""
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
 
         subdomain = "example.civic.band"
         site_dir = tmp_storage_dir / subdomain
-        site_dir.mkdir()
+        # Directory already exists from sample_text_files fixture, use exist_ok=True
+        site_dir.mkdir(exist_ok=True)
 
         # Create a minimal existing database to backup
         db_path = site_dir / "meetings.db"
@@ -326,10 +333,13 @@ class TestBuildDbFromTextInternal:
 class TestBuildFullDb:
     """Integration tests for build_full_db command."""
 
-    def test_build_full_db_cli(self, tmp_path, tmp_storage_dir, sample_text_files, monkeypatch):
+    def test_build_full_db_cli(
+        self, tmp_path, tmp_storage_dir, sample_text_files, monkeypatch, cli_module
+    ):
         """Test the build_full_db CLI command."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
 
         # Create civic.db with a site
         db = sqlite_utils.Database("civic.db")
