@@ -442,6 +442,61 @@ def test_fetcher_class_hook(mock_site):
    twine upload dist/*
    ```
 
+## Plugin Discovery
+
+Clerk automatically discovers plugins from a `./plugins/` directory in the current working directory.
+
+### Directory Structure
+
+```
+my-project/
+├── civic.db
+├── plugins/
+│   ├── my_fetcher.py
+│   └── my_deploy.py
+└── sites/
+```
+
+### Creating a Plugin
+
+Create a Python file in the `./plugins/` directory with a class that uses the `@hookimpl` decorator:
+
+```python
+# plugins/my_fetcher.py
+from clerk import hookimpl
+
+class MyFetcherPlugin:
+    @hookimpl
+    def fetcher_class(self, label):
+        if label == "my_fetcher":
+            from .my_fetcher_impl import MyFetcher
+            return MyFetcher
+        return None
+```
+
+Clerk will automatically:
+1. Scan `./plugins/` for `.py` files
+2. Import each file
+3. Find classes with `@hookimpl` methods
+4. Instantiate and register them
+
+### Custom Plugins Directory
+
+Use `--plugins-dir` to load plugins from a different location:
+
+```bash
+clerk --plugins-dir ./my-plugins update -s foo.civic.band
+```
+
+### Error Handling
+
+Clerk fails fast on plugin errors. If a plugin file has:
+- Syntax errors
+- Import errors
+- Instantiation errors
+
+Clerk will exit with a clear error message rather than silently skipping the plugin.
+
 ## Examples
 
 See the `examples/` directory for complete working examples:

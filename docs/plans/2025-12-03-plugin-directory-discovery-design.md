@@ -1,5 +1,7 @@
 # Plugin Directory Discovery Design
 
+**Status:** Implemented
+
 ## Overview
 
 Enable clerk to automatically discover and load plugins from a `./plugins/` directory, eliminating the need for manual plugin registration in a wrapper script.
