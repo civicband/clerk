@@ -10,6 +10,7 @@ import click
 import logfire
 import sqlite_utils
 
+from .plugin_loader import load_plugins_from_directory
 from .utils import assert_db_exists, pm
 
 STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
@@ -17,8 +18,15 @@ STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
 
 @click.group()
 @click.version_option()
-def cli():
+@click.option(
+    "--plugins-dir",
+    default="./plugins",
+    type=click.Path(),
+    help="Directory to load plugins from",
+)
+def cli(plugins_dir):
     """Managing civic.band sites"""
+    load_plugins_from_directory(plugins_dir)
 
 
 @cli.command()
