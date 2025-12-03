@@ -1,5 +1,6 @@
 """Tests for plugin directory discovery."""
 
+import click
 import pytest
 
 from clerk.plugin_loader import load_plugins_from_directory
@@ -72,3 +73,49 @@ class TestLoadPluginsFromDirectory:
         load_plugins_from_directory(str(plugins_dir))
 
         assert len(pm.get_plugins()) == initial_count
+
+
+class TestPluginLoaderErrors:
+    """Tests for error handling in plugin loader."""
+
+    def test_fails_on_syntax_error(self, plugins_dir):
+        """Test that syntax errors in plugins cause failure."""
+        bad_plugin = plugins_dir / "bad_syntax.py"
+        bad_plugin.write_text("def broken(\n")  # Syntax error
+
+        with pytest.raises(click.ClickException, match="Error loading plugin"):
+            load_plugins_from_directory(str(plugins_dir))
+
+    def test_fails_on_import_error(self, plugins_dir):
+        """Test that import errors in plugins cause failure."""
+        bad_plugin = plugins_dir / "bad_import.py"
+        bad_plugin.write_text("import nonexistent_module_12345\n")
+
+        with pytest.raises(click.ClickException, match="Error loading plugin"):
+            load_plugins_from_directory(str(plugins_dir))
+
+    def test_fails_on_instantiation_error(self, plugins_dir):
+        """Test that plugin instantiation errors cause failure."""
+        bad_plugin = plugins_dir / "bad_init.py"
+        bad_plugin.write_text('''
+from clerk import hookimpl
+
+class BadPlugin:
+    def __init__(self):
+        raise RuntimeError("Cannot instantiate")
+
+    @hookimpl
+    def fetcher_class(self, label):
+        return None
+''')
+
+        with pytest.raises(click.ClickException, match="Error instantiating plugin"):
+            load_plugins_from_directory(str(plugins_dir))
+
+    def test_fails_if_path_is_file(self, tmp_path):
+        """Test that passing a file path raises error."""
+        file_path = tmp_path / "not_a_dir.py"
+        file_path.write_text("x = 1")
+
+        with pytest.raises(click.ClickException, match="not a directory"):
+            load_plugins_from_directory(str(file_path))
