@@ -12,7 +12,7 @@ def plugins_dir_with_plugin(tmp_path):
     plugins = tmp_path / "plugins"
     plugins.mkdir()
 
-    plugin_code = '''
+    plugin_code = """
 from clerk import hookimpl
 
 class CLITestPlugin:
@@ -21,7 +21,7 @@ class CLITestPlugin:
         if label == "cli_test":
             return "CLITestFetcher"
         return None
-'''
+"""
     (plugins / "cli_test_plugin.py").write_text(plugin_code)
     return plugins
 
@@ -56,9 +56,6 @@ class TestCLIPluginLoading:
         monkeypatch.chdir(tmp_path)
 
         runner = CliRunner()
-        result = runner.invoke(
-            cli,
-            ["--plugins-dir", str(plugins_dir_with_plugin), "--help"]
-        )
+        result = runner.invoke(cli, ["--plugins-dir", str(plugins_dir_with_plugin), "--help"])
 
         assert result.exit_code == 0

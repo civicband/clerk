@@ -18,7 +18,7 @@ def plugins_dir(tmp_path):
 @pytest.fixture
 def sample_plugin_file(plugins_dir):
     """Create a sample plugin file."""
-    plugin_code = '''
+    plugin_code = """
 from clerk import hookimpl
 
 class SamplePlugin:
@@ -27,7 +27,7 @@ class SamplePlugin:
         if label == "sample":
             return "SampleFetcher"
         return None
-'''
+"""
     plugin_file = plugins_dir / "sample_plugin.py"
     plugin_file.write_text(plugin_code)
     return plugin_file
@@ -97,7 +97,7 @@ class TestPluginLoaderErrors:
     def test_fails_on_instantiation_error(self, plugins_dir):
         """Test that plugin instantiation errors cause failure."""
         bad_plugin = plugins_dir / "bad_init.py"
-        bad_plugin.write_text('''
+        bad_plugin.write_text("""
 from clerk import hookimpl
 
 class BadPlugin:
@@ -107,7 +107,7 @@ class BadPlugin:
     @hookimpl
     def fetcher_class(self, label):
         return None
-''')
+""")
 
         with pytest.raises(click.ClickException, match="Error instantiating plugin"):
             load_plugins_from_directory(str(plugins_dir))
