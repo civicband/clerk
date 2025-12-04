@@ -28,3 +28,32 @@ class ClerkSpec:
     @hookspec
     def post_create(self, subdomain):
         """Runs actions actions after the creation of a site"""
+
+    # ETL Pipeline Hooks
+
+    @hookspec
+    def extractor_class(self, label):
+        """Returns an extractor class for the given label.
+
+        Extractor interface:
+            __init__(self, site: dict, config: dict)
+            extract(self) -> None  # writes files to STORAGE_DIR/{subdomain}/extracted/
+        """
+
+    @hookspec
+    def transformer_class(self, label):
+        """Returns a transformer class for the given label.
+
+        Transformer interface:
+            __init__(self, site: dict, config: dict)
+            transform(self) -> None  # reads extracted files, writes transformed files
+        """
+
+    @hookspec
+    def loader_class(self, label):
+        """Returns a loader class for the given label.
+
+        Loader interface:
+            __init__(self, site: dict, config: dict)
+            load(self) -> None  # reads transformed files, creates tables, writes to DB
+        """
