@@ -50,6 +50,7 @@ class TestAssertDbExists:
             "last_updated",
             "lat",
             "lng",
+            "pipeline",
         }
         actual_columns = {col.name for col in db["sites"].columns}
         assert actual_columns == expected_columns
@@ -143,3 +144,84 @@ class TestStorageDir:
     def test_default_storage_dir(self):
         """Test the default STORAGE_DIR value."""
         assert STORAGE_DIR == os.environ.get("STORAGE_DIR", "../sites")
+
+
+class TestPipelineColumn:
+    """Tests for pipeline column in sites table."""
+
+    def test_pipeline_column_exists(self, tmp_path, monkeypatch):
+        """Test that pipeline column is created in new databases."""
+        monkeypatch.chdir(tmp_path)
+
+        from clerk.utils import assert_db_exists
+
+        db = assert_db_exists()
+
+        # Check column exists
+        columns = {col.name for col in db["sites"].columns}
+        assert "pipeline" in columns
+
+    def test_pipeline_column_added_to_existing_db(self, tmp_path, monkeypatch):
+        """Test that pipeline column is added to existing databases."""
+        monkeypatch.chdir(tmp_path)
+
+        import sqlite_utils
+
+        # Create old-style database without pipeline column
+        db = sqlite_utils.Database("civic.db")
+        db["sites"].create(
+            {
+                "subdomain": str,
+                "name": str,
+                "state": str,
+                "country": str,
+                "kind": str,
+                "scraper": str,
+                "pages": int,
+                "start_year": int,
+                "extra": str,
+                "status": str,
+                "last_updated": str,
+                "lat": str,
+                "lng": str,
+            },
+            pk="subdomain",
+        )
+
+        # Now call assert_db_exists which should add the column
+        from clerk.utils import assert_db_exists
+
+        db = assert_db_exists()
+
+        columns = {col.name for col in db["sites"].columns}
+        assert "pipeline" in columns
+
+    def test_pipeline_column_nullable(self, tmp_path, monkeypatch):
+        """Test that pipeline column allows NULL values."""
+        monkeypatch.chdir(tmp_path)
+
+        from clerk.utils import assert_db_exists
+
+        db = assert_db_exists()
+
+        # Insert row without pipeline
+        db["sites"].insert(
+            {
+                "subdomain": "test.civic.band",
+                "name": "Test",
+                "state": "CA",
+                "country": "US",
+                "kind": "council",
+                "scraper": "test",
+                "pages": 0,
+                "start_year": 2020,
+                "extra": None,
+                "status": "new",
+                "last_updated": None,
+                "lat": "0",
+                "lng": "0",
+            }
+        )
+
+        site = db["sites"].get("test.civic.band")
+        assert site["pipeline"] is None

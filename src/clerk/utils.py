@@ -31,6 +31,7 @@ def assert_db_exists():
                 "last_updated": str,
                 "lat": str,
                 "lng": str,
+                "pipeline": str,  # JSON column for ETL pipeline config
             },
             pk="subdomain",
         )
@@ -38,8 +39,15 @@ def assert_db_exists():
         db["feed_entries"].create(  # pyright: ignore[reportAttributeAccessIssue]
             {"subdomain": str, "date": str, "kind": str, "name": str},
         )
+    # Drop deprecated columns
     db["sites"].transform(drop={"ocr_class"})  # pyright: ignore[reportAttributeAccessIssue]
     db["sites"].transform(drop={"docker_port"})  # pyright: ignore[reportAttributeAccessIssue]
     db["sites"].transform(drop={"save_agendas"})  # pyright: ignore[reportAttributeAccessIssue]
     db["sites"].transform(drop={"site_db"})  # pyright: ignore[reportAttributeAccessIssue]
+
+    # Add pipeline column if it doesn't exist (migration for existing DBs)
+    columns = {col.name for col in db["sites"].columns}
+    if "pipeline" not in columns:
+        db.execute("ALTER TABLE sites ADD COLUMN pipeline TEXT")
+
     return db
