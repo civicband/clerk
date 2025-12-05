@@ -149,20 +149,12 @@ def update_site_internal(
 
     click.echo(f"Updating site {site['subdomain']}")
 
-    # Get pipeline components (new ETL or old fetcher via adapter)
-    from .adapter import FetcherAdapter
-
-    components = get_pipeline_components(site)
-    config = json.loads(site.get("extra") or "{}")
-
-    if isinstance(components, FetcherAdapter):
-        # Old-style fetcher path
-        if not skip_fetch:
-            fetch_internal(subdomain, components.fetcher)
-        components.transform()
-        components.load()
-    else:
+    # Check if site has new ETL pipeline or old-style scraper
+    if site.get("pipeline"):
         # New ETL pipeline path
+        components = get_pipeline_components(site)
+        config = json.loads(site.get("extra") or "{}")
+
         ExtractorClass = components["extractor"]
         TransformerClass = components["transformer"]
         LoaderClass = components["loader"]
@@ -197,6 +189,13 @@ def update_site_internal(
             },
         )
         loader.load()
+    else:
+        # Old-style fetcher path - uses get_fetcher which respects all_years/all_agendas
+        fetcher = get_fetcher(site, all_years=all_years, all_agendas=all_agendas)
+        if not skip_fetch:
+            fetch_internal(subdomain, fetcher)
+        fetcher.ocr()
+        fetcher.transform()
 
     update_page_count(subdomain)
     db["sites"].update(  # type: ignore

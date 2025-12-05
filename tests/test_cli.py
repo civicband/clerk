@@ -535,3 +535,107 @@ class TestETLPipelineIntegration:
 
         # Should complete (uses mock fetcher)
         assert result.exit_code == 0
+
+    def test_update_pipeline_with_skip_fetch(
+        self, tmp_path, tmp_storage_dir, monkeypatch, cli_module
+    ):
+        """Test that skip_fetch flag skips extractor in ETL pipeline."""
+        import json
+
+        import sqlite_utils
+        from click.testing import CliRunner
+
+        from clerk.cli import cli
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
+
+        # Track what gets called
+        calls = []
+
+        class SkipTestExtractor:
+            def __init__(self, site, config):
+                self.site = site
+
+            def extract(self):
+                calls.append("extract")
+
+        class SkipTestTransformer:
+            def __init__(self, site, config):
+                self.site = site
+
+            def transform(self):
+                calls.append("transform")
+
+        class SkipTestLoader:
+            def __init__(self, site, config):
+                self.site = site
+
+            def load(self):
+                calls.append("load")
+
+        class SkipTestPlugin:
+            from clerk import hookimpl
+
+            @hookimpl
+            def extractor_class(self, label):
+                if label == "skip_test":
+                    return SkipTestExtractor
+                return None
+
+            @hookimpl
+            def transformer_class(self, label):
+                if label == "skip_test":
+                    return SkipTestTransformer
+                return None
+
+            @hookimpl
+            def loader_class(self, label):
+                if label == "skip_test":
+                    return SkipTestLoader
+                return None
+
+        # Register plugin
+        from clerk.utils import pm
+
+        pm.register(SkipTestPlugin())
+
+        # Create civic.db with pipeline-configured site
+        civic_db = sqlite_utils.Database("civic.db")
+        civic_db["sites"].insert(
+            {
+                "subdomain": "skip-test.civic.band",
+                "name": "Skip Test",
+                "state": "CA",
+                "country": "US",
+                "kind": "council",
+                "scraper": None,
+                "pages": 0,
+                "start_year": 2020,
+                "extra": "{}",
+                "status": "new",
+                "last_updated": None,
+                "lat": "0",
+                "lng": "0",
+                "pipeline": json.dumps({
+                    "extractor": "skip_test",
+                    "transformer": "skip_test",
+                    "loader": "skip_test",
+                }),
+            },
+            pk="subdomain",
+        )
+
+        # Create site directory
+        site_dir = tmp_storage_dir / "skip-test.civic.band"
+        site_dir.mkdir()
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["update", "-s", "skip-test.civic.band", "--skip-fetch"])
+
+        # Extractor should NOT have been called
+        assert "extract" not in calls
+        # But transformer and loader should have been called
+        assert "transform" in calls
+        assert "load" in calls

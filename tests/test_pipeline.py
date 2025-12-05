@@ -1,8 +1,9 @@
 """Tests for ETL pipeline orchestration."""
 
 import json
-import pytest
+
 import pluggy
+import pytest
 
 from clerk.hookspecs import ClerkSpec, hookimpl
 
@@ -145,7 +146,7 @@ class TestGetPipelineComponents:
     def test_uses_defaults_for_missing_components(self, etl_plugin_manager, monkeypatch):
         """Test that defaults are used when components not specified."""
         from clerk import pipeline
-        from clerk.defaults import IdentityTransformer, GenericLoader
+        from clerk.defaults import GenericLoader, IdentityTransformer
 
         monkeypatch.setattr(pipeline, "pm", etl_plugin_manager)
 
