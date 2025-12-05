@@ -10,6 +10,7 @@ import click
 import logfire
 import sqlite_utils
 
+from .pipeline import get_pipeline_components
 from .plugin_loader import load_plugins_from_directory
 from .utils import assert_db_exists, pm
 
@@ -146,13 +147,56 @@ def update_site_internal(
         click.echo("No site found matching criteria")
         return
 
-    # Fetch and OCR
     click.echo(f"Updating site {site['subdomain']}")
-    fetcher = get_fetcher(site, all_years=all_years, all_agendas=all_agendas)
-    if not skip_fetch:
-        fetch_internal(subdomain, fetcher)
-    fetcher.ocr()  # type: ignore
-    fetcher.transform()  # type: ignore
+
+    # Get pipeline components (new ETL or old fetcher via adapter)
+    from .adapter import FetcherAdapter
+
+    components = get_pipeline_components(site)
+    config = json.loads(site.get("extra") or "{}")
+
+    if isinstance(components, FetcherAdapter):
+        # Old-style fetcher path
+        if not skip_fetch:
+            fetch_internal(subdomain, components.fetcher)
+        components.transform()
+        components.load()
+    else:
+        # New ETL pipeline path
+        ExtractorClass = components["extractor"]
+        TransformerClass = components["transformer"]
+        LoaderClass = components["loader"]
+
+        if not skip_fetch:
+            extractor = ExtractorClass(site, config)
+            db["sites"].update(  # type: ignore
+                subdomain,
+                {
+                    "status": "extracting",
+                    "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                },
+            )
+            extractor.extract()
+
+        transformer = TransformerClass(site, config)
+        db["sites"].update(  # type: ignore
+            subdomain,
+            {
+                "status": "transforming",
+                "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            },
+        )
+        transformer.transform()
+
+        loader = LoaderClass(site, config)
+        db["sites"].update(  # type: ignore
+            subdomain,
+            {
+                "status": "loading",
+                "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            },
+        )
+        loader.load()
 
     update_page_count(subdomain)
     db["sites"].update(  # type: ignore

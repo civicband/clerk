@@ -376,3 +376,162 @@ class TestBuildFullDb:
         full_db = sqlite_utils.Database(full_db_path)
         assert "minutes" in full_db.table_names()
         assert "agendas" in full_db.table_names()
+
+
+@pytest.mark.unit
+class TestETLPipelineIntegration:
+    """Tests for ETL pipeline integration in update command."""
+
+    def test_update_uses_pipeline_when_configured(
+        self, tmp_path, tmp_storage_dir, monkeypatch, cli_module
+    ):
+        """Test that update uses ETL pipeline when site has pipeline config."""
+        import json
+
+        import sqlite_utils
+        from click.testing import CliRunner
+
+        from clerk.cli import cli
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
+
+        # Track what gets called
+        calls = []
+
+        class TrackingExtractor:
+            def __init__(self, site, config):
+                self.site = site
+
+            def extract(self):
+                calls.append("extract")
+
+        class TrackingTransformer:
+            def __init__(self, site, config):
+                self.site = site
+
+            def transform(self):
+                calls.append("transform")
+
+        class TrackingLoader:
+            def __init__(self, site, config):
+                self.site = site
+
+            def load(self):
+                calls.append("load")
+
+        class TrackingPlugin:
+            from clerk import hookimpl
+
+            @hookimpl
+            def extractor_class(self, label):
+                if label == "tracking":
+                    return TrackingExtractor
+                return None
+
+            @hookimpl
+            def transformer_class(self, label):
+                if label == "tracking":
+                    return TrackingTransformer
+                return None
+
+            @hookimpl
+            def loader_class(self, label):
+                if label == "tracking":
+                    return TrackingLoader
+                return None
+
+        # Register plugin
+        from clerk.utils import pm
+
+        pm.register(TrackingPlugin())
+
+        # Create civic.db with pipeline-configured site
+        civic_db = sqlite_utils.Database("civic.db")
+        civic_db["sites"].insert(
+            {
+                "subdomain": "pipeline-test.civic.band",
+                "name": "Pipeline Test",
+                "state": "CA",
+                "country": "US",
+                "kind": "council",
+                "scraper": None,
+                "pages": 0,
+                "start_year": 2020,
+                "extra": "{}",
+                "status": "new",
+                "last_updated": None,
+                "lat": "0",
+                "lng": "0",
+                "pipeline": json.dumps({
+                    "extractor": "tracking",
+                    "transformer": "tracking",
+                    "loader": "tracking",
+                }),
+            },
+            pk="subdomain",
+        )
+
+        # Create site directory
+        site_dir = tmp_storage_dir / "pipeline-test.civic.band"
+        site_dir.mkdir()
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["update", "-s", "pipeline-test.civic.band"])
+
+        # Should have called ETL methods in order
+        assert "extract" in calls
+        assert "transform" in calls
+        assert "load" in calls
+        assert calls.index("extract") < calls.index("transform") < calls.index("load")
+
+    def test_update_uses_fetcher_when_no_pipeline(
+        self, tmp_path, tmp_storage_dir, monkeypatch, mock_plugin_manager, cli_module
+    ):
+        """Test that update uses old fetcher when site has no pipeline."""
+        import sqlite_utils
+        from click.testing import CliRunner
+
+        from clerk.cli import cli
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
+        monkeypatch.setattr(cli_module, "pm", mock_plugin_manager)
+
+        # Also patch pipeline module's pm
+        import clerk.pipeline
+        monkeypatch.setattr(clerk.pipeline, "pm", mock_plugin_manager)
+
+        # Create civic.db with scraper-only site (no pipeline)
+        civic_db = sqlite_utils.Database("civic.db")
+        civic_db["sites"].insert(
+            {
+                "subdomain": "scraper-test.civic.band",
+                "name": "Scraper Test",
+                "state": "CA",
+                "country": "US",
+                "kind": "council",
+                "scraper": "test_scraper",
+                "pages": 0,
+                "start_year": 2020,
+                "extra": None,
+                "status": "new",
+                "last_updated": None,
+                "lat": "0",
+                "lng": "0",
+                "pipeline": None,  # No pipeline
+            },
+            pk="subdomain",
+        )
+
+        # Create site directory
+        site_dir = tmp_storage_dir / "scraper-test.civic.band"
+        site_dir.mkdir()
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["update", "-s", "scraper-test.civic.band"])
+
+        # Should complete (uses mock fetcher)
+        assert result.exit_code == 0
