@@ -478,7 +478,7 @@ class TestETLPipelineIntegration:
         site_dir.mkdir()
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["update", "-s", "pipeline-test.civic.band"])
+        runner.invoke(cli, ["update", "-s", "pipeline-test.civic.band"])
 
         # Should have called ETL methods in order
         assert "extract" in calls
@@ -632,7 +632,7 @@ class TestETLPipelineIntegration:
         site_dir.mkdir()
 
         runner = CliRunner()
-        result = runner.invoke(cli, ["update", "-s", "skip-test.civic.band", "--skip-fetch"])
+        runner.invoke(cli, ["update", "-s", "skip-test.civic.band", "--skip-fetch"])
 
         # Extractor should NOT have been called
         assert "extract" not in calls

@@ -1,6 +1,5 @@
 """Tests for FetcherAdapter backward compatibility."""
 
-import pytest
 
 
 class MockOldStyleFetcher:

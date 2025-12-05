@@ -1,6 +1,5 @@
 """Tests for ETL hook specifications."""
 
-import pytest
 import pluggy
 
 from clerk.hookspecs import ClerkSpec
