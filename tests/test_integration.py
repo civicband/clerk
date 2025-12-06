@@ -20,6 +20,10 @@ class TestEndToEndWorkflow:
         monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
         monkeypatch.setattr(cli_module, "pm", mock_plugin_manager)
 
+        # Also patch pipeline module's pm
+        import clerk.pipeline
+        monkeypatch.setattr(clerk.pipeline, "pm", mock_plugin_manager)
+
         runner = CliRunner()
 
         # Create a new site interactively
@@ -106,6 +110,10 @@ class TestEndToEndWorkflow:
                 return None
 
         monkeypatch.setattr(cli_module, "pm", mock_plugin_manager)
+
+        # Also patch pipeline module's pm
+        import clerk.pipeline
+        monkeypatch.setattr(clerk.pipeline, "pm", mock_plugin_manager)
 
         # 1. Create civic.db with a test site
         civic_db = sqlite_utils.Database("civic.db")

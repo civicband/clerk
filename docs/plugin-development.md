@@ -497,6 +497,305 @@ Clerk fails fast on plugin errors. If a plugin file has:
 
 Clerk will exit with a clear error message rather than silently skipping the plugin.
 
+## ETL Pipeline Architecture
+
+Clerk supports a flexible Extract-Transform-Load (ETL) pipeline for handling different data formats. While the old-style `fetcher_class` approach works well for document-heavy workflows (PDFs → text → database), the ETL pipeline supports structured data like spreadsheets.
+
+### ETL Model
+
+```
+┌─────────────┐     ┌──────────────┐     ┌────────────┐
+│  Extractor  │ ──► │  Transformer │ ──► │   Loader   │
+│             │     │              │     │            │
+│ fetch data  │     │ process data │     │ write to   │
+│ write files │     │ write files  │     │ database   │
+└─────────────┘     └──────────────┘     └────────────┘
+      │                    │                    │
+      ▼                    ▼                    ▼
+   files on             files on            database
+    disk                 disk               tables
+```
+
+Data flows between stages via the filesystem for caching and resumability.
+
+### ETL Hooks
+
+#### extractor_class
+
+Provide a custom extractor for a data source.
+
+```python
+@hookimpl
+def extractor_class(self, label: str):
+    """Return an extractor class for the given label.
+
+    Args:
+        label: The extractor type from site['pipeline']['extractor']
+
+    Returns:
+        An extractor class or None
+    """
+    if label == "socrata_api":
+        return SocrataExtractor
+    return None
+```
+
+**Extractor Interface:**
+
+```python
+class MyExtractor:
+    def __init__(self, site: dict, config: dict):
+        """Initialize the extractor.
+
+        Args:
+            site: Site configuration from civic.db
+            config: Extra config from site['extra'] parsed as JSON
+        """
+        self.site = site
+        self.config = config
+
+    def extract(self) -> None:
+        """Download/extract data.
+
+        Write files to:
+        {STORAGE_DIR}/{subdomain}/extracted/
+        """
+        pass
+```
+
+#### transformer_class
+
+Provide a custom transformer for data processing.
+
+```python
+@hookimpl
+def transformer_class(self, label: str):
+    """Return a transformer class for the given label.
+
+    Args:
+        label: The transformer type from site['pipeline']['transformer']
+
+    Returns:
+        A transformer class or None
+    """
+    if label == "budget_normalize":
+        return BudgetTransformer
+    return None
+```
+
+**Transformer Interface:**
+
+```python
+class MyTransformer:
+    def __init__(self, site: dict, config: dict):
+        """Initialize the transformer.
+
+        Args:
+            site: Site configuration from civic.db
+            config: Extra config from site['extra'] parsed as JSON
+        """
+        self.site = site
+        self.config = config
+
+    def transform(self) -> None:
+        """Transform extracted data.
+
+        Read from: {STORAGE_DIR}/{subdomain}/extracted/
+        Write to: {STORAGE_DIR}/{subdomain}/transformed/
+        """
+        pass
+```
+
+#### loader_class
+
+Provide a custom loader for database operations.
+
+```python
+@hookimpl
+def loader_class(self, label: str):
+    """Return a loader class for the given label.
+
+    Args:
+        label: The loader type from site['pipeline']['loader']
+
+    Returns:
+        A loader class or None
+    """
+    if label == "budget_tables":
+        return BudgetLoader
+    return None
+```
+
+**Loader Interface:**
+
+```python
+class MyLoader:
+    def __init__(self, site: dict, config: dict):
+        """Initialize the loader.
+
+        Args:
+            site: Site configuration from civic.db
+            config: Extra config from site['extra'] parsed as JSON
+        """
+        self.site = site
+        self.config = config
+
+    def load(self) -> None:
+        """Load transformed data into database.
+
+        Read from: {STORAGE_DIR}/{subdomain}/transformed/
+        Write to: {STORAGE_DIR}/{subdomain}/data.db (or meetings.db)
+        """
+        pass
+```
+
+### Default Components
+
+Clerk provides default implementations:
+
+- **IdentityTransformer**: No-op transformer (files pass through unchanged)
+- **GenericLoader**: Loads CSV/JSON files from `transformed/` into database tables
+
+Import these if you need them:
+
+```python
+from clerk import IdentityTransformer, GenericLoader
+```
+
+### Site Configuration
+
+Sites use the new ETL pipeline when they have a `pipeline` JSON column:
+
+```sql
+UPDATE sites SET pipeline = '{"extractor": "socrata_api", "transformer": "budget_normalize", "loader": "budget_tables"}'
+WHERE subdomain = 'oakland-budget.civic.band';
+```
+
+The pipeline JSON supports:
+- `extractor`: Required label for the extractor
+- `transformer`: Optional (defaults to IdentityTransformer)
+- `loader`: Optional (defaults to GenericLoader)
+
+### Complete ETL Plugin Example
+
+```python
+"""Budget data pipeline plugin."""
+
+import csv
+import os
+from pathlib import Path
+
+import requests
+import sqlite_utils
+from clerk import hookimpl
+
+STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
+
+
+class SocrataExtractor:
+    """Extract budget data from Socrata open data portal."""
+
+    def __init__(self, site: dict, config: dict):
+        self.site = site
+        self.api_endpoint = config.get("socrata_endpoint")
+
+    def extract(self) -> None:
+        response = requests.get(self.api_endpoint)
+
+        output_dir = Path(STORAGE_DIR) / self.site["subdomain"] / "extracted"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        (output_dir / "budget.csv").write_text(response.text)
+
+
+class BudgetTransformer:
+    """Normalize budget data to standard schema."""
+
+    def __init__(self, site: dict, config: dict):
+        self.site = site
+
+    def transform(self) -> None:
+        subdomain = self.site["subdomain"]
+        input_file = Path(STORAGE_DIR) / subdomain / "extracted" / "budget.csv"
+        output_dir = Path(STORAGE_DIR) / subdomain / "transformed"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        with open(input_file) as f:
+            reader = csv.DictReader(f)
+            rows = []
+            for row in reader:
+                rows.append({
+                    "fiscal_year": row.get("FY") or row.get("fiscal_year"),
+                    "department": row.get("Dept") or row.get("department"),
+                    "category": row.get("Category") or row.get("expense_type"),
+                    "amount": float(row.get("Amount") or row.get("budget_amount") or 0),
+                })
+
+        with open(output_dir / "budget_lines.csv", "w", newline="") as f:
+            writer = csv.DictWriter(
+                f, fieldnames=["fiscal_year", "department", "category", "amount"]
+            )
+            writer.writeheader()
+            writer.writerows(rows)
+
+
+class BudgetLoader:
+    """Load budget data into database."""
+
+    def __init__(self, site: dict, config: dict):
+        self.site = site
+
+    def load(self) -> None:
+        subdomain = self.site["subdomain"]
+        input_file = Path(STORAGE_DIR) / subdomain / "transformed" / "budget_lines.csv"
+        db_path = Path(STORAGE_DIR) / subdomain / "data.db"
+
+        db = sqlite_utils.Database(db_path)
+
+        db["budget_lines"].insert_all(
+            csv.DictReader(open(input_file)),
+            pk="id",
+            alter=True,
+        )
+
+        db["budget_lines"].enable_fts(["department", "category"])
+
+
+class BudgetPipelinePlugin:
+    """Plugin providing budget data pipeline components."""
+
+    @hookimpl
+    def extractor_class(self, label):
+        if label == "socrata_api":
+            return SocrataExtractor
+        return None
+
+    @hookimpl
+    def transformer_class(self, label):
+        if label == "budget_normalize":
+            return BudgetTransformer
+        return None
+
+    @hookimpl
+    def loader_class(self, label):
+        if label == "budget_tables":
+            return BudgetLoader
+        return None
+```
+
+### Backward Compatibility
+
+Existing plugins using `fetcher_class` continue to work unchanged. Sites with a `scraper` field but no `pipeline` field automatically use the old-style fetcher path.
+
+To migrate an existing fetcher to the new ETL system:
+
+1. Split your fetcher into separate extractor, transformer, and loader classes
+2. Register them with the appropriate hooks
+3. Update site configuration from `scraper: "my_source"` to:
+   ```json
+   {"extractor": "my_source", "transformer": "my_format", "loader": "my_tables"}
+   ```
+
 ## Examples
 
 See the `examples/` directory for complete working examples:
