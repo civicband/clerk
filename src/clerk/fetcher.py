@@ -183,6 +183,11 @@ class Fetcher:
         return body
 
     def fetch_and_write_pdf(self, url: str, kind: str, meeting: str, date: str, headers: dict[str, str] | None = None) -> None:
+        if not PDF_SUPPORT:
+            raise ImportError(
+                "PDF support requires optional dependencies. "
+                "Install with: pip install clerk[pdf]"
+            )
         # TODO: Assert minutes and agenda output dir exists
         self.assert_fetch_dirs()
         if kind == "minutes":
@@ -362,6 +367,11 @@ class Fetcher:
                         self.message_print("%r page is %d bytes" % (job, len(data)))
 
     def do_ocr_job(self, job: tuple[str, str, str]) -> None:
+        if not PDF_SUPPORT:
+            raise ImportError(
+                "PDF support requires optional dependencies. "
+                "Install with: pip install clerk[pdf]"
+            )
         st = time.time()
         prefix = job[0]
         meeting = job[1]
