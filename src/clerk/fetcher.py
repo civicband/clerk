@@ -39,7 +39,7 @@ NUM_WORKERS = int(os.environ.get("NUM_WORKERS", 10))
 
 
 class Fetcher:
-    def __init__(self, site, start_year=None, all_agendas=False):
+    def __init__(self, site: dict[str, Any], start_year: int | None = None, all_agendas: bool = False) -> None:
         self.subdomain = site["subdomain"]
         self.start_year = start_year
         self.today = datetime.today()
@@ -80,23 +80,23 @@ class Fetcher:
 
         self.child_init()
 
-    def child_init(self):
+    def child_init(self) -> None:
         # This method exists to be overwritten
         pass
 
-    def assert_fetch_dirs(self):
+    def assert_fetch_dirs(self) -> None:
         if not os.path.exists(self.minutes_output_dir):
             os.makedirs(self.minutes_output_dir)
         if not os.path.exists(self.agendas_output_dir):
             os.makedirs(self.agendas_output_dir)
 
-    def assert_processed_dirs(self):
+    def assert_processed_dirs(self) -> None:
         if not os.path.exists(self.minutes_processed_dir):
             os.makedirs(self.minutes_processed_dir)
         if not os.path.exists(self.agendas_processed_dir):
             os.makedirs(self.agendas_processed_dir)
 
-    def assert_site_db_exists(self):
+    def assert_site_db_exists(self) -> None:
         self.db = sqlite_utils.Database(f"{STORAGE_DIR}/{self.subdomain}/meetings.db")
         if not self.db["minutes"].exists():
             self.db["minutes"].create(
@@ -123,7 +123,7 @@ class Fetcher:
                 pk=("id"),
             )
 
-    def request(self, method, url, json=None, data=None, headers=None, cookies=None):
+    def request(self, method: str, url: str, json: dict[str, Any] | None = None, data: dict[str, Any] | None = None, headers: dict[str, str] | None = None, cookies: dict[str, str] | None = None) -> httpx.Response | None:
         args_dict = {
             "method": method,
             "url": url,
@@ -147,11 +147,12 @@ class Fetcher:
                 self.message_print(
                     f"Remote error fetching url, trying again {i - 1} more times, {url}"
                 )
+        return None
 
-    def message_print(self, message):
+    def message_print(self, message: str) -> None:
         click.echo(click.style(f"{self.subdomain}: ", fg="cyan") + message)
 
-    def check_if_exists(self, meeting, date, kind):
+    def check_if_exists(self, meeting: str, date: str, kind: str) -> bool:
         if kind == "minutes":
             output_dir = self.minutes_output_dir
             processed_dir = self.minutes_processed_dir
@@ -169,7 +170,7 @@ class Fetcher:
             return True
         return False
 
-    def simplified_meeting_name(self, body):
+    def simplified_meeting_name(self, body: str) -> str:
         body = (
             body.replace(" ", "")
             .replace("*", "")
@@ -181,7 +182,7 @@ class Fetcher:
         )
         return body
 
-    def fetch_and_write_pdf(self, url, kind, meeting, date, headers=None):
+    def fetch_and_write_pdf(self, url: str, kind: str, meeting: str, date: str, headers: dict[str, str] | None = None) -> None:
         # TODO: Assert minutes and agenda output dir exists
         self.assert_fetch_dirs()
         if kind == "minutes":
@@ -243,7 +244,7 @@ class Fetcher:
                 )
             )
 
-    def fetch_docs_from_page(self, page_number: int, meeting: str, date: str, prefix: str) -> None:
+    def fetch_docs_from_page(self, page_number: int, meeting: str, date: str, prefix: str) -> str | None:
         html_dir = os.path.join(self.docs_html_dir, date)
 
         with open(f"{html_dir}{date}-{page_number}.html", encoding="utf-8") as html_file:
@@ -251,6 +252,8 @@ class Fetcher:
             links = [link for link in soup.find_all("a", href=True)]
             for link in links:
                 doc_response = self.request("GET", link.get("href"))
+                if not doc_response:
+                    continue
                 if "pdf" in doc_response.headers.get("content-type", "").lower():
                     filename_from_resp = (
                         doc_response.headers["content-disposition"].split("filename=")[1].strip('"')
@@ -271,6 +274,7 @@ class Fetcher:
                         doc_pdf.write(doc_response.content)
 
                     return doc_id
+        return None
 
     def make_html_from_pdf(self, date: str, doc_path: str) -> None:
         # TODO: assert
@@ -357,7 +361,7 @@ class Fetcher:
                     if data is not None:
                         self.message_print("%r page is %d bytes" % (job, len(data)))
 
-    def do_ocr_job(self, job: tuple) -> None:
+    def do_ocr_job(self, job: tuple[str, str, str]) -> None:
         st = time.time()
         prefix = job[0]
         meeting = job[1]
@@ -424,3 +428,7 @@ class Fetcher:
         et = time.time()
         elapsed_time = et - st
         self.message_print(f"{page_image_path} OCR time: {elapsed_time} seconds")
+
+    def fetch_events(self) -> None:
+        """Subclasses must override this to fetch meeting data."""
+        raise NotImplementedError("Subclasses must implement fetch_events()")
