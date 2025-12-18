@@ -45,12 +45,13 @@ class TestEndToEndWorkflow:
         assert site["status"] == "deployed"
 
     def test_database_build_workflow(
-        self, tmp_path, tmp_storage_dir, sample_text_files, monkeypatch, cli_module
+        self, tmp_path, tmp_storage_dir, sample_text_files, monkeypatch, cli_module, utils_module
     ):
         """Test the complete database building workflow."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
         monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
+        monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_storage_dir))
 
         subdomain = "example.civic.band"
 
@@ -82,12 +83,13 @@ class TestEndToEndWorkflow:
         # This depends on the workflow implementation
 
     def test_full_pipeline(
-        self, tmp_path, tmp_storage_dir, monkeypatch, mock_plugin_manager, cli_module
+        self, tmp_path, tmp_storage_dir, monkeypatch, mock_plugin_manager, cli_module, utils_module
     ):
         """Test a complete pipeline: create → fetch → build → deploy."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
         monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
+        monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_storage_dir))
 
         from tests.mocks.mock_fetchers import FilesystemFetcher
 
@@ -160,10 +162,11 @@ class TestEndToEndWorkflow:
 class TestDatabaseOperations:
     """Integration tests for database operations."""
 
-    def test_fts_search_works_end_to_end(self, tmp_storage_dir, monkeypatch, cli_module):
+    def test_fts_search_works_end_to_end(self, tmp_storage_dir, monkeypatch, cli_module, utils_module):
         """Test that full-text search works after building database."""
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
         monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
+        monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_storage_dir))
 
         subdomain = "search-test.civic.band"
         site_dir = tmp_storage_dir / subdomain
@@ -176,7 +179,7 @@ class TestDatabaseOperations:
         (minutes_dir / "2.txt").write_text("Budget allocation for infrastructure")
 
         # Build database
-        from clerk.cli import build_db_from_text_internal
+        from clerk.utils import build_db_from_text_internal
 
         # Create initial DB for backup
         db_path = site_dir / "meetings.db"
@@ -357,10 +360,11 @@ class TestErrorHandling:
         # Should not raise an exception
         rebuild_site_fts_internal(subdomain)
 
-    def test_build_db_creates_backup(self, tmp_storage_dir, monkeypatch, cli_module):
+    def test_build_db_creates_backup(self, tmp_storage_dir, monkeypatch, cli_module, utils_module):
         """Test that building database creates a backup of existing db."""
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
         monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
+        monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_storage_dir))
 
         subdomain = "backup-test.civic.band"
         site_dir = tmp_storage_dir / subdomain
@@ -377,7 +381,7 @@ class TestErrorHandling:
         (minutes_dir / "1.txt").write_text("New meeting")
 
         # Build database (should backup old one)
-        from clerk.cli import build_db_from_text_internal
+        from clerk.utils import build_db_from_text_internal
 
         build_db_from_text_internal(subdomain)
 

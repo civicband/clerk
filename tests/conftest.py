@@ -26,6 +26,14 @@ def cli_module():
 
 
 @pytest.fixture
+def utils_module():
+    """Get the actual clerk.utils module."""
+    import clerk.utils  # noqa: F401 - ensures module is loaded
+
+    return sys.modules["clerk.utils"]
+
+
+@pytest.fixture
 def tmp_storage_dir(tmp_path):
     """Create a temporary storage directory structure for testing.
 
