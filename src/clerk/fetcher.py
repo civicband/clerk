@@ -8,21 +8,32 @@ import tempfile
 import time
 from datetime import datetime
 from hashlib import sha256
+from typing import Any
 from xml.etree.ElementTree import ParseError
 
 import click
 import httpx
-import pdfkit
 import sqlite_utils
 from bs4 import BeautifulSoup
-from pdf2image import convert_from_path
-from pypdf import PdfReader
-from pypdf.errors import PdfReadError
-from weasyprint import HTML
 
-from clerk import pm
-from clerk.cli import build_db_from_text_internal
-from clerk.utils import STORAGE_DIR
+from clerk.utils import STORAGE_DIR, build_db_from_text_internal, pm
+
+# Optional PDF dependencies
+try:
+    import pdfkit
+    from pdf2image import convert_from_path
+    from pypdf import PdfReader
+    from pypdf.errors import PdfReadError
+    from weasyprint import HTML
+
+    PDF_SUPPORT = True
+except ImportError:
+    PDF_SUPPORT = False
+    PdfReader = None
+    PdfReadError = Exception
+    HTML = None
+    pdfkit = None
+    convert_from_path = None
 
 NUM_WORKERS = int(os.environ.get("NUM_WORKERS", 10))
 
