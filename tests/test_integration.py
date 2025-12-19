@@ -162,7 +162,9 @@ class TestEndToEndWorkflow:
 class TestDatabaseOperations:
     """Integration tests for database operations."""
 
-    def test_fts_search_works_end_to_end(self, tmp_storage_dir, monkeypatch, cli_module, utils_module):
+    def test_fts_search_works_end_to_end(
+        self, tmp_storage_dir, monkeypatch, cli_module, utils_module
+    ):
         """Test that full-text search works after building database."""
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
         monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))

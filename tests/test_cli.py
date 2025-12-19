@@ -298,7 +298,9 @@ class TestFetchInternal:
 class TestBuildDbFromTextInternal:
     """Integration tests for build_db_from_text_internal."""
 
-    def test_build_db_from_text(self, tmp_storage_dir, sample_text_files, monkeypatch, cli_module, utils_module):
+    def test_build_db_from_text(
+        self, tmp_storage_dir, sample_text_files, monkeypatch, cli_module, utils_module
+    ):
         """Test building a complete database from text files."""
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
         monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))

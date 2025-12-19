@@ -39,7 +39,9 @@ NUM_WORKERS = int(os.environ.get("NUM_WORKERS", 10))
 
 
 class Fetcher:
-    def __init__(self, site: dict[str, Any], start_year: int | None = None, all_agendas: bool = False) -> None:
+    def __init__(
+        self, site: dict[str, Any], start_year: int | None = None, all_agendas: bool = False
+    ) -> None:
         self.subdomain = site["subdomain"]
         self.start_year = start_year
         self.today = datetime.today()
@@ -123,7 +125,15 @@ class Fetcher:
                 pk=("id"),
             )
 
-    def request(self, method: str, url: str, json: dict[str, Any] | None = None, data: dict[str, Any] | None = None, headers: dict[str, str] | None = None, cookies: dict[str, str] | None = None) -> httpx.Response | None:
+    def request(
+        self,
+        method: str,
+        url: str,
+        json: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        cookies: dict[str, str] | None = None,
+    ) -> httpx.Response | None:
         args_dict = {
             "method": method,
             "url": url,
@@ -182,11 +192,12 @@ class Fetcher:
         )
         return body
 
-    def fetch_and_write_pdf(self, url: str, kind: str, meeting: str, date: str, headers: dict[str, str] | None = None) -> None:
+    def fetch_and_write_pdf(
+        self, url: str, kind: str, meeting: str, date: str, headers: dict[str, str] | None = None
+    ) -> None:
         if not PDF_SUPPORT:
             raise ImportError(
-                "PDF support requires optional dependencies. "
-                "Install with: pip install clerk[pdf]"
+                "PDF support requires optional dependencies. Install with: pip install clerk[pdf]"
             )
         # TODO: Assert minutes and agenda output dir exists
         self.assert_fetch_dirs()
@@ -249,12 +260,14 @@ class Fetcher:
                 )
             )
 
-    def fetch_docs_from_page(self, page_number: int, meeting: str, date: str, prefix: str) -> str | None:
+    def fetch_docs_from_page(
+        self, page_number: int, meeting: str, date: str, prefix: str
+    ) -> str | None:
         html_dir = os.path.join(self.docs_html_dir, date)
 
         with open(f"{html_dir}{date}-{page_number}.html", encoding="utf-8") as html_file:
             soup = BeautifulSoup(html_file, "html.parser")
-            links = [link for link in soup.find_all("a", href=True)]
+            links = list(soup.find_all("a", href=True))
             for link in links:
                 doc_response = self.request("GET", link.get("href"))
                 if not doc_response:
@@ -361,16 +374,15 @@ class Fetcher:
                 try:
                     data = future.result()
                 except Exception as exc:
-                    self.message_print("%r generated an exception: %s" % (job, exc))
+                    self.message_print(f"{job!r} generated an exception: {exc}")
                 else:
                     if data is not None:
-                        self.message_print("%r page is %d bytes" % (job, len(data)))
+                        self.message_print(f"{job!r} page is {len(data)} bytes")
 
     def do_ocr_job(self, job: tuple[str, str, str]) -> None:
         if not PDF_SUPPORT:
             raise ImportError(
-                "PDF support requires optional dependencies. "
-                "Install with: pip install clerk[pdf]"
+                "PDF support requires optional dependencies. Install with: pip install clerk[pdf]"
             )
         st = time.time()
         prefix = job[0]
