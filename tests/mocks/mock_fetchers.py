@@ -7,31 +7,35 @@ from typing import Any
 
 import sqlite_utils
 
+from clerk.fetcher import Fetcher
 
-class MockFetcher:
+
+class MockFetcher(Fetcher):
     """Mock fetcher that simulates the fetcher interface without external dependencies."""
 
     def __init__(self, site: dict[str, Any], start_year: int, all_agendas: bool = False):
-        """Initialize the mock fetcher.
+        """Initialize the mock fetcher, skipping parent's filesystem setup.
 
         Args:
             site: Site configuration dictionary
             start_year: Year to start fetching from
             all_agendas: Whether to fetch all agendas
         """
+        # Set attributes directly instead of calling parent __init__
+        # to avoid filesystem and database setup
         self.site = site
+        self.subdomain = site["subdomain"]
         self.start_year = start_year
         self.all_agendas = all_agendas
-        self.events_fetched = []
+
+        # Test tracking attributes
+        self.events_fetched: list[dict[str, Any]] = []
         self.ocr_complete = False
         self.transform_complete = False
 
-    def fetch_events(self):
+    def fetch_events(self) -> None:
         """Simulate fetching events."""
-        # Simulate some work
         time.sleep(0.01)
-
-        # Create mock events
         self.events_fetched = [
             {
                 "meeting": "City Council",
@@ -45,12 +49,12 @@ class MockFetcher:
             },
         ]
 
-    def ocr(self):
+    def ocr(self) -> None:
         """Simulate OCR processing."""
         time.sleep(0.01)
         self.ocr_complete = True
 
-    def transform(self):
+    def transform(self) -> None:
         """Simulate transform processing and create meetings.db."""
         time.sleep(0.01)
         self.transform_complete = True
@@ -78,15 +82,15 @@ class MockFetcher:
 class FailingFetcher(MockFetcher):
     """Mock fetcher that raises errors for testing error handling."""
 
-    def fetch_events(self):
+    def fetch_events(self) -> None:
         """Raise an error when fetching events."""
         raise RuntimeError("Failed to fetch events")
 
-    def ocr(self):
+    def ocr(self) -> None:
         """Raise an error during OCR."""
         raise RuntimeError("OCR processing failed")
 
-    def transform(self):
+    def transform(self) -> None:
         """Raise an error during transform."""
         raise RuntimeError("Transform failed")
 
@@ -108,17 +112,17 @@ class SlowFetcher(MockFetcher):
         super().__init__(site, start_year, all_agendas)
         self.delay = delay
 
-    def fetch_events(self):
+    def fetch_events(self) -> None:
         """Simulate slow event fetching."""
         time.sleep(self.delay)
         super().fetch_events()
 
-    def ocr(self):
+    def ocr(self) -> None:
         """Simulate slow OCR."""
         time.sleep(self.delay)
         super().ocr()
 
-    def transform(self):
+    def transform(self) -> None:
         """Simulate slow transform."""
         time.sleep(self.delay)
         super().transform()
@@ -145,7 +149,7 @@ class FilesystemFetcher(MockFetcher):
         super().__init__(site, start_year, all_agendas)
         self.storage_dir = storage_dir or Path("../sites")
 
-    def fetch_events(self):
+    def fetch_events(self) -> None:
         """Create actual text files as if they were fetched."""
         super().fetch_events()
 
