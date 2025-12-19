@@ -101,7 +101,7 @@ class Fetcher:
     def assert_site_db_exists(self) -> None:
         self.db = sqlite_utils.Database(f"{STORAGE_DIR}/{self.subdomain}/meetings.db")
         if not self.db["minutes"].exists():
-            self.db["minutes"].create(
+            self.db["minutes"].create(  # type: ignore[union-attr]
                 {
                     "id": str,
                     "meeting": str,
@@ -113,7 +113,7 @@ class Fetcher:
                 pk=("id"),
             )
         if not self.db["agendas"].exists():
-            self.db["agendas"].create(
+            self.db["agendas"].create(  # type: ignore[union-attr]
                 {
                     "id": str,
                     "meeting": str,
@@ -150,7 +150,7 @@ class Fetcher:
             args_dict["cookies"] = cookies
         for i in range(3):
             try:
-                return httpx.request(**args_dict)
+                return httpx.request(**args_dict)  # type: ignore[arg-type]
             except httpx.ConnectTimeout:
                 self.message_print(f"Timeout fetching url, trying again {i - 1} more times, {url}")
             except httpx.RemoteProtocolError:
@@ -269,7 +269,10 @@ class Fetcher:
             soup = BeautifulSoup(html_file, "html.parser")
             links = list(soup.find_all("a", href=True))
             for link in links:
-                doc_response = self.request("GET", link.get("href"))
+                href = link.get("href")
+                if not href or not isinstance(href, str):
+                    continue
+                doc_response = self.request("GET", href)
                 if not doc_response:
                     continue
                 if "pdf" in doc_response.headers.get("content-type", "").lower():
@@ -279,7 +282,7 @@ class Fetcher:
                     doc_id_hash = {
                         "length": doc_response.headers["content-length"],
                         "filename": filename_from_resp,
-                        "url": link.get("href"),
+                        "url": href,
                     }
                     doc_id = sha256(
                         json.dumps(doc_id_hash, sort_keys=True).encode("utf-8")
