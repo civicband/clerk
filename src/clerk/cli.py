@@ -352,6 +352,22 @@ def update_page_count(subdomain):
     )
 
 
+@cli.command()
+def remove_all_image_dirs():
+    """Remove image directories for all sites"""
+    sites_db = assert_db_exists()
+    for site in sites_db.query("select subdomain from sites order by subdomain"):
+        subdomain = site["subdomain"]
+        click.echo(f"{subdomain}: removing image dir")
+        image_dir = f"{STORAGE_DIR}/{subdomain}/images"
+        if os.path.exists(image_dir):
+            shutil.rmtree(image_dir)
+        agendas_image_dir = f"{STORAGE_DIR}/{subdomain}/_agendas/images"
+        if os.path.exists(agendas_image_dir):
+            shutil.rmtree(agendas_image_dir)
+
+
 cli.add_command(new)
 cli.add_command(update)
 cli.add_command(build_full_db)
+cli.add_command(remove_all_image_dirs)
