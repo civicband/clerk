@@ -9,7 +9,6 @@ import pytest
 import sqlite_utils
 
 from clerk.hookspecs import ClerkSpec
-from tests.mocks.mock_fetchers import MockFetcher
 from tests.mocks.mock_plugins import TestPlugin
 
 
@@ -23,6 +22,14 @@ def cli_module():
     import clerk.cli  # noqa: F401 - ensures module is loaded
 
     return sys.modules["clerk.cli"]
+
+
+@pytest.fixture
+def utils_module():
+    """Get the actual clerk.utils module."""
+    import clerk.utils  # noqa: F401 - ensures module is loaded
+
+    return sys.modules["clerk.utils"]
 
 
 @pytest.fixture
@@ -220,6 +227,8 @@ def sample_text_files(tmp_storage_dir):
 @pytest.fixture
 def mock_fetcher(sample_site_data):
     """Create a mock fetcher instance."""
+    from tests.mocks.mock_fetchers import MockFetcher
+
     return MockFetcher(sample_site_data, start_year=2020, all_agendas=False)
 
 

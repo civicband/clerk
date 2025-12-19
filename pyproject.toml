@@ -10,9 +10,17 @@ dependencies = [
     "logfire[sqlite3]>=2.0.0",
     "pluggy>=1.5.0",
     "sqlite-utils>=3.38",
+    "httpx>=0.27.0",
+    "beautifulsoup4>=4.12.0",
 ]
 
 [project.optional-dependencies]
+pdf = [
+    "weasyprint>=60.0",
+    "pdfkit>=1.0.0",
+    "pdf2image>=1.16.0",
+    "pypdf>=4.0.0",
+]
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",

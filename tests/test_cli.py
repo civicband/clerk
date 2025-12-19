@@ -7,13 +7,15 @@ import sqlite_utils
 from click.testing import CliRunner
 
 from clerk.cli import (
-    build_db_from_text_internal,
-    build_table_from_text,
     cli,
     fetch_internal,
     get_fetcher,
     rebuild_site_fts_internal,
     update_page_count,
+)
+from clerk.utils import (
+    build_db_from_text_internal,
+    build_table_from_text,
 )
 
 
@@ -296,10 +298,13 @@ class TestFetchInternal:
 class TestBuildDbFromTextInternal:
     """Integration tests for build_db_from_text_internal."""
 
-    def test_build_db_from_text(self, tmp_storage_dir, sample_text_files, monkeypatch, cli_module):
+    def test_build_db_from_text(
+        self, tmp_storage_dir, sample_text_files, monkeypatch, cli_module, utils_module
+    ):
         """Test building a complete database from text files."""
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
         monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
+        monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_storage_dir))
 
         subdomain = "example.civic.band"
         site_dir = tmp_storage_dir / subdomain
