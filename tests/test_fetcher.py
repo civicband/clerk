@@ -97,6 +97,9 @@ class TestFetcherCheckIfExists:
             import importlib
 
             importlib.reload(sys.modules["clerk.fetcher"])
+            # Also reload mock_fetchers since it imports Fetcher
+            if "tests.mocks.mock_fetchers" in sys.modules:
+                importlib.reload(sys.modules["tests.mocks.mock_fetchers"])
 
         from clerk.fetcher import Fetcher
 
@@ -175,3 +178,25 @@ class TestFetcherSimplifiedMeetingName:
 
         result = fetcher.simplified_meeting_name("Parks & Recreation")
         assert result == "ParksAndRecreation"
+
+
+class TestMockFetcherInheritance:
+    """Test that MockFetcher properly inherits from Fetcher."""
+
+    def test_mock_fetcher_is_subclass(self):
+        """MockFetcher should be a subclass of Fetcher."""
+        from clerk.fetcher import Fetcher
+        from tests.mocks.mock_fetchers import MockFetcher
+
+        assert issubclass(MockFetcher, Fetcher)
+
+    def test_mock_fetcher_instance(self):
+        """MockFetcher instance should be instance of Fetcher."""
+        from clerk.fetcher import Fetcher
+        from tests.mocks.mock_fetchers import MockFetcher
+
+        site = {"subdomain": "test", "start_year": 2020, "pages": 0}
+        mock = MockFetcher(site, 2020)
+
+        assert isinstance(mock, Fetcher)
+        assert isinstance(mock, MockFetcher)
