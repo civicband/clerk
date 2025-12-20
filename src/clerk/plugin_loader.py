@@ -46,6 +46,11 @@ def load_plugins_from_directory(plugins_dir: str) -> None:
     if not plugins_path.is_dir():
         raise click.ClickException(f"Plugins path is not a directory: {plugins_dir}")
 
+    # Add parent directory to sys.path so plugins can import local modules
+    parent_dir = str(plugins_path.parent.resolve())
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+
     for py_file in sorted(plugins_path.glob("*.py")):
         # Skip __init__.py and similar
         if py_file.name.startswith("_"):
