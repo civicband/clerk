@@ -6,7 +6,11 @@ import time
 from sqlite3 import OperationalError
 
 import click
+from dotenv import load_dotenv
 import sqlite_utils
+
+# Load .env file before anything else
+load_dotenv()
 
 from .plugin_loader import load_plugins_from_directory
 from .utils import assert_db_exists, build_db_from_text_internal, build_table_from_text, pm
