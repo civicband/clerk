@@ -61,6 +61,10 @@ def configure_logging(command_name: str = "unknown"):
         handlers=handlers,
     )
 
+    # Suppress noisy httpx logs (we log requests ourselves)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 
 STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
 

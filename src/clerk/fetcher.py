@@ -1,5 +1,6 @@
 import concurrent.futures
 import json
+import logging
 import os
 import shutil
 import sqlite3
@@ -17,6 +18,8 @@ import sqlite_utils
 from bs4 import BeautifulSoup
 
 from clerk.utils import STORAGE_DIR, build_db_from_text_internal, pm
+
+logger = logging.getLogger(__name__)
 
 # Optional PDF dependencies
 try:
@@ -150,7 +153,17 @@ class Fetcher:
             args_dict["cookies"] = cookies
         for i in range(3):
             try:
-                return httpx.request(**args_dict)  # type: ignore[arg-type]
+                start_time = time.time()
+                response = httpx.request(**args_dict)  # type: ignore[arg-type]
+                elapsed_ms = int((time.time() - start_time) * 1000)
+                logger.info(
+                    "HTTP %s %s status=%d time_ms=%d",
+                    method,
+                    url,
+                    response.status_code,
+                    elapsed_ms,
+                )
+                return response
             except httpx.ConnectTimeout:
                 self.message_print(f"Timeout fetching url, trying again {i - 1} more times, {url}")
             except httpx.RemoteProtocolError:
