@@ -39,16 +39,16 @@ def log(message: str, subdomain: str | None = None, level: str = "info", **kwarg
     """
     sub = subdomain or _default_subdomain
 
-    # Build log message with kwargs for structured logging
-    log_msg = message
-    if kwargs:
-        log_msg += " " + " ".join(f"{k}={v}" for k, v in kwargs.items())
+    # Build extra dict for structured logging fields
+    extra: dict = {}
     if sub:
-        log_msg = f"subdomain={sub} {log_msg}"
+        extra["subdomain"] = sub
+    if kwargs:
+        extra.update(kwargs)
 
-    # Log to Python logging
+    # Log to Python logging with extra fields
     log_func = getattr(logger, level, logger.info)
-    log_func(log_msg)
+    log_func(message, extra=extra)
 
     # Click output (unless quiet)
     if not _quiet:

@@ -23,6 +23,32 @@ logger = logging.getLogger(__name__)
 class JsonFormatter(logging.Formatter):
     """JSON log formatter for structured logging."""
 
+    # Standard LogRecord attributes to exclude from extra fields
+    RESERVED_ATTRS = {
+        "name",
+        "msg",
+        "args",
+        "created",
+        "filename",
+        "funcName",
+        "levelname",
+        "levelno",
+        "lineno",
+        "module",
+        "msecs",
+        "pathname",
+        "process",
+        "processName",
+        "relativeCreated",
+        "stack_info",
+        "exc_info",
+        "exc_text",
+        "thread",
+        "threadName",
+        "taskName",
+        "message",
+    }
+
     def format(self, record):
         import json
 
@@ -32,6 +58,12 @@ class JsonFormatter(logging.Formatter):
             "logger": record.name,
             "message": record.getMessage(),
         }
+
+        # Include extra fields passed via extra={}
+        for key, value in record.__dict__.items():
+            if key not in self.RESERVED_ATTRS and not key.startswith("_"):
+                log_record[key] = value
+
         if record.exc_info:
             log_record["exception"] = self.formatException(record.exc_info)
         return json.dumps(log_record)
