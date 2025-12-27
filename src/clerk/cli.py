@@ -9,6 +9,8 @@ import click
 import sqlite_utils
 from dotenv import load_dotenv
 
+from . import output
+from .output import log
 from .plugin_loader import load_plugins_from_directory
 from .utils import assert_db_exists, build_db_from_text_internal, build_table_from_text, pm
 
@@ -77,10 +79,17 @@ STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
     type=click.Path(),
     help="Directory to load plugins from",
 )
+@click.option(
+    "--quiet",
+    "-q",
+    is_flag=True,
+    help="Suppress console output (logs still go to Loki)",
+)
 @click.pass_context
-def cli(ctx, plugins_dir):
+def cli(ctx, plugins_dir, quiet):
     """Managing civic.band sites"""
     configure_logging(ctx.invoked_subcommand or "cli")
+    output.configure(quiet=quiet)
     load_plugins_from_directory(plugins_dir)
 
 
@@ -190,20 +199,20 @@ def update_site_internal(
             "select count(*) from sites where status = 'needs_ocr'"
         ).fetchone()[0]
         if num_sites_in_ocr >= 5:
-            click.echo("Too many sites in progress. Going to sleep.")
+            log("Too many sites in progress. Going to sleep.")
             return
         subdomain_query = db.execute(query).fetchone()
         if not subdomain_query:
-            click.echo("No more sites to update today")
+            log("No more sites to update today")
             return
         subdomain = subdomain_query[0]
     site = db["sites"].get(subdomain)  # type: ignore
     if not site:
-        click.echo("No site found matching criteria")
+        log("No site found matching criteria", level="warning")
         return
 
     # Fetch and OCR
-    click.echo(f"Updating site {site['subdomain']}")
+    log(f"Updating site {site['subdomain']}")
     fetcher = get_fetcher(site, all_years=all_years, all_agendas=all_agendas)
     if not skip_fetch:
         fetch_internal(subdomain, fetcher)
@@ -270,8 +279,7 @@ def fetch_internal(subdomain, fetcher):
     fetcher.fetch_events()
     et = time.time()
     elapsed_time = et - st
-    logger.info("Fetch completed subdomain=%s elapsed_time=%.2f", subdomain, elapsed_time)
-    click.echo(click.style(subdomain, fg="cyan") + ": " + f"Fetch time: {elapsed_time} seconds")
+    log(f"Fetch time: {elapsed_time:.2f} seconds", subdomain=subdomain, elapsed_time=f"{elapsed_time:.2f}")
     status = "needs_ocr"
     db["sites"].update(  # pyright: ignore[reportAttributeAccessIssue]
         subdomain,
@@ -293,7 +301,7 @@ def build_db_from_text(subdomain):
 
 
 def rebuild_site_fts_internal(subdomain):
-    logger.info("Rebuilding FTS indexes subdomain=%s", subdomain)
+    log("Rebuilding FTS indexes", subdomain=subdomain)
     site_db = sqlite_utils.Database(f"{STORAGE_DIR}/{subdomain}/meetings.db")
     for table_name in site_db.table_names():
         if table_name.startswith("pages_"):
@@ -301,11 +309,11 @@ def rebuild_site_fts_internal(subdomain):
     try:
         site_db["agendas"].enable_fts(["text"])
     except OperationalError as e:
-        click.echo(click.style(subdomain, fg="cyan") + ": " + click.style(str(e), fg="red"))
+        log(str(e), subdomain=subdomain, level="error")
     try:
         site_db["minutes"].enable_fts(["text"])
     except OperationalError as e:
-        click.echo(click.style(subdomain, fg="cyan") + ": " + click.style(str(e), fg="red"))
+        log(str(e), subdomain=subdomain, level="error")
 
 
 @cli.command()
@@ -373,15 +381,14 @@ def build_full_db():
     try:
         db["agendas"].enable_fts(["text"])
     except OperationalError as e:
-        click.echo(click.style(subdomain, fg="cyan") + ": " + click.style(str(e), fg="red"))
+        log(str(e), subdomain=subdomain, level="error")
     try:
         db["minutes"].enable_fts(["text"])
     except OperationalError as e:
-        click.echo(click.style(subdomain, fg="cyan") + ": " + click.style(str(e), fg="red"))
+        log(str(e), subdomain=subdomain, level="error")
     et = time.time()
     elapsed_time = et - st
-    logger.info("Full database build completed elapsed_time=%.2f", elapsed_time)
-    click.echo(f"Execution time: {elapsed_time} seconds")
+    log(f"Full database build completed in {elapsed_time:.2f} seconds", elapsed_time=f"{elapsed_time:.2f}")
 
 
 def update_page_count(subdomain):
@@ -412,7 +419,7 @@ def remove_all_image_dirs():
     sites_db = assert_db_exists()
     for site in sites_db.query("select subdomain from sites order by subdomain"):
         subdomain = site["subdomain"]
-        click.echo(f"{subdomain}: removing image dir")
+        log("Removing image dir", subdomain=subdomain)
         image_dir = f"{STORAGE_DIR}/{subdomain}/images"
         if os.path.exists(image_dir):
             shutil.rmtree(image_dir)

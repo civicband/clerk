@@ -12,11 +12,11 @@ from hashlib import sha256
 from typing import Any
 from xml.etree.ElementTree import ParseError
 
-import click
 import httpx
 import sqlite_utils
 from bs4 import BeautifulSoup
 
+from clerk.output import log
 from clerk.utils import STORAGE_DIR, build_db_from_text_internal, pm
 
 logger = logging.getLogger(__name__)
@@ -151,7 +151,7 @@ class Fetcher:
             args_dict["data"] = data
         if cookies:
             args_dict["cookies"] = cookies
-        for i in range(3):
+        for i in range(3, 0, -1):
             try:
                 start_time = time.time()
                 response = httpx.request(**args_dict)  # type: ignore[arg-type]
@@ -165,15 +165,11 @@ class Fetcher:
                 )
                 return response
             except httpx.ConnectTimeout:
-                self.message_print(f"Timeout fetching url, trying again {i - 1} more times, {url}")
+                log(f"Timeout fetching url, trying again {i - 1} more times", subdomain=self.subdomain, level="warning", url=url)
             except httpx.RemoteProtocolError:
-                self.message_print(
-                    f"Remote error fetching url, trying again {i - 1} more times, {url}"
-                )
+                log(f"Remote error fetching url, trying again {i - 1} more times", subdomain=self.subdomain, level="warning", url=url)
         return None
 
-    def message_print(self, message: str) -> None:
-        click.echo(click.style(f"{self.subdomain}: ", fg="cyan") + message)
 
     def check_if_exists(self, meeting: str, date: str, kind: str) -> bool:
         if kind == "minutes":
@@ -222,56 +218,37 @@ class Fetcher:
         try:
             doc_response = self.request("GET", url, headers)
         except httpx.ReadTimeout:
-            self.message_print(click.style(f"Timeout fetching {url} for {meeting}", fg="red"))
+            log(f"Timeout fetching {url} for {meeting}", subdomain=self.subdomain, level="error")
             return
         if not doc_response or doc_response.status_code != 200:
-            self.message_print(
-                click.style(
-                    f"Error fetching {url} for {meeting}",
-                    fg="red",
-                )
-            )
+            log(f"Error fetching {url} for {meeting}", subdomain=self.subdomain, level="error")
             return
         if "pdf" in doc_response.headers.get("content-type", "").lower():
-            self.message_print(f"Writing file {output_path}, meeting: {meeting}")
+            log(f"Writing file {output_path}, meeting: {meeting}", subdomain=self.subdomain)
             with open(output_path, "wb") as doc_pdf:
                 doc_pdf.write(doc_response.content)
         elif "html" in doc_response.headers.get("content-type", "").lower():
-            self.message_print(f"HTML -> PDF: {output_path}, meeting: {meeting}")
+            log(f"HTML -> PDF: {output_path}, meeting: {meeting}", subdomain=self.subdomain)
             try:
                 HTML(string=doc_response.content).write_pdf(output_path)
             except ParseError:
-                self.message_print(f"WeasyPrint HTML->PDF error for {url}, trying pdfkit")
+                log(f"WeasyPrint HTML->PDF error for {url}, trying pdfkit", subdomain=self.subdomain, level="warning")
                 pdfkit.from_string(doc_response.content, output_path)
-                self.message_print(f"Wrote file {output_path}, meeting: {meeting}")
+                log(f"Wrote file {output_path}, meeting: {meeting}", subdomain=self.subdomain)
         else:
             try:
-                self.message_print(
-                    f"Unknown content type {doc_response.headers['content-type']}, meeting: {meeting}"
-                )
+                log(f"Unknown content type {doc_response.headers['content-type']}, meeting: {meeting}", subdomain=self.subdomain, level="warning")
             except KeyError:
-                self.message_print(
-                    click.style(f"Couldn't find content-type headers for {url}", fg="red")
-                )
+                log(f"Couldn't find content-type headers for {url}", subdomain=self.subdomain, level="error")
         try:
             PdfReader(output_path)
         except PdfReadError:
-            self.message_print(
-                click.style(
-                    f"PDF downloaded from {url} errored on read, removing {output_path}",
-                    fg="red",
-                )
-            )
+            log(f"PDF downloaded from {url} errored on read, removing {output_path}", subdomain=self.subdomain, level="error")
             os.remove(output_path)
         except FileNotFoundError:
-            self.message_print(click.style(f"PDF from {url} not found at {output_path}", fg="red"))
+            log(f"PDF from {url} not found at {output_path}", subdomain=self.subdomain, level="error")
         except ValueError:
-            self.message_print(
-                click.style(
-                    f"PDF downloaded from {url} errored on read, removing {output_path}",
-                    fg="red",
-                )
-            )
+            log(f"PDF downloaded from {url} errored on read, removing {output_path}", subdomain=self.subdomain, level="error")
 
     def fetch_docs_from_page(
         self, page_number: int, meeting: str, date: str, prefix: str
@@ -302,7 +279,7 @@ class Fetcher:
                     ).hexdigest()
                     doc_id = doc_id[:12]
                     output_path = os.path.join(self.docs_output_dir, f"{doc_id}.pdf")
-                    self.message_print(f"Writing file {output_path}")
+                    log(f"Writing file {output_path}", subdomain=self.subdomain)
 
                     with open(output_path, "wb") as doc_pdf:
                         doc_pdf.write(doc_response.content)
@@ -333,7 +310,7 @@ class Fetcher:
         self.do_ocr(prefix="/_agendas")
         et = time.time()
         elapsed_time = et - st
-        self.message_print(f"OCR execution time: {elapsed_time} seconds")
+        log(f"OCR execution time: {elapsed_time:.2f} seconds", subdomain=self.subdomain, elapsed_time=f"{elapsed_time:.2f}")
 
     def transform(self) -> None:
         build_db_from_text_internal(self.subdomain)
@@ -344,8 +321,12 @@ class Fetcher:
             agendas_count = 0
         minutes_count = self.db["minutes"].count
         page_count = agendas_count + minutes_count
-        self.message_print(
-            f"Processed {page_count} pages, {agendas_count} agendas, {minutes_count} minutes. Formerly {self.previous_page_count} pages processed."
+        log(
+            f"Processed {page_count} pages, {agendas_count} agendas, {minutes_count} minutes. Formerly {self.previous_page_count} pages processed.",
+            subdomain=self.subdomain,
+            pages=page_count,
+            agendas=agendas_count,
+            minutes=minutes_count,
         )
 
     def do_ocr(self, prefix: str = "") -> None:
@@ -356,7 +337,7 @@ class Fetcher:
         if not os.path.exists(processed_dir):
             os.makedirs(processed_dir)
         if not os.path.exists(f"{pdf_dir}"):
-            self.message_print(f"No PDFs found in {pdf_dir}")
+            log(f"No PDFs found in {pdf_dir}", subdomain=self.subdomain)
             return
         directories = [
             directory for directory in sorted(os.listdir(pdf_dir)) if directory != ".DS_Store"
@@ -390,10 +371,10 @@ class Fetcher:
                 try:
                     data = future.result()
                 except Exception as exc:
-                    self.message_print(f"{job!r} generated an exception: {exc}")
+                    log(f"{job!r} generated an exception: {exc}", subdomain=self.subdomain, level="error")
                 else:
                     if data is not None:
-                        self.message_print(f"{job!r} page is {len(data)} bytes")
+                        log(f"{job!r} page is {len(data)} bytes", subdomain=self.subdomain)
 
     def do_ocr_job(self, job: tuple[str, str, str]) -> None:
         if not PDF_SUPPORT:
@@ -405,7 +386,7 @@ class Fetcher:
         meeting = job[1]
         date = job[2]
 
-        self.message_print(f"Processing {job}")
+        log(f"Processing {job}", subdomain=self.subdomain)
         doc_path = f"{self.dir_prefix}{prefix}/pdfs/{meeting}/{date}.pdf"
         doc_image_dir_path = f"{self.dir_prefix}{prefix}/images/{meeting}/{date}"
         try:
@@ -420,7 +401,7 @@ class Fetcher:
                         continue
                     page.save(page_image_path, "PNG")
         except Exception as e:
-            self.message_print(f"{doc_path} failed to process: {e}")
+            log(f"{doc_path} failed to process: {e}", subdomain=self.subdomain, level="error")
             return
         for page_image in os.listdir(f"{doc_image_dir_path}"):
             page_image_path = f"{doc_image_dir_path}/{page_image}"
@@ -450,7 +431,7 @@ class Fetcher:
                     ) as textfile:
                         textfile.write(text)
                 except Exception as e:
-                    self.message_print(f"error processing {page_image_path}, {e}")
+                    log(f"error processing {page_image_path}, {e}", subdomain=self.subdomain, level="error")
                 pm.hook.upload_static_file(
                     file_path=page_image_path, storage_path=remote_storage_path
                 )
@@ -465,7 +446,7 @@ class Fetcher:
         shutil.rmtree(doc_image_dir_path)
         et = time.time()
         elapsed_time = et - st
-        self.message_print(f"{page_image_path} OCR time: {elapsed_time} seconds")
+        log(f"OCR time: {elapsed_time:.2f} seconds", subdomain=self.subdomain, path=page_image_path, elapsed_time=f"{elapsed_time:.2f}")
 
     def fetch_events(self) -> None:
         """Subclasses must override this to fetch meeting data."""
