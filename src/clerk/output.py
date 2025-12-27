@@ -10,13 +10,6 @@ logger = logging.getLogger(__name__)
 _quiet = False
 _default_subdomain = None
 
-LEVEL_COLORS = {
-    "error": "red",
-    "warning": "yellow",
-    "info": None,  # default terminal color
-    "debug": "dim",
-}
-
 
 def configure(quiet: bool = None, subdomain: str = None):
     """Configure global output options.
@@ -60,6 +53,4 @@ def log(message: str, subdomain: str = None, level: str = "info", **kwargs):
     # Click output (unless quiet)
     if not _quiet:
         prefix = click.style(f"{sub}: ", fg="cyan") if sub else ""
-        color = LEVEL_COLORS.get(level)
-        styled_msg = click.style(message, fg=color) if color else message
-        click.echo(prefix + styled_msg)
+        click.echo(prefix + message)
