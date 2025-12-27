@@ -11,7 +11,7 @@ _quiet = False
 _default_subdomain = None
 
 
-def configure(quiet: bool = None, subdomain: str = None):
+def configure(quiet: bool | None = None, subdomain: str | None = None):
     """Configure global output options.
 
     Args:
@@ -25,7 +25,7 @@ def configure(quiet: bool = None, subdomain: str = None):
         _default_subdomain = subdomain
 
 
-def log(message: str, subdomain: str = None, level: str = "info", **kwargs):
+def log(message: str, subdomain: str | None = None, level: str = "info", **kwargs):
     """Unified logging + click output.
 
     - Always logs to Python logging (-> Loki if configured)
