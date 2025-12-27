@@ -4,8 +4,9 @@ This example shows how to use Clerk programmatically rather than via CLI.
 """
 
 import os
-import sqlite_utils
 from pathlib import Path
+
+import sqlite_utils
 
 
 def setup_environment():
@@ -165,8 +166,9 @@ def use_plugin_system():
     """Demonstrate using the plugin system."""
     print("\n=== Using Plugin System ===")
 
-    from clerk.utils import pm
     from examples.basic_plugin import BasicPlugin
+
+    from clerk.utils import pm
 
     # Register a plugin
     plugin = BasicPlugin()

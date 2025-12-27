@@ -1,15 +1,66 @@
 import datetime
+import logging
 import os
 import shutil
 import time
 from sqlite3 import OperationalError
 
 import click
-import logfire
 import sqlite_utils
+from dotenv import load_dotenv
 
 from .plugin_loader import load_plugins_from_directory
 from .utils import assert_db_exists, build_db_from_text_internal, build_table_from_text, pm
+
+# Load .env file early
+load_dotenv()
+
+logger = logging.getLogger(__name__)
+
+
+class JsonFormatter(logging.Formatter):
+    """JSON log formatter for structured logging."""
+
+    def format(self, record):
+        import json
+
+        log_record = {
+            "timestamp": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        if record.exc_info:
+            log_record["exception"] = self.formatException(record.exc_info)
+        return json.dumps(log_record)
+
+
+def configure_logging(command_name: str = "unknown"):
+    """Configure logging to push to Loki (if configured) and console."""
+    handlers = []
+
+    # Always add console handler for local visibility
+    console = logging.StreamHandler()
+    console.setFormatter(JsonFormatter())
+    handlers.append(console)
+
+    # Add Loki handler if URL is configured
+    loki_url = os.environ.get("LOKI_URL")
+    if loki_url:
+        import logging_loki
+
+        loki_handler = logging_loki.LokiHandler(
+            url=f"{loki_url}/loki/api/v1/push",
+            tags={"job": "clerk", "host": os.uname().nodename, "command": command_name},
+            version="1",
+        )
+        handlers.append(loki_handler)
+
+    logging.basicConfig(
+        level=logging.INFO,
+        handlers=handlers,
+    )
+
 
 STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
 
@@ -22,13 +73,14 @@ STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
     type=click.Path(),
     help="Directory to load plugins from",
 )
-def cli(plugins_dir):
+@click.pass_context
+def cli(ctx, plugins_dir):
     """Managing civic.band sites"""
+    configure_logging(ctx.invoked_subcommand or "cli")
     load_plugins_from_directory(plugins_dir)
 
 
 @cli.command()
-@logfire.instrument("create_new_site")
 def new():
     """Create a new site"""
     db = assert_db_exists()
@@ -103,7 +155,6 @@ def update(
     )
 
 
-@logfire.instrument("update_site", extract_args=True)
 def update_site_internal(
     subdomain,
     next_site=False,
@@ -113,8 +164,11 @@ def update_site_internal(
     backfill=False,
 ):
     db = assert_db_exists()
-    logfire.info(
-        "Starting site update", subdomain=subdomain, all_years=all_years, all_agendas=all_agendas
+    logger.info(
+        "Starting site update subdomain=%s all_years=%s all_agendas=%s",
+        subdomain,
+        all_years,
+        all_agendas,
     )
 
     query_normal = (
@@ -198,10 +252,9 @@ def get_fetcher(site, all_years=False, all_agendas=False):
         return fetcher.custom_fetcher(site, start_year, all_agendas)
 
 
-@logfire.instrument("fetch_site_data", extract_args=True)
 def fetch_internal(subdomain, fetcher):
     db = assert_db_exists()
-    logfire.info("Starting fetch", subdomain=subdomain)
+    logger.info("Starting fetch subdomain=%s", subdomain)
     db["sites"].update(  # pyright: ignore[reportAttributeAccessIssue]
         subdomain,
         {
@@ -213,7 +266,7 @@ def fetch_internal(subdomain, fetcher):
     fetcher.fetch_events()
     et = time.time()
     elapsed_time = et - st
-    logfire.info("Fetch completed", subdomain=subdomain, elapsed_time=elapsed_time)
+    logger.info("Fetch completed subdomain=%s elapsed_time=%.2f", subdomain, elapsed_time)
     click.echo(click.style(subdomain, fg="cyan") + ": " + f"Fetch time: {elapsed_time} seconds")
     status = "needs_ocr"
     db["sites"].update(  # pyright: ignore[reportAttributeAccessIssue]
@@ -235,9 +288,8 @@ def build_db_from_text(subdomain):
     build_db_from_text_internal(subdomain)
 
 
-@logfire.instrument("rebuild_site_fts", extract_args=True)
 def rebuild_site_fts_internal(subdomain):
-    logfire.info("Rebuilding FTS indexes", subdomain=subdomain)
+    logger.info("Rebuilding FTS indexes subdomain=%s", subdomain)
     site_db = sqlite_utils.Database(f"{STORAGE_DIR}/{subdomain}/meetings.db")
     for table_name in site_db.table_names():
         if table_name.startswith("pages_"):
@@ -253,7 +305,6 @@ def rebuild_site_fts_internal(subdomain):
 
 
 @cli.command()
-@logfire.instrument("build_full_db")
 def build_full_db():
     st = time.time()
     sites_db = assert_db_exists()
@@ -325,23 +376,22 @@ def build_full_db():
         click.echo(click.style(subdomain, fg="cyan") + ": " + click.style(str(e), fg="red"))
     et = time.time()
     elapsed_time = et - st
-    logfire.info("Full database build completed", elapsed_time=elapsed_time)
+    logger.info("Full database build completed elapsed_time=%.2f", elapsed_time)
     click.echo(f"Execution time: {elapsed_time} seconds")
 
 
-@logfire.instrument("update_page_count", extract_args=True)
 def update_page_count(subdomain):
     db = assert_db_exists()
     site_db = sqlite_utils.Database(f"{STORAGE_DIR}/{subdomain}/meetings.db")
     agendas_count = site_db["agendas"].count
     minutes_count = site_db["minutes"].count
     page_count = agendas_count + minutes_count
-    logfire.info(
-        "Page count updated",
-        subdomain=subdomain,
-        agendas=agendas_count,
-        minutes=minutes_count,
-        total=page_count,
+    logger.info(
+        "Page count updated subdomain=%s agendas=%d minutes=%d total=%d",
+        subdomain,
+        agendas_count,
+        minutes_count,
+        page_count,
     )
     db["sites"].update(  # type: ignore
         subdomain,
