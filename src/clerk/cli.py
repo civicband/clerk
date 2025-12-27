@@ -6,16 +6,33 @@ import time
 from sqlite3 import OperationalError
 
 import click
-from dotenv import load_dotenv
 import sqlite_utils
-
-# Load .env file before anything else
-load_dotenv()
+from dotenv import load_dotenv
 
 from .plugin_loader import load_plugins_from_directory
 from .utils import assert_db_exists, build_db_from_text_internal, build_table_from_text, pm
 
+# Load .env file early
+load_dotenv()
+
 logger = logging.getLogger(__name__)
+
+
+class JsonFormatter(logging.Formatter):
+    """JSON log formatter for structured logging."""
+
+    def format(self, record):
+        import json
+
+        log_record = {
+            "timestamp": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        if record.exc_info:
+            log_record["exception"] = self.formatException(record.exc_info)
+        return json.dumps(log_record)
 
 
 def configure_logging(command_name: str = "unknown"):
@@ -24,7 +41,7 @@ def configure_logging(command_name: str = "unknown"):
 
     # Always add console handler for local visibility
     console = logging.StreamHandler()
-    console.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    console.setFormatter(JsonFormatter())
     handlers.append(console)
 
     # Add Loki handler if URL is configured
