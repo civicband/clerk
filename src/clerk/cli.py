@@ -88,6 +88,7 @@ def configure_logging(command_name: str = "unknown"):
             tags={"job": "clerk", "host": os.uname().nodename, "command": command_name},
             version="1",
         )
+        loki_handler.setFormatter(JsonFormatter())
         handlers.append(loki_handler)
 
     logging.basicConfig(
