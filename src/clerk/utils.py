@@ -1,15 +1,17 @@
 import json
+import logging
 import os
 import shutil
 import time
 from hashlib import sha256
 
 import click
-import logfire
 import pluggy
 import sqlite_utils
 
 from .hookspecs import ClerkSpec
+
+logger = logging.getLogger(__name__)
 
 pm = pluggy.PluginManager("civicband.clerk")
 pm.add_hookspecs(ClerkSpec)
@@ -17,7 +19,6 @@ pm.add_hookspecs(ClerkSpec)
 STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
 
 
-@logfire.instrument("assert_db_exists")
 def assert_db_exists():
     db = sqlite_utils.Database("civic.db")
     if not db["sites"].exists():
@@ -50,13 +51,10 @@ def assert_db_exists():
     return db
 
 
-@logfire.instrument("build_table_from_text", extract_args=True)
 def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None):
-    logfire.info(
-        "Building table from text",
-        subdomain=subdomain,
-        table_name=table_name,
-        municipality=municipality,
+    logger.info(
+        "Building table from text subdomain=%s table_name=%s municipality=%s",
+        subdomain, table_name, municipality
     )
     directories = [
         directory for directory in sorted(os.listdir(txt_dir)) if directory != ".DS_Store"
@@ -108,10 +106,9 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None)
         db[table_name].insert_all(entries)
 
 
-@logfire.instrument("build_db_from_text", extract_args=True)
 def build_db_from_text_internal(subdomain):
     st = time.time()
-    logfire.info("Building database from text", subdomain=subdomain)
+    logger.info("Building database from text subdomain=%s", subdomain)
     minutes_txt_dir = f"{STORAGE_DIR}/{subdomain}/txt"
     agendas_txt_dir = f"{STORAGE_DIR}/{subdomain}/_agendas/txt"
     database = f"{STORAGE_DIR}/{subdomain}/meetings.db"
@@ -147,5 +144,5 @@ def build_db_from_text_internal(subdomain):
         build_table_from_text(subdomain, agendas_txt_dir, db, "agendas")
     et = time.time()
     elapsed_time = et - st
-    logfire.info("Database build completed", subdomain=subdomain, elapsed_time=elapsed_time)
+    logger.info("Database build completed subdomain=%s elapsed_time=%.2f", subdomain, elapsed_time)
     click.echo(f"Execution time: {elapsed_time} seconds")

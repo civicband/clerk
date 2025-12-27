@@ -254,12 +254,3 @@ def monkeypatch_storage_dir(tmp_storage_dir, monkeypatch):
     return tmp_storage_dir
 
 
-@pytest.fixture(autouse=True)
-def disable_logfire(monkeypatch):
-    """Disable logfire for tests to avoid authentication requirements."""
-    import logfire
-
-    monkeypatch.setattr(logfire, "configure", lambda *args, **kwargs: None)
-    monkeypatch.setattr(logfire, "instrument_sqlite3", lambda *args, **kwargs: None)
-    monkeypatch.setattr(logfire, "instrument", lambda *args, **kwargs: lambda f: f)
-    monkeypatch.setattr(logfire, "info", lambda *args, **kwargs: None)
