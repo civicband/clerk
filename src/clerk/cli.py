@@ -279,7 +279,11 @@ def fetch_internal(subdomain, fetcher):
     fetcher.fetch_events()
     et = time.time()
     elapsed_time = et - st
-    log(f"Fetch time: {elapsed_time:.2f} seconds", subdomain=subdomain, elapsed_time=f"{elapsed_time:.2f}")
+    log(
+        f"Fetch time: {elapsed_time:.2f} seconds",
+        subdomain=subdomain,
+        elapsed_time=f"{elapsed_time:.2f}",
+    )
     status = "needs_ocr"
     db["sites"].update(  # pyright: ignore[reportAttributeAccessIssue]
         subdomain,
@@ -388,7 +392,10 @@ def build_full_db():
         log(str(e), subdomain=subdomain, level="error")
     et = time.time()
     elapsed_time = et - st
-    log(f"Full database build completed in {elapsed_time:.2f} seconds", elapsed_time=f"{elapsed_time:.2f}")
+    log(
+        f"Full database build completed in {elapsed_time:.2f} seconds",
+        elapsed_time=f"{elapsed_time:.2f}",
+    )
 
 
 def update_page_count(subdomain):

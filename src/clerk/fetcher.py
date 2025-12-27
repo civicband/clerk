@@ -165,11 +165,20 @@ class Fetcher:
                 )
                 return response
             except httpx.ConnectTimeout:
-                log(f"Timeout fetching url, trying again {i - 1} more times", subdomain=self.subdomain, level="warning", url=url)
+                log(
+                    f"Timeout fetching url, trying again {i - 1} more times",
+                    subdomain=self.subdomain,
+                    level="warning",
+                    url=url,
+                )
             except httpx.RemoteProtocolError:
-                log(f"Remote error fetching url, trying again {i - 1} more times", subdomain=self.subdomain, level="warning", url=url)
+                log(
+                    f"Remote error fetching url, trying again {i - 1} more times",
+                    subdomain=self.subdomain,
+                    level="warning",
+                    url=url,
+                )
         return None
-
 
     def check_if_exists(self, meeting: str, date: str, kind: str) -> bool:
         if kind == "minutes":
@@ -232,23 +241,47 @@ class Fetcher:
             try:
                 HTML(string=doc_response.content).write_pdf(output_path)
             except ParseError:
-                log(f"WeasyPrint HTML->PDF error for {url}, trying pdfkit", subdomain=self.subdomain, level="warning")
+                log(
+                    f"WeasyPrint HTML->PDF error for {url}, trying pdfkit",
+                    subdomain=self.subdomain,
+                    level="warning",
+                )
                 pdfkit.from_string(doc_response.content, output_path)
                 log(f"Wrote file {output_path}, meeting: {meeting}", subdomain=self.subdomain)
         else:
             try:
-                log(f"Unknown content type {doc_response.headers['content-type']}, meeting: {meeting}", subdomain=self.subdomain, level="warning")
+                log(
+                    f"Unknown content type {doc_response.headers['content-type']}, meeting: {meeting}",
+                    subdomain=self.subdomain,
+                    level="warning",
+                )
             except KeyError:
-                log(f"Couldn't find content-type headers for {url}", subdomain=self.subdomain, level="error")
+                log(
+                    f"Couldn't find content-type headers for {url}",
+                    subdomain=self.subdomain,
+                    level="error",
+                )
         try:
             PdfReader(output_path)
         except PdfReadError:
-            log(f"PDF downloaded from {url} errored on read, removing {output_path}", subdomain=self.subdomain, level="error")
+            log(
+                f"PDF downloaded from {url} errored on read, removing {output_path}",
+                subdomain=self.subdomain,
+                level="error",
+            )
             os.remove(output_path)
         except FileNotFoundError:
-            log(f"PDF from {url} not found at {output_path}", subdomain=self.subdomain, level="error")
+            log(
+                f"PDF from {url} not found at {output_path}",
+                subdomain=self.subdomain,
+                level="error",
+            )
         except ValueError:
-            log(f"PDF downloaded from {url} errored on read, removing {output_path}", subdomain=self.subdomain, level="error")
+            log(
+                f"PDF downloaded from {url} errored on read, removing {output_path}",
+                subdomain=self.subdomain,
+                level="error",
+            )
 
     def fetch_docs_from_page(
         self, page_number: int, meeting: str, date: str, prefix: str
@@ -310,7 +343,11 @@ class Fetcher:
         self.do_ocr(prefix="/_agendas")
         et = time.time()
         elapsed_time = et - st
-        log(f"OCR execution time: {elapsed_time:.2f} seconds", subdomain=self.subdomain, elapsed_time=f"{elapsed_time:.2f}")
+        log(
+            f"OCR execution time: {elapsed_time:.2f} seconds",
+            subdomain=self.subdomain,
+            elapsed_time=f"{elapsed_time:.2f}",
+        )
 
     def transform(self) -> None:
         build_db_from_text_internal(self.subdomain)
@@ -371,7 +408,11 @@ class Fetcher:
                 try:
                     data = future.result()
                 except Exception as exc:
-                    log(f"{job!r} generated an exception: {exc}", subdomain=self.subdomain, level="error")
+                    log(
+                        f"{job!r} generated an exception: {exc}",
+                        subdomain=self.subdomain,
+                        level="error",
+                    )
                 else:
                     if data is not None:
                         log(f"{job!r} page is {len(data)} bytes", subdomain=self.subdomain)
@@ -431,7 +472,11 @@ class Fetcher:
                     ) as textfile:
                         textfile.write(text)
                 except Exception as e:
-                    log(f"error processing {page_image_path}, {e}", subdomain=self.subdomain, level="error")
+                    log(
+                        f"error processing {page_image_path}, {e}",
+                        subdomain=self.subdomain,
+                        level="error",
+                    )
                 pm.hook.upload_static_file(
                     file_path=page_image_path, storage_path=remote_storage_path
                 )
@@ -446,7 +491,12 @@ class Fetcher:
         shutil.rmtree(doc_image_dir_path)
         et = time.time()
         elapsed_time = et - st
-        log(f"OCR time: {elapsed_time:.2f} seconds", subdomain=self.subdomain, path=page_image_path, elapsed_time=f"{elapsed_time:.2f}")
+        log(
+            f"OCR time: {elapsed_time:.2f} seconds",
+            subdomain=self.subdomain,
+            path=page_image_path,
+            elapsed_time=f"{elapsed_time:.2f}",
+        )
 
     def fetch_events(self) -> None:
         """Subclasses must override this to fetch meeting data."""
