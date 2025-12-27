@@ -136,7 +136,6 @@ class AdvancedFetcher(BasicFetcher):
 
     def fetch_events(self):
         """Fetch with rate limiting and retries."""
-        import time
 
         max_retries = 3
         retry_delay = 1

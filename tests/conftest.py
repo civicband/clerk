@@ -252,5 +252,3 @@ def monkeypatch_storage_dir(tmp_storage_dir, monkeypatch):
     monkeypatch.setattr(clerk.cli, "STORAGE_DIR", str(tmp_storage_dir))
     monkeypatch.setattr(clerk.utils, "STORAGE_DIR", str(tmp_storage_dir))
     return tmp_storage_dir
-
-

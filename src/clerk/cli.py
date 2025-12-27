@@ -61,6 +61,7 @@ def configure_logging(command_name: str = "unknown"):
         handlers=handlers,
     )
 
+
 STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
 
 
@@ -165,7 +166,9 @@ def update_site_internal(
     db = assert_db_exists()
     logger.info(
         "Starting site update subdomain=%s all_years=%s all_agendas=%s",
-        subdomain, all_years, all_agendas
+        subdomain,
+        all_years,
+        all_agendas,
     )
 
     query_normal = (
@@ -385,7 +388,10 @@ def update_page_count(subdomain):
     page_count = agendas_count + minutes_count
     logger.info(
         "Page count updated subdomain=%s agendas=%d minutes=%d total=%d",
-        subdomain, agendas_count, minutes_count, page_count
+        subdomain,
+        agendas_count,
+        minutes_count,
+        page_count,
     )
     db["sites"].update(  # type: ignore
         subdomain,

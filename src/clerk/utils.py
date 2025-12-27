@@ -54,7 +54,9 @@ def assert_db_exists():
 def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None):
     logger.info(
         "Building table from text subdomain=%s table_name=%s municipality=%s",
-        subdomain, table_name, municipality
+        subdomain,
+        table_name,
+        municipality,
     )
     directories = [
         directory for directory in sorted(os.listdir(txt_dir)) if directory != ".DS_Store"
