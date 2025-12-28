@@ -44,10 +44,16 @@ def assert_db_exists():
         db["feed_entries"].create(  # pyright: ignore[reportAttributeAccessIssue]
             {"subdomain": str, "date": str, "kind": str, "name": str},
         )
-    db["sites"].transform(drop={"ocr_class"})  # pyright: ignore[reportAttributeAccessIssue]
-    db["sites"].transform(drop={"docker_port"})  # pyright: ignore[reportAttributeAccessIssue]
-    db["sites"].transform(drop={"save_agendas"})  # pyright: ignore[reportAttributeAccessIssue]
-    db["sites"].transform(drop={"site_db"})  # pyright: ignore[reportAttributeAccessIssue]
+
+    # Only drop deprecated columns if they still exist
+    # Running transform unconditionally creates orphan tables on failure
+    existing_columns = {col.name for col in db["sites"].columns}
+    deprecated_columns = {"ocr_class", "docker_port", "save_agendas", "site_db"}
+    columns_to_drop = existing_columns & deprecated_columns
+
+    if columns_to_drop:
+        db["sites"].transform(drop=columns_to_drop)  # pyright: ignore[reportAttributeAccessIssue]
+
     return db
 
 

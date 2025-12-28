@@ -122,6 +122,39 @@ class TestAssertDbExists:
         assert db2["sites"].exists()
         assert db3["sites"].exists()
 
+    def test_no_orphan_tables_on_repeated_calls(self, tmp_path, monkeypatch):
+        """Test that repeated calls don't create orphan sites_new_* tables."""
+        monkeypatch.chdir(tmp_path)
+
+        # Call multiple times (simulating cron job running repeatedly)
+        for _ in range(5):
+            assert_db_exists()
+
+        # Check that no sites_new_* tables exist
+        db = sqlite_utils.Database("civic.db")
+        table_names = db.table_names()
+        orphan_tables = [t for t in table_names if t.startswith("sites_new_")]
+
+        assert orphan_tables == [], f"Found orphan tables: {orphan_tables}"
+
+    def test_skips_transform_when_no_deprecated_columns(self, tmp_path, monkeypatch):
+        """Test that transform is skipped when deprecated columns don't exist."""
+        monkeypatch.chdir(tmp_path)
+
+        # Create clean database
+        db = assert_db_exists()
+
+        # Get initial table count
+        initial_tables = set(db.table_names())
+
+        # Call again - should not create any new tables
+        db = assert_db_exists()
+        final_tables = set(db.table_names())
+
+        # No new tables should have been created
+        new_tables = final_tables - initial_tables
+        assert new_tables == set(), f"Unexpected new tables: {new_tables}"
+
 
 class TestPluginManager:
     """Tests for the plugin manager setup."""
