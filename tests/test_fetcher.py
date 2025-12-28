@@ -200,3 +200,121 @@ class TestMockFetcherInheritance:
 
         assert isinstance(mock, Fetcher)
         assert isinstance(mock, MockFetcher)
+
+
+class TestPDFChunkSize:
+    """Test PDF chunk size configuration."""
+
+    def test_pdf_chunk_size_exists(self):
+        """PDF_CHUNK_SIZE constant should exist."""
+        from clerk.fetcher import PDF_CHUNK_SIZE
+
+        assert isinstance(PDF_CHUNK_SIZE, int)
+        assert PDF_CHUNK_SIZE > 0
+
+    def test_pdf_chunk_size_default(self, monkeypatch):
+        """PDF_CHUNK_SIZE should default to 20."""
+        import sys
+
+        # Remove env var if set
+        monkeypatch.delenv("PDF_CHUNK_SIZE", raising=False)
+
+        # Reload module to pick up default
+        if "clerk.fetcher" in sys.modules:
+            import importlib
+
+            importlib.reload(sys.modules["clerk.fetcher"])
+
+        from clerk.fetcher import PDF_CHUNK_SIZE
+
+        assert PDF_CHUNK_SIZE == 20
+
+    def test_pdf_chunk_size_from_env(self, monkeypatch):
+        """PDF_CHUNK_SIZE should be configurable via environment."""
+        import sys
+
+        monkeypatch.setenv("PDF_CHUNK_SIZE", "50")
+
+        # Reload module to pick up env var
+        if "clerk.fetcher" in sys.modules:
+            import importlib
+
+            importlib.reload(sys.modules["clerk.fetcher"])
+
+        from clerk.fetcher import PDF_CHUNK_SIZE
+
+        assert PDF_CHUNK_SIZE == 50
+
+
+class TestChunkedOCRProcessing:
+    """Test chunked OCR processing logic."""
+
+    def test_chunking_math_small_pdf(self):
+        """Verify chunking produces correct page ranges for small PDFs."""
+        chunk_size = 20
+        total_pages = 5
+
+        chunks = []
+        for chunk_start in range(1, total_pages + 1, chunk_size):
+            chunk_end = min(chunk_start + chunk_size - 1, total_pages)
+            chunks.append((chunk_start, chunk_end))
+
+        # Small PDF should be processed in single chunk
+        assert chunks == [(1, 5)]
+
+    def test_chunking_math_medium_pdf(self):
+        """Verify chunking produces correct page ranges for medium PDFs."""
+        chunk_size = 20
+        total_pages = 45
+
+        chunks = []
+        for chunk_start in range(1, total_pages + 1, chunk_size):
+            chunk_end = min(chunk_start + chunk_size - 1, total_pages)
+            chunks.append((chunk_start, chunk_end))
+
+        # 45 pages should be 3 chunks: 1-20, 21-40, 41-45
+        assert chunks == [(1, 20), (21, 40), (41, 45)]
+
+    def test_chunking_math_large_pdf(self):
+        """Verify chunking produces correct page ranges for large PDFs."""
+        chunk_size = 20
+        total_pages = 200
+
+        chunks = []
+        for chunk_start in range(1, total_pages + 1, chunk_size):
+            chunk_end = min(chunk_start + chunk_size - 1, total_pages)
+            chunks.append((chunk_start, chunk_end))
+
+        # 200 pages should be 10 chunks of 20
+        assert len(chunks) == 10
+        assert chunks[0] == (1, 20)
+        assert chunks[-1] == (181, 200)
+
+    def test_chunking_math_exact_multiple(self):
+        """Verify chunking works when total pages is exact multiple of chunk size."""
+        chunk_size = 20
+        total_pages = 40
+
+        chunks = []
+        for chunk_start in range(1, total_pages + 1, chunk_size):
+            chunk_end = min(chunk_start + chunk_size - 1, total_pages)
+            chunks.append((chunk_start, chunk_end))
+
+        # 40 pages should be 2 chunks: 1-20, 21-40
+        assert chunks == [(1, 20), (21, 40)]
+
+    def test_page_numbering_within_chunk(self):
+        """Verify page numbers are calculated correctly within chunks."""
+        # Simulating what happens in do_ocr_job for chunk starting at page 21
+        chunk_start = 21
+        pages_in_chunk = 20  # Simulating convert_from_path returning 20 pages
+
+        page_numbers = []
+        for idx in range(pages_in_chunk):
+            page_number = chunk_start + idx
+            page_numbers.append(page_number)
+
+        # Pages should be numbered 21-40
+        assert page_numbers[0] == 21
+        assert page_numbers[-1] == 40
+        assert len(page_numbers) == 20

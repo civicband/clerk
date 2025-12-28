@@ -39,6 +39,9 @@ except ImportError:
     convert_from_path = None
 
 NUM_WORKERS = int(os.environ.get("NUM_WORKERS", 10))
+# Process PDFs in chunks to avoid "too many open files" error
+# 10 workers × 20 pages = 200 file handles (under macOS 256 limit)
+PDF_CHUNK_SIZE = int(os.environ.get("PDF_CHUNK_SIZE", 20))
 
 
 class Fetcher:
@@ -430,17 +433,35 @@ class Fetcher:
         log(f"Processing {job}", subdomain=self.subdomain)
         doc_path = f"{self.dir_prefix}{prefix}/pdfs/{meeting}/{date}.pdf"
         doc_image_dir_path = f"{self.dir_prefix}{prefix}/images/{meeting}/{date}"
+
+        # Get page count first to enable chunked processing
         try:
-            with tempfile.TemporaryDirectory() as path:
-                doc = convert_from_path(
-                    doc_path, fmt="png", size=(1276, 1648), dpi=150, output_folder=path
-                )
-                for number, page in enumerate(doc):
-                    page_number = number + 1
-                    page_image_path = f"{doc_image_dir_path}/{page_number}.png"
-                    if os.path.exists(page_image_path) and not prefix:
-                        continue
-                    page.save(page_image_path, "PNG")
+            reader = PdfReader(doc_path)
+            total_pages = len(reader.pages)
+        except Exception as e:
+            log(f"{doc_path} failed to read: {e}", subdomain=self.subdomain, level="error")
+            return
+
+        # Process PDF in chunks to avoid "too many open files" error
+        try:
+            for chunk_start in range(1, total_pages + 1, PDF_CHUNK_SIZE):
+                chunk_end = min(chunk_start + PDF_CHUNK_SIZE - 1, total_pages)
+                with tempfile.TemporaryDirectory() as path:
+                    pages = convert_from_path(
+                        doc_path,
+                        fmt="png",
+                        size=(1276, 1648),
+                        dpi=150,
+                        output_folder=path,
+                        first_page=chunk_start,
+                        last_page=chunk_end,
+                    )
+                    for idx, page in enumerate(pages):
+                        page_number = chunk_start + idx
+                        page_image_path = f"{doc_image_dir_path}/{page_number}.png"
+                        if os.path.exists(page_image_path) and not prefix:
+                            continue
+                        page.save(page_image_path, "PNG")
         except Exception as e:
             log(f"{doc_path} failed to process: {e}", subdomain=self.subdomain, level="error")
             return
