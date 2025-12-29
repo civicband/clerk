@@ -169,3 +169,116 @@ def _extract_names_from_list(text: str) -> list[str]:
             names.append(name)
 
     return names
+
+
+def extract_votes(text: str, meeting_context: dict | None = None) -> dict:
+    """Extract vote records from text using regex patterns.
+
+    Args:
+        text: The text to extract votes from
+        meeting_context: Optional dict with 'known_persons' and 'attendees'
+                        for name resolution
+
+    Returns:
+        Dict with 'votes' key containing list of vote records
+    """
+    if meeting_context is None:
+        meeting_context = {"known_persons": set(), "attendees": []}
+
+    votes = []
+
+    # Pattern 1: Simple tally votes (passed 7-0, approved 5-2, etc.)
+    simple_pattern = r"(passed|approved|carried|defeated|failed|rejected)\s+(\d+)-(\d+)"
+    for match in re.finditer(simple_pattern, text, re.IGNORECASE):
+        result_word = match.group(1).lower()
+        ayes = int(match.group(2))
+        nays = int(match.group(3))
+
+        result = "passed" if result_word in ("passed", "approved", "carried") else "failed"
+
+        vote = _create_vote_record(
+            result=result,
+            ayes=ayes,
+            nays=nays,
+            raw_text=match.group(0),
+        )
+        votes.append(vote)
+
+    # Pattern 2: Unanimous votes
+    unanimous_pattern = r"(passed|approved|carried)\s+unanimously"
+    for match in re.finditer(unanimous_pattern, text, re.IGNORECASE):
+        vote = _create_vote_record(
+            result="passed",
+            ayes=None,
+            nays=0,
+            raw_text=match.group(0),
+        )
+        votes.append(vote)
+
+    # Pattern 3: Roll call votes (Ayes: Name, Name. Nays: Name.)
+    rollcall_pattern = r"Ayes?:\s*([^.]+)\.\s*Nays?:\s*([^.]*)"
+    for match in re.finditer(rollcall_pattern, text, re.IGNORECASE):
+        ayes_section = match.group(1)
+        nays_section = match.group(2)
+
+        ayes_names = _extract_names_from_list(ayes_section)
+        nays_names = _extract_names_from_list(nays_section)
+
+        individual_votes = []
+        for name in ayes_names:
+            individual_votes.append({"name": name, "vote": "aye"})
+        for name in nays_names:
+            individual_votes.append({"name": name, "vote": "nay"})
+
+        vote = _create_vote_record(
+            result="passed" if len(ayes_names) > len(nays_names) else "failed",
+            ayes=len(ayes_names),
+            nays=len(nays_names),
+            raw_text=match.group(0),
+            individual_votes=individual_votes,
+        )
+        votes.append(vote)
+
+    # Try to extract motion/second for each vote
+    motion_info = _extract_motion_info(text)
+    for vote in votes:
+        if motion_info:
+            vote["motion_by"] = motion_info.get("motion_by")
+            vote["seconded_by"] = motion_info.get("seconded_by")
+
+    return {"votes": votes}
+
+
+def _create_vote_record(
+    result: str,
+    ayes: int | None,
+    nays: int,
+    raw_text: str,
+    individual_votes: list | None = None,
+) -> dict:
+    """Create a standardized vote record."""
+    return {
+        "motion_by": None,
+        "seconded_by": None,
+        "result": result,
+        "tally": {
+            "ayes": ayes,
+            "nays": nays,
+            "abstain": None,
+            "absent": None,
+        },
+        "individual_votes": individual_votes or [],
+        "raw_text": raw_text,
+    }
+
+
+def _extract_motion_info(text: str) -> dict | None:
+    """Extract motion by and seconded by from text."""
+    pattern = r"[Mm]otion\s+(?:by|from)\s+(\w+)(?:,?\s+seconded\s+by\s+(\w+))?"
+    match = re.search(pattern, text)
+    if match:
+        return {
+            "motion_by": match.group(1),
+            "seconded_by": match.group(2) if match.group(2) else None,
+        }
+    return None

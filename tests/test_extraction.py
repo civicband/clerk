@@ -191,3 +191,84 @@ class TestDetectRollCall:
 
         assert result is not None
         assert any("Weber" in name for name in result)
+
+
+class TestExtractVotes:
+    """Tests for extract_votes function."""
+
+    def test_extracts_simple_vote_pattern(self):
+        """Extracts 'passed 7-0' style votes."""
+        extraction = load_extraction_module()
+        text = "The motion passed 7-0."
+        result = extraction.extract_votes(text)
+
+        assert "votes" in result
+        assert len(result["votes"]) == 1
+        vote = result["votes"][0]
+        assert vote["result"] == "passed"
+        assert vote["tally"]["ayes"] == 7
+        assert vote["tally"]["nays"] == 0
+
+    def test_extracts_approved_pattern(self):
+        """Extracts 'approved 5-2' style votes."""
+        extraction = load_extraction_module()
+        text = "The resolution was approved 5-2."
+        result = extraction.extract_votes(text)
+
+        assert len(result["votes"]) == 1
+        vote = result["votes"][0]
+        assert vote["result"] == "passed"
+        assert vote["tally"]["ayes"] == 5
+        assert vote["tally"]["nays"] == 2
+
+    def test_extracts_unanimous_vote(self):
+        """Extracts 'unanimously' style votes."""
+        extraction = load_extraction_module()
+        text = "The motion carried unanimously."
+        result = extraction.extract_votes(text)
+
+        assert len(result["votes"]) == 1
+        vote = result["votes"][0]
+        assert vote["result"] == "passed"
+        assert vote["tally"]["nays"] == 0
+
+    def test_extracts_roll_call_votes(self):
+        """Extracts 'Ayes: Name, Name. Nays: Name.' style votes."""
+        extraction = load_extraction_module()
+        text = "Ayes: Smith, Jones, Lee. Nays: Brown."
+        result = extraction.extract_votes(text)
+
+        assert len(result["votes"]) == 1
+        vote = result["votes"][0]
+        assert vote["tally"]["ayes"] == 3
+        assert vote["tally"]["nays"] == 1
+        assert len(vote["individual_votes"]) == 4
+
+    def test_extracts_motion_and_second(self):
+        """Extracts motion by and seconded by."""
+        extraction = load_extraction_module()
+        text = "Motion by Smith, seconded by Jones. The motion passed 5-0."
+        result = extraction.extract_votes(text)
+
+        assert len(result["votes"]) == 1
+        vote = result["votes"][0]
+        assert vote["motion_by"] == "Smith"
+        assert vote["seconded_by"] == "Jones"
+
+    def test_returns_empty_when_no_votes(self):
+        """Returns empty votes list when no vote patterns found."""
+        extraction = load_extraction_module()
+        text = "The committee discussed the budget proposal."
+        result = extraction.extract_votes(text)
+
+        assert result == {"votes": []}
+
+    def test_includes_raw_text(self):
+        """Includes the raw text that matched."""
+        extraction = load_extraction_module()
+        text = "After discussion, the motion passed 7-0."
+        result = extraction.extract_votes(text)
+
+        assert len(result["votes"]) == 1
+        assert "raw_text" in result["votes"][0]
+        assert "passed 7-0" in result["votes"][0]["raw_text"]
