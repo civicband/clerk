@@ -272,3 +272,45 @@ class TestExtractVotes:
         assert len(result["votes"]) == 1
         assert "raw_text" in result["votes"][0]
         assert "passed 7-0" in result["votes"][0]["raw_text"]
+
+
+class TestMeetingContext:
+    """Tests for meeting context accumulation."""
+
+    def test_create_meeting_context(self):
+        """Creates empty meeting context."""
+        extraction = load_extraction_module()
+        ctx = extraction.create_meeting_context()
+
+        assert "known_persons" in ctx
+        assert "known_orgs" in ctx
+        assert "attendees" in ctx
+        assert "meeting_type" in ctx
+        assert isinstance(ctx["known_persons"], set)
+
+    def test_update_context_from_entities(self):
+        """Updates context with extracted entities."""
+        extraction = load_extraction_module()
+        ctx = extraction.create_meeting_context()
+        entities = {
+            "persons": [{"text": "John Smith", "confidence": 0.9}],
+            "orgs": [{"text": "City Council", "confidence": 0.8}],
+            "locations": [],
+        }
+
+        extraction.update_context(ctx, entities=entities)
+
+        assert "John Smith" in ctx["known_persons"]
+        assert "City Council" in ctx["known_orgs"]
+
+    def test_update_context_from_roll_call(self):
+        """Updates context with roll call attendees."""
+        extraction = load_extraction_module()
+        ctx = extraction.create_meeting_context()
+        attendees = ["Smith", "Jones", "Lee"]
+
+        extraction.update_context(ctx, attendees=attendees)
+
+        assert ctx["attendees"] == attendees
+        assert "Smith" in ctx["known_persons"]
+        assert "Jones" in ctx["known_persons"]

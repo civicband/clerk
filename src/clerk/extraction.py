@@ -282,3 +282,42 @@ def _extract_motion_info(text: str) -> dict | None:
             "seconded_by": match.group(2) if match.group(2) else None,
         }
     return None
+
+
+def create_meeting_context() -> dict:
+    """Create an empty meeting context for accumulating information across pages.
+
+    Returns:
+        Dict with keys for tracking persons, orgs, attendees, and meeting type
+    """
+    return {
+        "known_persons": set(),
+        "known_orgs": set(),
+        "attendees": [],
+        "meeting_type": None,
+    }
+
+
+def update_context(
+    context: dict,
+    entities: dict | None = None,
+    attendees: list[str] | None = None,
+) -> None:
+    """Update meeting context with new information.
+
+    Args:
+        context: The meeting context dict to update
+        entities: Extracted entities dict from extract_entities()
+        attendees: List of attendee names from detect_roll_call()
+    """
+    if entities:
+        for person in entities.get("persons", []):
+            context["known_persons"].add(person["text"])
+        for org in entities.get("orgs", []):
+            context["known_orgs"].add(org["text"])
+
+    if attendees:
+        context["attendees"] = attendees
+        # Also add attendees to known_persons
+        for name in attendees:
+            context["known_persons"].add(name)
