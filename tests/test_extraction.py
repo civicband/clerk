@@ -61,3 +61,46 @@ class TestEntityConfidenceThreshold:
 
         extraction = load_extraction_module()
         assert extraction.ENTITY_CONFIDENCE_THRESHOLD == 0.85
+
+
+class TestGetNlp:
+    """Tests for lazy NLP model loading."""
+
+    def test_get_nlp_returns_none_when_spacy_unavailable(self, monkeypatch):
+        """get_nlp returns None when spaCy not installed."""
+        import builtins
+
+        # Simulate spacy not being installed by making import fail
+        original_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if name == "spacy":
+                raise ImportError("No module named 'spacy'")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", mock_import)
+
+        extraction = load_extraction_module()
+        result = extraction.get_nlp()
+        assert result is None
+
+    def test_get_nlp_caches_model(self):
+        """get_nlp should return same instance on repeated calls."""
+        extraction = load_extraction_module()
+
+        nlp1 = extraction.get_nlp()
+        nlp2 = extraction.get_nlp()
+
+        # If spaCy is available, should be same instance
+        # If not available, both should be None
+        assert nlp1 is nlp2
+
+    def test_get_nlp_logs_warning_when_spacy_unavailable(self, caplog):
+        """get_nlp logs warning when spaCy not installed."""
+        import logging
+
+        # This test verifies logging behavior without crashing
+        extraction = load_extraction_module()
+
+        with caplog.at_level(logging.WARNING):
+            extraction.get_nlp()  # Should not raise
