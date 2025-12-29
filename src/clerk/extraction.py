@@ -79,11 +79,12 @@ def parse_text(text: str) -> object | None:
         return None
 
 
-def extract_entities(text: str, threshold: float | None = None) -> dict:
+def extract_entities(text: str, doc=None, threshold: float | None = None) -> dict:
     """Extract named entities from text using spaCy NER.
 
     Args:
         text: The text to extract entities from
+        doc: Optional precomputed spaCy Doc (avoids re-parsing)
         threshold: Minimum confidence score (defaults to ENTITY_CONFIDENCE_THRESHOLD)
 
     Returns:
@@ -95,18 +96,14 @@ def extract_entities(text: str, threshold: float | None = None) -> dict:
     if not EXTRACTION_ENABLED:
         return empty_result
 
-    nlp = get_nlp()
-    if nlp is None:
+    # Use precomputed doc or parse text
+    if doc is None:
+        doc = parse_text(text)
+    if doc is None:
         return empty_result
 
     if threshold is None:
         threshold = ENTITY_CONFIDENCE_THRESHOLD
-
-    try:
-        doc = nlp(text)
-    except Exception as e:
-        logger.error(f"spaCy processing failed: {e}")
-        return empty_result
 
     persons = []
     orgs = []

@@ -143,6 +143,22 @@ class TestExtractEntities:
         assert isinstance(result["orgs"], list)
         assert isinstance(result["locations"], list)
 
+    def test_accepts_precomputed_doc(self, monkeypatch):
+        """extract_entities can use precomputed doc to avoid re-parsing."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        text = "Mayor Smith attended the meeting."
+        doc = nlp(text)
+
+        # Should work with precomputed doc
+        result = extraction.extract_entities(text, doc=doc)
+        assert "persons" in result
+
 
 class TestDetectRollCall:
     """Tests for detect_roll_call function."""
