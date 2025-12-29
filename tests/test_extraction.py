@@ -580,3 +580,53 @@ class TestDependencyMatcherMotions:
 
         # Should not extract motion attribution for relocation
         assert result is None or result.get("motion_by") is None
+
+
+class TestExtractVotesWithSpacy:
+    """Tests for integrated spaCy + regex vote extraction."""
+
+    def test_uses_spacy_when_available(self, monkeypatch):
+        """extract_votes uses spaCy Matcher when available."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        text = "The measure carried 6-1."
+        result = extraction.extract_votes(text)
+
+        assert len(result["votes"]) == 1
+        assert result["votes"][0]["tally"]["ayes"] == 6
+
+    def test_falls_back_to_regex(self, monkeypatch):
+        """extract_votes falls back to regex when spaCy unavailable."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        # Force spaCy to be unavailable
+        extraction._nlp = None
+        extraction._nlp_load_attempted = True
+
+        text = "The motion passed 7-0."
+        result = extraction.extract_votes(text)
+
+        # Regex should still work
+        assert len(result["votes"]) == 1
+        assert result["votes"][0]["tally"]["ayes"] == 7
+
+    def test_accepts_precomputed_doc(self, monkeypatch):
+        """extract_votes can use precomputed doc."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        text = "The motion passed 7-0."
+        doc = nlp(text)
+        result = extraction.extract_votes(text, doc=doc)
+
+        assert len(result["votes"]) == 1

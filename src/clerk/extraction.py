@@ -463,13 +463,15 @@ def _extract_names_from_list(text: str) -> list[str]:
     return names
 
 
-def extract_votes(text: str, meeting_context: dict | None = None) -> dict:
-    """Extract vote records from text using regex patterns.
+def extract_votes(text: str, doc: object = None, meeting_context: dict | None = None) -> dict:
+    """Extract vote records from text.
+
+    Uses spaCy Matcher when available, falls back to regex.
 
     Args:
         text: The text to extract votes from
+        doc: Optional precomputed spaCy Doc (avoids re-parsing)
         meeting_context: Optional dict with 'known_persons' and 'attendees'
-                        for name resolution
 
     Returns:
         Dict with 'votes' key containing list of vote records
@@ -480,6 +482,68 @@ def extract_votes(text: str, meeting_context: dict | None = None) -> dict:
     if meeting_context is None:
         meeting_context = {"known_persons": set(), "attendees": []}
 
+    # Try spaCy extraction first
+    if doc is None:
+        doc = parse_text(text)
+
+    if doc is not None:
+        return _extract_votes_spacy(doc, text, meeting_context)
+    else:
+        return _extract_votes_regex(text, meeting_context)
+
+
+def _extract_votes_spacy(doc: object, text: str, meeting_context: dict) -> dict:
+    """Extract votes using spaCy Matcher and DependencyMatcher."""
+    votes = []
+
+    # Get vote results from Token Matcher
+    vote_results = _extract_vote_results_spacy(doc)
+    votes.extend(vote_results)
+
+    # Also check for roll call pattern (regex works well for this)
+    rollcall_pattern = r"Ayes?:\s*([^.]+)\.\s*Nays?:\s*([^.]*)"
+    for match in re.finditer(rollcall_pattern, text, re.IGNORECASE):
+        ayes_section = match.group(1)
+        nays_section = match.group(2)
+
+        ayes_names = _extract_names_from_list(ayes_section)
+        nays_names = _extract_names_from_list(nays_section)
+
+        individual_votes = []
+        for name in ayes_names:
+            individual_votes.append({"name": name, "vote": "aye"})
+        for name in nays_names:
+            individual_votes.append({"name": name, "vote": "nay"})
+
+        vote = _create_vote_record(
+            result="passed" if len(ayes_names) > len(nays_names) else "failed",
+            ayes=len(ayes_names),
+            nays=len(nays_names),
+            raw_text=match.group(0),
+            individual_votes=individual_votes,
+        )
+        votes.append(vote)
+
+    # Get motion attribution from DependencyMatcher
+    motion_info = _extract_motion_attribution_spacy(doc)
+
+    # Fall back to regex if no spaCy attribution
+    if motion_info is None:
+        motion_info = _extract_motion_info(text)
+
+    # Apply motion info to votes
+    for vote in votes:
+        if motion_info:
+            if vote["motion_by"] is None:
+                vote["motion_by"] = motion_info.get("motion_by")
+            if vote["seconded_by"] is None:
+                vote["seconded_by"] = motion_info.get("seconded_by")
+
+    return {"votes": votes}
+
+
+def _extract_votes_regex(text: str, meeting_context: dict) -> dict:
+    """Extract votes using regex patterns (fallback when spaCy unavailable)."""
     votes = []
 
     # Pattern 1: Simple tally votes (passed 7-0, approved 5-2, etc.)
