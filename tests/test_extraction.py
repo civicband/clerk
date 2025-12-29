@@ -104,3 +104,41 @@ class TestGetNlp:
 
         with caplog.at_level(logging.WARNING):
             extraction.get_nlp()  # Should not raise
+
+
+class TestExtractEntities:
+    """Tests for extract_entities function."""
+
+    def test_returns_empty_when_extraction_disabled(self, monkeypatch):
+        """Returns empty dict when EXTRACTION_ENABLED=False."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "0")
+
+        extraction = load_extraction_module()
+        result = extraction.extract_entities("Mayor Smith spoke about the new park.")
+        assert result == {"persons": [], "orgs": [], "locations": []}
+
+    def test_returns_empty_when_nlp_unavailable(self, monkeypatch):
+        """Returns empty dict when spaCy model not available."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+
+        extraction = load_extraction_module()
+        # Reset NLP to simulate unavailable
+        extraction._nlp = None
+        extraction._nlp_load_attempted = True
+
+        result = extraction.extract_entities("Mayor Smith spoke.")
+        assert result == {"persons": [], "orgs": [], "locations": []}
+
+    def test_returns_valid_structure_always(self, monkeypatch):
+        """Result always has persons, orgs, locations keys."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+
+        extraction = load_extraction_module()
+        result = extraction.extract_entities("Test text")
+
+        assert "persons" in result
+        assert "orgs" in result
+        assert "locations" in result
+        assert isinstance(result["persons"], list)
+        assert isinstance(result["orgs"], list)
+        assert isinstance(result["locations"], list)
