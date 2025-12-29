@@ -349,3 +349,33 @@ class TestMeetingContext:
         # Third update with all duplicates
         extraction.update_context(ctx, attendees=["Smith", "Jones"])
         assert ctx["attendees"] == ["Smith", "Jones", "Lee", "Brown"]
+
+
+class TestParseText:
+    """Tests for parse_text function."""
+
+    def test_returns_none_when_extraction_disabled(self, monkeypatch):
+        """parse_text returns None when ENABLE_EXTRACTION=0."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "0")
+        extraction = load_extraction_module()
+        result = extraction.parse_text("Some text")
+        assert result is None
+
+    def test_returns_none_when_nlp_unavailable(self, monkeypatch):
+        """parse_text returns None when spaCy not available."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+        extraction._nlp = None
+        extraction._nlp_load_attempted = True
+        result = extraction.parse_text("Some text")
+        assert result is None
+
+    def test_returns_doc_when_available(self, monkeypatch):
+        """parse_text returns spaCy Doc when available."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+        # Only test if spaCy is actually available
+        if extraction.get_nlp() is not None:
+            result = extraction.parse_text("The motion passed.")
+            assert result is not None
+            assert hasattr(result, "text")

@@ -56,6 +56,29 @@ def get_nlp():
     return _nlp
 
 
+def parse_text(text: str):
+    """Parse text with spaCy, returning Doc or None if unavailable.
+
+    Use this to parse once and pass doc to extract_entities() and extract_votes().
+
+    Args:
+        text: The text to parse
+
+    Returns:
+        spaCy Doc object, or None if extraction disabled or spaCy unavailable
+    """
+    if not EXTRACTION_ENABLED:
+        return None
+    nlp = get_nlp()
+    if nlp is None:
+        return None
+    try:
+        return nlp(text)
+    except Exception as e:
+        logger.error(f"spaCy processing failed: {e}")
+        return None
+
+
 def extract_entities(text: str, threshold: float | None = None) -> dict:
     """Extract named entities from text using spaCy NER.
 
