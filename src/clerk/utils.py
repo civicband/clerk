@@ -15,6 +15,7 @@ from .extraction import (
     detect_roll_call,
     extract_entities,
     extract_votes,
+    parse_text,
     update_context,
 )
 
@@ -104,9 +105,12 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None)
                     text = page_file.read()
                     page_number = int(page.split(".")[0])
 
+                    # Single parse for both entity and vote extraction
+                    doc = parse_text(text)
+
                     # Extract entities and update context
                     try:
-                        entities = extract_entities(text)
+                        entities = extract_entities(text, doc=doc)
                         update_context(meeting_context, entities=entities)
                     except Exception as e:
                         logger.warning(f"Entity extraction failed for {page_file_path}: {e}")
@@ -122,7 +126,7 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None)
 
                     # Extract votes with context
                     try:
-                        votes = extract_votes(text, meeting_context)
+                        votes = extract_votes(text, doc=doc, meeting_context=meeting_context)
                     except Exception as e:
                         logger.warning(f"Vote extraction failed for {page_file_path}: {e}")
                         votes = {"votes": []}
