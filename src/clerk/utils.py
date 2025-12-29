@@ -9,7 +9,6 @@ import click
 import pluggy
 import sqlite_utils
 
-from .hookspecs import ClerkSpec
 from .extraction import (
     create_meeting_context,
     detect_roll_call,
@@ -18,6 +17,7 @@ from .extraction import (
     parse_text,
     update_context,
 )
+from .hookspecs import ClerkSpec
 
 logger = logging.getLogger(__name__)
 
