@@ -502,3 +502,17 @@ class TestTokenMatcherVotes:
 
         assert len(votes) == 1
         assert votes[0]["result"] == "failed"
+
+    def test_voice_vote_with_matcher(self, monkeypatch):
+        """Token Matcher extracts voice votes."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        doc = nlp("The item was approved by voice vote.")
+        votes = extraction._extract_vote_results_spacy(doc)
+
+        assert len(votes) >= 1

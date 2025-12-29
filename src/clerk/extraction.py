@@ -158,7 +158,7 @@ def _get_motion_matcher(nlp):
     return _motion_matcher
 
 
-def _extract_vote_results_spacy(doc) -> list[dict]:
+def _extract_vote_results_spacy(doc: object) -> list[dict]:
     """Extract vote results using Token Matcher.
 
     Args:
@@ -194,6 +194,13 @@ def _extract_vote_results_spacy(doc) -> list[dict]:
                     if token.lemma_ in PASS_LEMMAS | FAIL_LEMMAS:
                         verb_lemma = token.lemma_
                         break
+
+                if verb_lemma is None:
+                    # No matching verb found, skip this match
+                    logger.warning(
+                        "TALLY_VOTE match without recognized verb: %s", span.text
+                    )
+                    continue
 
                 result = "passed" if verb_lemma in PASS_LEMMAS else "failed"
 
