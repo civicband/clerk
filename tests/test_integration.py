@@ -431,7 +431,9 @@ class TestExtractionIntegration:
         (site_dir / "meetings.db").touch()
 
         import importlib
+        import clerk.extraction
         import clerk.utils
+        importlib.reload(clerk.extraction)
         importlib.reload(clerk.utils)
 
         from clerk.utils import build_db_from_text_internal
@@ -453,3 +455,45 @@ class TestExtractionIntegration:
         assert vote["tally"]["ayes"] == 5
         assert vote["motion_by"] == "Smith"
         assert vote["seconded_by"] == "Jones"
+
+        # Check entities extraction
+        entities = json.loads(page2["entities_json"])
+        assert "persons" in entities
+        assert "orgs" in entities
+        assert "locations" in entities
+
+    def test_extraction_disabled_produces_empty_json(self, tmp_path, monkeypatch):
+        """When extraction disabled, JSON columns have empty structures."""
+        import sqlite_utils
+        import json
+
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.delenv("ENABLE_EXTRACTION", raising=False)
+
+        # Create test site structure
+        site_dir = tmp_path / "test-site"
+        txt_dir = site_dir / "txt" / "CityCouncil" / "2024-01-15"
+        txt_dir.mkdir(parents=True)
+
+        (txt_dir / "1.txt").write_text("The motion passed 5-0.")
+        (site_dir / "meetings.db").touch()
+
+        import importlib
+        import clerk.extraction
+        import clerk.utils
+        importlib.reload(clerk.extraction)
+        importlib.reload(clerk.utils)
+
+        from clerk.utils import build_db_from_text_internal
+        build_db_from_text_internal("test-site")
+
+        db = sqlite_utils.Database(site_dir / "meetings.db")
+        rows = list(db["minutes"].rows)
+
+        assert len(rows) == 1
+        entities = json.loads(rows[0]["entities_json"])
+        votes = json.loads(rows[0]["votes_json"])
+
+        # When disabled, should have empty structures
+        assert entities == {"persons": [], "orgs": [], "locations": []}
+        assert votes == {"votes": []}

@@ -196,8 +196,9 @@ class TestDetectRollCall:
 class TestExtractVotes:
     """Tests for extract_votes function."""
 
-    def test_extracts_simple_vote_pattern(self):
+    def test_extracts_simple_vote_pattern(self, monkeypatch):
         """Extracts 'passed 7-0' style votes."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
         extraction = load_extraction_module()
         text = "The motion passed 7-0."
         result = extraction.extract_votes(text)
@@ -209,8 +210,9 @@ class TestExtractVotes:
         assert vote["tally"]["ayes"] == 7
         assert vote["tally"]["nays"] == 0
 
-    def test_extracts_approved_pattern(self):
+    def test_extracts_approved_pattern(self, monkeypatch):
         """Extracts 'approved 5-2' style votes."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
         extraction = load_extraction_module()
         text = "The resolution was approved 5-2."
         result = extraction.extract_votes(text)
@@ -221,8 +223,9 @@ class TestExtractVotes:
         assert vote["tally"]["ayes"] == 5
         assert vote["tally"]["nays"] == 2
 
-    def test_extracts_unanimous_vote(self):
+    def test_extracts_unanimous_vote(self, monkeypatch):
         """Extracts 'unanimously' style votes."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
         extraction = load_extraction_module()
         text = "The motion carried unanimously."
         result = extraction.extract_votes(text)
@@ -232,8 +235,9 @@ class TestExtractVotes:
         assert vote["result"] == "passed"
         assert vote["tally"]["nays"] == 0
 
-    def test_extracts_roll_call_votes(self):
+    def test_extracts_roll_call_votes(self, monkeypatch):
         """Extracts 'Ayes: Name, Name. Nays: Name.' style votes."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
         extraction = load_extraction_module()
         text = "Ayes: Smith, Jones, Lee. Nays: Brown."
         result = extraction.extract_votes(text)
@@ -244,8 +248,9 @@ class TestExtractVotes:
         assert vote["tally"]["nays"] == 1
         assert len(vote["individual_votes"]) == 4
 
-    def test_extracts_motion_and_second(self):
+    def test_extracts_motion_and_second(self, monkeypatch):
         """Extracts motion by and seconded by."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
         extraction = load_extraction_module()
         text = "Motion by Smith, seconded by Jones. The motion passed 5-0."
         result = extraction.extract_votes(text)
@@ -255,16 +260,27 @@ class TestExtractVotes:
         assert vote["motion_by"] == "Smith"
         assert vote["seconded_by"] == "Jones"
 
-    def test_returns_empty_when_no_votes(self):
+    def test_returns_empty_when_no_votes(self, monkeypatch):
         """Returns empty votes list when no vote patterns found."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
         extraction = load_extraction_module()
         text = "The committee discussed the budget proposal."
         result = extraction.extract_votes(text)
 
         assert result == {"votes": []}
 
-    def test_includes_raw_text(self):
+    def test_returns_empty_when_extraction_disabled(self, monkeypatch):
+        """Returns empty votes list when extraction is disabled."""
+        monkeypatch.delenv("ENABLE_EXTRACTION", raising=False)
+        extraction = load_extraction_module()
+        text = "The motion passed 7-0."  # Would normally match
+        result = extraction.extract_votes(text)
+
+        assert result == {"votes": []}
+
+    def test_includes_raw_text(self, monkeypatch):
         """Includes the raw text that matched."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
         extraction = load_extraction_module()
         text = "After discussion, the motion passed 7-0."
         result = extraction.extract_votes(text)

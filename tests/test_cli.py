@@ -31,7 +31,16 @@ class TestBuildTableFromText:
 
         # Create the table
         db["minutes"].create(
-            {"id": str, "meeting": str, "date": str, "page": int, "text": str, "page_image": str},
+            {
+                "id": str,
+                "meeting": str,
+                "date": str,
+                "page": int,
+                "text": str,
+                "page_image": str,
+                "entities_json": str,
+                "votes_json": str,
+            },
             pk="id",
         )
 
@@ -70,6 +79,8 @@ class TestBuildTableFromText:
                 "page": int,
                 "text": str,
                 "page_image": str,
+                "entities_json": str,
+                "votes_json": str,
             },
             pk="id",
         )

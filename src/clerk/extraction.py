@@ -182,6 +182,9 @@ def extract_votes(text: str, meeting_context: dict | None = None) -> dict:
     Returns:
         Dict with 'votes' key containing list of vote records
     """
+    if not EXTRACTION_ENABLED:
+        return {"votes": []}
+
     if meeting_context is None:
         meeting_context = {"known_persons": set(), "attendees": []}
 
