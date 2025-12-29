@@ -1,0 +1,45 @@
+"""Tests for clerk.extraction module."""
+
+import importlib.util
+import os
+
+import pytest
+
+
+def load_extraction_module():
+    """Load extraction module directly without triggering clerk package imports.
+
+    This avoids issues with weasyprint and other heavy dependencies in clerk/__init__.py.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "clerk.extraction",
+        os.path.join(os.path.dirname(__file__), "..", "src", "clerk", "extraction.py"),
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class TestExtractionFeatureFlag:
+    """Tests for ENABLE_EXTRACTION feature flag."""
+
+    def test_extraction_disabled_by_default(self, monkeypatch):
+        """Extraction should be disabled when env var not set."""
+        monkeypatch.delenv("ENABLE_EXTRACTION", raising=False)
+
+        extraction = load_extraction_module()
+        assert extraction.EXTRACTION_ENABLED is False
+
+    def test_extraction_enabled_when_set(self, monkeypatch):
+        """Extraction should be enabled when ENABLE_EXTRACTION=1."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+
+        extraction = load_extraction_module()
+        assert extraction.EXTRACTION_ENABLED is True
+
+    def test_extraction_disabled_when_zero(self, monkeypatch):
+        """Extraction should be disabled when ENABLE_EXTRACTION=0."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "0")
+
+        extraction = load_extraction_module()
+        assert extraction.EXTRACTION_ENABLED is False
