@@ -379,3 +379,18 @@ class TestParseText:
             result = extraction.parse_text("The motion passed.")
             assert result is not None
             assert hasattr(result, "text")
+            assert result.text == "The motion passed."
+
+    def test_returns_none_on_spacy_exception(self, monkeypatch, mocker):
+        """parse_text returns None if spaCy processing fails."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        # Mock the nlp call to raise an exception
+        mocker.patch.object(extraction, "_nlp", side_effect=ValueError("Simulated failure"))
+        result = extraction.parse_text("test")
+        assert result is None

@@ -56,7 +56,7 @@ def get_nlp():
     return _nlp
 
 
-def parse_text(text: str):
+def parse_text(text: str) -> object | None:
     """Parse text with spaCy, returning Doc or None if unavailable.
 
     Use this to parse once and pass doc to extract_entities() and extract_votes().
