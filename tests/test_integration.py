@@ -435,10 +435,12 @@ class TestExtractionIntegration:
 
         import clerk.extraction
         import clerk.utils
+
         importlib.reload(clerk.extraction)
         importlib.reload(clerk.utils)
 
         from clerk.utils import build_db_from_text_internal
+
         build_db_from_text_internal("test-site")
 
         # Verify extraction results
@@ -485,10 +487,12 @@ class TestExtractionIntegration:
 
         import clerk.extraction
         import clerk.utils
+
         importlib.reload(clerk.extraction)
         importlib.reload(clerk.utils)
 
         from clerk.utils import build_db_from_text_internal
+
         build_db_from_text_internal("test-site")
 
         db = sqlite_utils.Database(site_dir / "meetings.db")

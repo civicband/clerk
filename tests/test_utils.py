@@ -193,22 +193,29 @@ class TestBuildTableFromTextExtraction:
         txt_dir = site_dir / "txt" / "CityCouncil" / "2024-01-15"
         txt_dir.mkdir(parents=True)
 
-        (txt_dir / "1.txt").write_text(
-            "Present: Smith, Jones, Lee.\n"
-            "The motion passed 5-0."
-        )
+        (txt_dir / "1.txt").write_text("Present: Smith, Jones, Lee.\nThe motion passed 5-0.")
 
         db = sqlite_utils.Database(":memory:")
-        db["minutes"].create({
-            "id": str, "meeting": str, "date": str, "page": int,
-            "text": str, "page_image": str,
-            "entities_json": str, "votes_json": str,
-        }, pk="id")
+        db["minutes"].create(
+            {
+                "id": str,
+                "meeting": str,
+                "date": str,
+                "page": int,
+                "text": str,
+                "page_image": str,
+                "entities_json": str,
+                "votes_json": str,
+            },
+            pk="id",
+        )
 
         import clerk.utils
+
         importlib.reload(clerk.utils)
 
         from clerk.utils import build_table_from_text
+
         build_table_from_text("test-site", str(site_dir / "txt"), db, "minutes")
 
         rows = list(db["minutes"].rows)

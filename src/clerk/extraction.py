@@ -15,9 +15,7 @@ logger = logging.getLogger(__name__)
 EXTRACTION_ENABLED = os.environ.get("ENABLE_EXTRACTION", "0") == "1"
 
 # Confidence threshold for entity filtering
-ENTITY_CONFIDENCE_THRESHOLD = float(
-    os.environ.get("ENTITY_CONFIDENCE_THRESHOLD", "0.7")
-)
+ENTITY_CONFIDENCE_THRESHOLD = float(os.environ.get("ENTITY_CONFIDENCE_THRESHOLD", "0.7"))
 
 # Lazy-loaded spaCy model
 _nlp = None
@@ -48,8 +46,7 @@ def get_nlp():
         logger.info("Loaded spaCy model en_core_web_trf")
     except OSError:
         logger.error(
-            "spaCy model en_core_web_trf not found. "
-            "Run: python -m spacy download en_core_web_trf"
+            "spaCy model en_core_web_trf not found. Run: python -m spacy download en_core_web_trf"
         )
         return None
 
@@ -68,8 +65,16 @@ FAIL_LEMMAS = {"defeat", "fail", "reject"}
 
 # Objects that indicate a parliamentary motion (not relocation)
 MOTION_OBJECTS = {
-    "motion", "resolution", "approval", "item", "amendment",
-    "ordinance", "measure", "recommendation", "action", "adoption",
+    "motion",
+    "resolution",
+    "approval",
+    "item",
+    "amendment",
+    "ordinance",
+    "measure",
+    "recommendation",
+    "action",
+    "adoption",
 }
 
 
@@ -94,36 +99,49 @@ def _get_vote_matcher(nlp):
     _vote_matcher = Matcher(nlp.vocab)
 
     # Pattern 1: Tally votes (passed 7-0, approved 5-2)
-    _vote_matcher.add("TALLY_VOTE", [[
-        {"LEMMA": {"IN": ["pass", "carry", "approve", "defeat", "fail", "reject"]}},
-        {"LIKE_NUM": True},
-        {"TEXT": "-"},
-        {"LIKE_NUM": True},
-    ]])
+    _vote_matcher.add(
+        "TALLY_VOTE",
+        [
+            [
+                {"LEMMA": {"IN": ["pass", "carry", "approve", "defeat", "fail", "reject"]}},
+                {"LIKE_NUM": True},
+                {"TEXT": "-"},
+                {"LIKE_NUM": True},
+            ]
+        ],
+    )
 
     # Pattern 2a: Unanimous (verb + unanimously)
-    _vote_matcher.add("UNANIMOUS_VOTE", [
+    _vote_matcher.add(
+        "UNANIMOUS_VOTE",
         [
-            {"LEMMA": {"IN": ["pass", "carry", "approve"]}},
-            {"LOWER": "unanimously"},
+            [
+                {"LEMMA": {"IN": ["pass", "carry", "approve"]}},
+                {"LOWER": "unanimously"},
+            ],
+            [
+                {"LOWER": "unanimously"},
+                {"LEMMA": {"IN": ["pass", "carry", "approve"]}},
+            ],
+            [
+                {"LOWER": "unanimous"},
+                {"LOWER": "vote"},
+            ],
         ],
-        [
-            {"LOWER": "unanimously"},
-            {"LEMMA": {"IN": ["pass", "carry", "approve"]}},
-        ],
-        [
-            {"LOWER": "unanimous"},
-            {"LOWER": "vote"},
-        ],
-    ])
+    )
 
     # Pattern 3: Voice vote
-    _vote_matcher.add("VOICE_VOTE", [[
-        {"LOWER": {"IN": ["by", "on"]}},
-        {"LOWER": "a", "OP": "?"},
-        {"LOWER": "voice"},
-        {"LOWER": "vote"},
-    ]])
+    _vote_matcher.add(
+        "VOICE_VOTE",
+        [
+            [
+                {"LOWER": {"IN": ["by", "on"]}},
+                {"LOWER": "a", "OP": "?"},
+                {"LOWER": "voice"},
+                {"LOWER": "vote"},
+            ]
+        ],
+    )
 
     return _vote_matcher
 
@@ -148,18 +166,36 @@ def _get_motion_matcher(nlp):
     _motion_matcher = DependencyMatcher(nlp.vocab)
 
     # Pattern 1: Active voice - "Smith moved/seconded [something]"
-    _motion_matcher.add("MOTION_ACTIVE", [[
-        {"RIGHT_ID": "verb", "RIGHT_ATTRS": {"LEMMA": {"IN": ["move", "second"]}}},
-        {"LEFT_ID": "verb", "REL_OP": ">", "RIGHT_ID": "subject",
-         "RIGHT_ATTRS": {"DEP": "nsubj"}},
-    ]])
+    _motion_matcher.add(
+        "MOTION_ACTIVE",
+        [
+            [
+                {"RIGHT_ID": "verb", "RIGHT_ATTRS": {"LEMMA": {"IN": ["move", "second"]}}},
+                {
+                    "LEFT_ID": "verb",
+                    "REL_OP": ">",
+                    "RIGHT_ID": "subject",
+                    "RIGHT_ATTRS": {"DEP": "nsubj"},
+                },
+            ]
+        ],
+    )
 
     # Pattern 2: Passive voice - "moved/seconded by Smith"
-    _motion_matcher.add("MOTION_PASSIVE", [[
-        {"RIGHT_ID": "verb", "RIGHT_ATTRS": {"LEMMA": {"IN": ["move", "second"]}}},
-        {"LEFT_ID": "verb", "REL_OP": ">", "RIGHT_ID": "agent",
-         "RIGHT_ATTRS": {"DEP": "agent"}},
-    ]])
+    _motion_matcher.add(
+        "MOTION_PASSIVE",
+        [
+            [
+                {"RIGHT_ID": "verb", "RIGHT_ATTRS": {"LEMMA": {"IN": ["move", "second"]}}},
+                {
+                    "LEFT_ID": "verb",
+                    "REL_OP": ">",
+                    "RIGHT_ID": "agent",
+                    "RIGHT_ATTRS": {"DEP": "agent"},
+                },
+            ]
+        ],
+    )
 
     return _motion_matcher
 
@@ -225,7 +261,6 @@ def _extract_motion_attribution_spacy(doc: object) -> dict | None:
     seconded_by = None
 
     for _match_id, token_ids in matches:
-
         # Get the matched tokens
         verb_idx = token_ids[0]  # First token is always the verb
         verb_token = doc[verb_idx]
@@ -295,35 +330,39 @@ def _extract_vote_results_spacy(doc: object) -> list[dict]:
 
                 if verb_lemma is None:
                     # No matching verb found, skip this match
-                    logger.warning(
-                        "TALLY_VOTE match without recognized verb: %s", span.text
-                    )
+                    logger.warning("TALLY_VOTE match without recognized verb: %s", span.text)
                     continue
 
                 result = "passed" if verb_lemma in PASS_LEMMAS else "failed"
 
-                votes.append(_create_vote_record(
-                    result=result,
-                    ayes=ayes,
-                    nays=nays,
-                    raw_text=span.text,
-                ))
+                votes.append(
+                    _create_vote_record(
+                        result=result,
+                        ayes=ayes,
+                        nays=nays,
+                        raw_text=span.text,
+                    )
+                )
 
         elif match_name == "UNANIMOUS_VOTE":
-            votes.append(_create_vote_record(
-                result="passed",
-                ayes=None,
-                nays=0,
-                raw_text=span.text,
-            ))
+            votes.append(
+                _create_vote_record(
+                    result="passed",
+                    ayes=None,
+                    nays=0,
+                    raw_text=span.text,
+                )
+            )
 
         elif match_name == "VOICE_VOTE":
-            votes.append(_create_vote_record(
-                result="passed",
-                ayes=None,
-                nays=None,
-                raw_text=span.text,
-            ))
+            votes.append(
+                _create_vote_record(
+                    result="passed",
+                    ayes=None,
+                    nays=None,
+                    raw_text=span.text,
+                )
+            )
 
     return votes
 
@@ -442,9 +481,18 @@ def _extract_names_from_list(text: str) -> list[str]:
     - "Council Member Smith, Council Member Jones"
     """
     titles = [
-        "Mayor", "Vice Mayor", "Council Member", "Councilmember",
-        "Councilwoman", "Councilman", "Commissioner", "Chair",
-        "Vice Chair", "President", "Vice President", "Member",
+        "Mayor",
+        "Vice Mayor",
+        "Council Member",
+        "Councilmember",
+        "Councilwoman",
+        "Councilman",
+        "Commissioner",
+        "Chair",
+        "Vice Chair",
+        "President",
+        "Vice President",
+        "Member",
     ]
 
     cleaned = text
