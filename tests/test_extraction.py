@@ -410,3 +410,44 @@ class TestParseText:
         mocker.patch.object(extraction, "_nlp", side_effect=ValueError("Simulated failure"))
         result = extraction.parse_text("test")
         assert result is None
+
+
+class TestMatcherInitialization:
+    """Tests for lazy matcher initialization."""
+
+    def test_get_vote_matcher_returns_matcher(self, monkeypatch):
+        """_get_vote_matcher returns Matcher when spaCy available."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        matcher = extraction._get_vote_matcher(nlp)
+        assert matcher is not None
+
+    def test_get_motion_matcher_returns_matcher(self, monkeypatch):
+        """_get_motion_matcher returns DependencyMatcher when spaCy available."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        matcher = extraction._get_motion_matcher(nlp)
+        assert matcher is not None
+
+    def test_matchers_are_cached(self, monkeypatch):
+        """Matchers should be cached after first initialization."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        matcher1 = extraction._get_vote_matcher(nlp)
+        matcher2 = extraction._get_vote_matcher(nlp)
+        assert matcher1 is matcher2

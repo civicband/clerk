@@ -56,6 +56,102 @@ def get_nlp():
     return _nlp
 
 
+# Lazy-loaded matchers
+_vote_matcher = None
+_motion_matcher = None
+
+
+def _get_vote_matcher(nlp):
+    """Get Token Matcher for vote results, initializing lazily.
+
+    Patterns detect:
+    - Tally votes: "passed 7-0", "approved 5-2"
+    - Unanimous votes: "passed unanimously", "unanimous vote"
+    - Voice votes: "by voice vote"
+    """
+    global _vote_matcher
+
+    if _vote_matcher is not None:
+        return _vote_matcher
+
+    try:
+        from spacy.matcher import Matcher
+    except ImportError:
+        return None
+
+    _vote_matcher = Matcher(nlp.vocab)
+
+    # Pattern 1: Tally votes (passed 7-0, approved 5-2)
+    _vote_matcher.add("TALLY_VOTE", [[
+        {"LEMMA": {"IN": ["pass", "carry", "approve", "defeat", "fail", "reject"]}},
+        {"LIKE_NUM": True},
+        {"TEXT": "-"},
+        {"LIKE_NUM": True},
+    ]])
+
+    # Pattern 2a: Unanimous (verb + unanimously)
+    _vote_matcher.add("UNANIMOUS_VOTE", [
+        [
+            {"LEMMA": {"IN": ["pass", "carry", "approve"]}},
+            {"LOWER": "unanimously"},
+        ],
+        [
+            {"LOWER": "unanimously"},
+            {"LEMMA": {"IN": ["pass", "carry", "approve"]}},
+        ],
+        [
+            {"LOWER": "unanimous"},
+            {"LOWER": "vote"},
+        ],
+    ])
+
+    # Pattern 3: Voice vote
+    _vote_matcher.add("VOICE_VOTE", [[
+        {"LOWER": {"IN": ["by", "on"]}},
+        {"LOWER": "a", "OP": "?"},
+        {"LOWER": "voice"},
+        {"LOWER": "vote"},
+    ]])
+
+    return _vote_matcher
+
+
+def _get_motion_matcher(nlp):
+    """Get DependencyMatcher for motion attribution, initializing lazily.
+
+    Patterns detect:
+    - Active voice: "Smith moved approval"
+    - Passive voice: "moved by Smith"
+    """
+    global _motion_matcher
+
+    if _motion_matcher is not None:
+        return _motion_matcher
+
+    try:
+        from spacy.matcher import DependencyMatcher
+    except ImportError:
+        return None
+
+    _motion_matcher = DependencyMatcher(nlp.vocab)
+
+    # Pattern 1: Active voice - "Smith moved/seconded [something]"
+    _motion_matcher.add("MOTION_ACTIVE", [[
+        {"RIGHT_ID": "verb", "RIGHT_ATTRS": {"LEMMA": {"IN": ["move", "second"]}}},
+        {"LEFT_ID": "verb", "REL_OP": ">", "RIGHT_ID": "subject",
+         "RIGHT_ATTRS": {"DEP": "nsubj"}},
+    ]])
+
+    # Pattern 2: Passive voice - "moved/seconded by Smith"
+    _motion_matcher.add("MOTION_PASSIVE", [[
+        {"RIGHT_ID": "verb", "RIGHT_ATTRS": {"LEMMA": {"IN": ["move", "second"]}}},
+        {"LEFT_ID": "verb", "REL_OP": ">", "RIGHT_ID": "agent",
+         "RIGHT_ATTRS": {"DEP": "agent"}},
+    ]])
+
+    return _motion_matcher
+
+
 def parse_text(text: str) -> object | None:
     """Parse text with spaCy, returning Doc or None if unavailable.
 
