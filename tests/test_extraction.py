@@ -451,3 +451,54 @@ class TestMatcherInitialization:
         matcher1 = extraction._get_vote_matcher(nlp)
         matcher2 = extraction._get_vote_matcher(nlp)
         assert matcher1 is matcher2
+
+
+class TestTokenMatcherVotes:
+    """Tests for Token Matcher vote result extraction."""
+
+    def test_tally_vote_with_matcher(self, monkeypatch):
+        """Token Matcher extracts tally votes."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        doc = nlp("The motion passed 7-0.")
+        votes = extraction._extract_vote_results_spacy(doc)
+
+        assert len(votes) == 1
+        assert votes[0]["result"] == "passed"
+        assert votes[0]["tally"]["ayes"] == 7
+        assert votes[0]["tally"]["nays"] == 0
+
+    def test_unanimous_vote_with_matcher(self, monkeypatch):
+        """Token Matcher extracts unanimous votes."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        doc = nlp("The motion carried unanimously.")
+        votes = extraction._extract_vote_results_spacy(doc)
+
+        assert len(votes) == 1
+        assert votes[0]["result"] == "passed"
+
+    def test_defeated_variation(self, monkeypatch):
+        """Token Matcher handles 'defeated' as fail."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        doc = nlp("The amendment was defeated 2-5.")
+        votes = extraction._extract_vote_results_spacy(doc)
+
+        assert len(votes) == 1
+        assert votes[0]["result"] == "failed"

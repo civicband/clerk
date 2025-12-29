@@ -61,6 +61,12 @@ _vote_matcher = None
 _motion_matcher = None
 
 
+# Words indicating vote passed
+PASS_LEMMAS = {"pass", "carry", "approve"}
+# Words indicating vote failed
+FAIL_LEMMAS = {"defeat", "fail", "reject"}
+
+
 def _get_vote_matcher(nlp):
     """Get Token Matcher for vote results, initializing lazily.
 
@@ -150,6 +156,71 @@ def _get_motion_matcher(nlp):
     ]])
 
     return _motion_matcher
+
+
+def _extract_vote_results_spacy(doc) -> list[dict]:
+    """Extract vote results using Token Matcher.
+
+    Args:
+        doc: spaCy Doc object
+
+    Returns:
+        List of vote record dicts
+    """
+    nlp = get_nlp()
+    if nlp is None:
+        return []
+
+    matcher = _get_vote_matcher(nlp)
+    if matcher is None:
+        return []
+
+    votes = []
+    matches = matcher(doc)
+
+    for match_id, start, end in matches:
+        span = doc[start:end]
+        match_name = nlp.vocab.strings[match_id]
+
+        if match_name == "TALLY_VOTE":
+            # Extract numbers from span
+            nums = [token.text for token in span if token.like_num]
+            if len(nums) >= 2:
+                ayes = int(nums[0])
+                nays = int(nums[1])
+                # Determine result from the verb lemma
+                verb_lemma = None
+                for token in span:
+                    if token.lemma_ in PASS_LEMMAS | FAIL_LEMMAS:
+                        verb_lemma = token.lemma_
+                        break
+
+                result = "passed" if verb_lemma in PASS_LEMMAS else "failed"
+
+                votes.append(_create_vote_record(
+                    result=result,
+                    ayes=ayes,
+                    nays=nays,
+                    raw_text=span.text,
+                ))
+
+        elif match_name == "UNANIMOUS_VOTE":
+            votes.append(_create_vote_record(
+                result="passed",
+                ayes=None,
+                nays=0,
+                raw_text=span.text,
+            ))
+
+        elif match_name == "VOICE_VOTE":
+            votes.append(_create_vote_record(
+                result="passed",
+                ayes=None,
+                nays=None,
+                raw_text=span.text,
+            ))
+
+    return votes
 
 
 def parse_text(text: str) -> object | None:
