@@ -142,3 +142,52 @@ class TestExtractEntities:
         assert isinstance(result["persons"], list)
         assert isinstance(result["orgs"], list)
         assert isinstance(result["locations"], list)
+
+
+class TestDetectRollCall:
+    """Tests for detect_roll_call function."""
+
+    def test_detects_present_pattern(self):
+        """Detects 'Present: Name, Name, Name' pattern."""
+        extraction = load_extraction_module()
+        text = "Present: Smith, Jones, Lee, Brown, Garcia"
+        result = extraction.detect_roll_call(text)
+
+        assert result is not None
+        assert "Smith" in result
+        assert "Jones" in result
+        assert "Garcia" in result
+
+    def test_detects_roll_call_pattern(self):
+        """Detects 'Roll Call:' pattern."""
+        extraction = load_extraction_module()
+        text = "Roll Call: Members present were Smith, Jones, and Lee."
+        result = extraction.detect_roll_call(text)
+
+        assert result is not None
+        assert len(result) >= 1
+
+    def test_detects_attending_pattern(self):
+        """Detects 'Attending:' pattern."""
+        extraction = load_extraction_module()
+        text = "Attending: Council Member Smith, Council Member Jones"
+        result = extraction.detect_roll_call(text)
+
+        assert result is not None
+
+    def test_returns_none_when_no_roll_call(self):
+        """Returns None when no roll call pattern found."""
+        extraction = load_extraction_module()
+        text = "The meeting was called to order at 7:00 PM."
+        result = extraction.detect_roll_call(text)
+
+        assert result is None
+
+    def test_extracts_names_after_colon(self):
+        """Extracts comma-separated names after pattern."""
+        extraction = load_extraction_module()
+        text = "Present: Mayor Weber, Vice Mayor Smith, Councilmember Jones"
+        result = extraction.detect_roll_call(text)
+
+        assert result is not None
+        assert any("Weber" in name for name in result)

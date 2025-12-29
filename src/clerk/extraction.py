@@ -7,6 +7,7 @@ environment variable.
 
 import logging
 import os
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -108,3 +109,63 @@ def extract_entities(text: str, threshold: float | None = None) -> dict:
             locations.append(entity_data)
 
     return {"persons": persons, "orgs": orgs, "locations": locations}
+
+
+def detect_roll_call(text: str) -> list[str] | None:
+    """Detect roll call patterns and extract attendee names.
+
+    Looks for patterns like:
+    - "Present: Smith, Jones, Lee"
+    - "Roll Call: Members present were..."
+    - "Attending: Council Member Smith, Council Member Jones"
+
+    Args:
+        text: The text to search for roll call patterns
+
+    Returns:
+        List of attendee names if roll call found, None otherwise
+    """
+    patterns = [
+        r"(?:Present|Attending|Roll\s*Call)[:\s]+([^\n.]+)",
+        r"Members\s+present\s+(?:were|are)[:\s]*([^\n.]+)",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            names_section = match.group(1)
+            names = _extract_names_from_list(names_section)
+            if names:
+                return names
+
+    return None
+
+
+def _extract_names_from_list(text: str) -> list[str]:
+    """Extract names from a comma-separated or 'and'-separated list.
+
+    Handles formats like:
+    - "Smith, Jones, Lee"
+    - "Smith, Jones, and Lee"
+    - "Council Member Smith, Council Member Jones"
+    """
+    titles = [
+        "Mayor", "Vice Mayor", "Council Member", "Councilmember",
+        "Councilwoman", "Councilman", "Commissioner", "Chair",
+        "Vice Chair", "President", "Vice President", "Member",
+    ]
+
+    cleaned = text
+    for title in titles:
+        cleaned = re.sub(rf"\b{title}\b", "", cleaned, flags=re.IGNORECASE)
+
+    parts = re.split(r",\s*|\s+and\s+", cleaned)
+
+    names = []
+    for part in parts:
+        name = part.strip()
+        name = name.strip(".,;:")
+        if name and len(name) > 1:
+            names.append(name)
+
+    return names
