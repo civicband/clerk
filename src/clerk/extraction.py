@@ -8,6 +8,7 @@ environment variable.
 import logging
 import os
 import re
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -238,7 +239,7 @@ def _is_parliamentary_motion(verb_token) -> bool:
     return False
 
 
-def _extract_motion_attribution_spacy(doc: object) -> dict | None:
+def _extract_motion_attribution_spacy(doc: Any) -> dict | None:
     """Extract motion/second attribution using DependencyMatcher.
 
     Args:
@@ -291,7 +292,7 @@ def _extract_motion_attribution_spacy(doc: object) -> dict | None:
     return None
 
 
-def _extract_vote_results_spacy(doc: object) -> list[dict]:
+def _extract_vote_results_spacy(doc: Any) -> list[dict]:
     """Extract vote results using Token Matcher.
 
     Args:
@@ -367,7 +368,7 @@ def _extract_vote_results_spacy(doc: object) -> list[dict]:
     return votes
 
 
-def parse_text(text: str) -> object | None:
+def parse_text(text: str) -> Any:
     """Parse text with spaCy, returning Doc or None if unavailable.
 
     Use this to parse once and pass doc to extract_entities() and extract_votes().
@@ -390,7 +391,7 @@ def parse_text(text: str) -> object | None:
         return None
 
 
-def extract_entities(text: str, doc=None, threshold: float | None = None) -> dict:
+def extract_entities(text: str, doc: Any = None, threshold: float | None = None) -> dict:
     """Extract named entities from text using spaCy NER.
 
     Args:
@@ -402,7 +403,7 @@ def extract_entities(text: str, doc=None, threshold: float | None = None) -> dic
         Dict with keys 'persons', 'orgs', 'locations', each containing
         list of {'text': str, 'confidence': float} dicts
     """
-    empty_result = {"persons": [], "orgs": [], "locations": []}
+    empty_result: dict[str, list] = {"persons": [], "orgs": [], "locations": []}
 
     if not EXTRACTION_ENABLED:
         return empty_result
@@ -511,7 +512,7 @@ def _extract_names_from_list(text: str) -> list[str]:
     return names
 
 
-def extract_votes(text: str, doc: object = None, meeting_context: dict | None = None) -> dict:
+def extract_votes(text: str, doc: Any = None, meeting_context: dict | None = None) -> dict:
     """Extract vote records from text.
 
     Uses spaCy Matcher when available, falls back to regex.
@@ -571,7 +572,7 @@ def _extract_rollcall_votes(text: str) -> list[dict]:
     return votes
 
 
-def _extract_votes_spacy(doc: object, text: str, meeting_context: dict) -> dict:
+def _extract_votes_spacy(doc: Any, text: str, meeting_context: dict) -> dict:
     """Extract votes using spaCy Matcher and DependencyMatcher."""
     votes = []
 
