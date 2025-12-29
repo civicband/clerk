@@ -176,3 +176,46 @@ class TestStorageDir:
     def test_default_storage_dir(self):
         """Test the default STORAGE_DIR value."""
         assert STORAGE_DIR == os.environ.get("STORAGE_DIR", "../sites")
+
+
+class TestBuildTableFromTextExtraction:
+    """Tests for extraction integration in build_table_from_text."""
+
+    def test_extraction_populates_json_columns(self, tmp_path, monkeypatch):
+        """Extraction produces valid JSON in new columns."""
+        import json
+        import importlib
+
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+
+        # Create test structure
+        site_dir = tmp_path / "test-site"
+        txt_dir = site_dir / "txt" / "CityCouncil" / "2024-01-15"
+        txt_dir.mkdir(parents=True)
+
+        (txt_dir / "1.txt").write_text(
+            "Present: Smith, Jones, Lee.\n"
+            "The motion passed 5-0."
+        )
+
+        db = sqlite_utils.Database(":memory:")
+        db["minutes"].create({
+            "id": str, "meeting": str, "date": str, "page": int,
+            "text": str, "page_image": str,
+            "entities_json": str, "votes_json": str,
+        }, pk="id")
+
+        import clerk.utils
+        importlib.reload(clerk.utils)
+
+        from clerk.utils import build_table_from_text
+        build_table_from_text("test-site", str(site_dir / "txt"), db, "minutes")
+
+        rows = list(db["minutes"].rows)
+        assert len(rows) == 1
+
+        entities = json.loads(rows[0]["entities_json"])
+        votes = json.loads(rows[0]["votes_json"])
+
+        assert "persons" in entities
+        assert "votes" in votes

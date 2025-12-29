@@ -10,6 +10,13 @@ import pluggy
 import sqlite_utils
 
 from .hookspecs import ClerkSpec
+from .extraction import (
+    create_meeting_context,
+    detect_roll_call,
+    extract_entities,
+    extract_votes,
+    update_context,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +83,13 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None)
         ]
         entries = []
         for meeting_date in meeting_dates:
-            for page in os.listdir(f"{txt_dir}/{meeting}/{meeting_date}"):
+            # Create fresh context for each meeting date
+            meeting_context = create_meeting_context()
+
+            # Sort pages to ensure context accumulates in order
+            pages = sorted(os.listdir(f"{txt_dir}/{meeting}/{meeting_date}"))
+
+            for page in pages:
                 if not page.endswith(".txt"):
                     continue
                 key_hash = {"kind": "minutes"}
@@ -90,6 +103,30 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None)
                         )
                     text = page_file.read()
                     page_number = int(page.split(".")[0])
+
+                    # Extract entities and update context
+                    try:
+                        entities = extract_entities(text)
+                        update_context(meeting_context, entities=entities)
+                    except Exception as e:
+                        logger.warning(f"Entity extraction failed for {page_file_path}: {e}")
+                        entities = {"persons": [], "orgs": [], "locations": []}
+
+                    # Detect roll call and update context
+                    try:
+                        attendees = detect_roll_call(text)
+                        if attendees:
+                            update_context(meeting_context, attendees=attendees)
+                    except Exception as e:
+                        logger.warning(f"Roll call detection failed for {page_file_path}: {e}")
+
+                    # Extract votes with context
+                    try:
+                        votes = extract_votes(text, meeting_context)
+                    except Exception as e:
+                        logger.warning(f"Vote extraction failed for {page_file_path}: {e}")
+                        votes = {"votes": []}
+
                     key_hash.update(
                         {
                             "meeting": meeting,
@@ -107,6 +144,8 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None)
                             "id": key,
                             "text": text,
                             "page_image": page_image_path,
+                            "entities_json": json.dumps(entities),
+                            "votes_json": json.dumps(votes),
                         }
                     )
                     del key_hash["kind"]
