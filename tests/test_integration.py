@@ -395,3 +395,61 @@ class TestErrorHandling:
         backup_db = sqlite_utils.Database(backup_path)
         assert "old_data" in backup_db.table_names()
         assert backup_db["old_data"].count == 1
+
+
+@pytest.mark.integration
+class TestExtractionIntegration:
+    """End-to-end tests for text extraction pipeline."""
+
+    def test_full_extraction_pipeline(self, tmp_path, monkeypatch):
+        """Test extraction from text files to searchable database."""
+        import sqlite_utils
+        import json
+
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+
+        # Create test site structure
+        site_dir = tmp_path / "test-site"
+        txt_dir = site_dir / "txt" / "CityCouncil" / "2024-01-15"
+        txt_dir.mkdir(parents=True)
+
+        # Page 1: Roll call
+        (txt_dir / "1.txt").write_text(
+            "City Council Meeting - January 15, 2024\n"
+            "Roll Call: Members present were Smith, Jones, Lee, Brown, Garcia.\n"
+        )
+
+        # Page 2: Discussion and vote
+        (txt_dir / "2.txt").write_text(
+            "Motion by Smith, seconded by Jones.\n"
+            "The motion to approve the budget passed 5-0.\n"
+            "Ayes: Smith, Jones, Lee, Brown, Garcia. Nays: None.\n"
+        )
+
+        # Create empty meetings.db to be replaced
+        (site_dir / "meetings.db").touch()
+
+        import importlib
+        import clerk.utils
+        importlib.reload(clerk.utils)
+
+        from clerk.utils import build_db_from_text_internal
+        build_db_from_text_internal("test-site")
+
+        # Verify extraction results
+        db = sqlite_utils.Database(site_dir / "meetings.db")
+        rows = list(db["minutes"].rows)
+
+        assert len(rows) == 2
+
+        # Check page 2 has vote extraction
+        page2 = [r for r in rows if r["page"] == 2][0]
+        votes = json.loads(page2["votes_json"])
+
+        assert len(votes["votes"]) >= 1
+        vote = votes["votes"][0]
+        assert vote["result"] == "passed"
+        assert vote["tally"]["ayes"] == 5
+        assert vote["motion_by"] == "Smith"
+        assert vote["seconded_by"] == "Jones"
