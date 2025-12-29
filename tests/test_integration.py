@@ -403,8 +403,9 @@ class TestExtractionIntegration:
 
     def test_full_extraction_pipeline(self, tmp_path, monkeypatch):
         """Test extraction from text files to searchable database."""
-        import sqlite_utils
         import json
+
+        import sqlite_utils
 
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
         monkeypatch.setenv("ENABLE_EXTRACTION", "1")
@@ -431,6 +432,7 @@ class TestExtractionIntegration:
         (site_dir / "meetings.db").touch()
 
         import importlib
+
         import clerk.extraction
         import clerk.utils
         importlib.reload(clerk.extraction)
@@ -464,8 +466,9 @@ class TestExtractionIntegration:
 
     def test_extraction_disabled_produces_empty_json(self, tmp_path, monkeypatch):
         """When extraction disabled, JSON columns have empty structures."""
-        import sqlite_utils
         import json
+
+        import sqlite_utils
 
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
         monkeypatch.delenv("ENABLE_EXTRACTION", raising=False)
@@ -479,6 +482,7 @@ class TestExtractionIntegration:
         (site_dir / "meetings.db").touch()
 
         import importlib
+
         import clerk.extraction
         import clerk.utils
         importlib.reload(clerk.extraction)

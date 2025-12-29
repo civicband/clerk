@@ -183,8 +183,8 @@ class TestBuildTableFromTextExtraction:
 
     def test_extraction_populates_json_columns(self, tmp_path, monkeypatch):
         """Extraction produces valid JSON in new columns."""
-        import json
         import importlib
+        import json
 
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
 
