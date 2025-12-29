@@ -43,3 +43,21 @@ class TestExtractionFeatureFlag:
 
         extraction = load_extraction_module()
         assert extraction.EXTRACTION_ENABLED is False
+
+
+class TestEntityConfidenceThreshold:
+    """Tests for ENTITY_CONFIDENCE_THRESHOLD configuration."""
+
+    def test_default_confidence_threshold(self, monkeypatch):
+        """Default confidence threshold should be 0.7."""
+        monkeypatch.delenv("ENTITY_CONFIDENCE_THRESHOLD", raising=False)
+
+        extraction = load_extraction_module()
+        assert extraction.ENTITY_CONFIDENCE_THRESHOLD == 0.7
+
+    def test_custom_confidence_threshold(self, monkeypatch):
+        """Custom confidence threshold should be read from environment."""
+        monkeypatch.setenv("ENTITY_CONFIDENCE_THRESHOLD", "0.85")
+
+        extraction = load_extraction_module()
+        assert extraction.ENTITY_CONFIDENCE_THRESHOLD == 0.85
