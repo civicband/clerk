@@ -492,15 +492,12 @@ def extract_votes(text: str, doc: object = None, meeting_context: dict | None = 
         return _extract_votes_regex(text, meeting_context)
 
 
-def _extract_votes_spacy(doc: object, text: str, meeting_context: dict) -> dict:
-    """Extract votes using spaCy Matcher and DependencyMatcher."""
+def _extract_rollcall_votes(text: str) -> list[dict]:
+    """Extract roll call votes using regex pattern.
+
+    Works well for both spaCy and regex paths.
+    """
     votes = []
-
-    # Get vote results from Token Matcher
-    vote_results = _extract_vote_results_spacy(doc)
-    votes.extend(vote_results)
-
-    # Also check for roll call pattern (regex works well for this)
     rollcall_pattern = r"Ayes?:\s*([^.]+)\.\s*Nays?:\s*([^.]*)"
     for match in re.finditer(rollcall_pattern, text, re.IGNORECASE):
         ayes_section = match.group(1)
@@ -523,6 +520,19 @@ def _extract_votes_spacy(doc: object, text: str, meeting_context: dict) -> dict:
             individual_votes=individual_votes,
         )
         votes.append(vote)
+    return votes
+
+
+def _extract_votes_spacy(doc: object, text: str, meeting_context: dict) -> dict:
+    """Extract votes using spaCy Matcher and DependencyMatcher."""
+    votes = []
+
+    # Get vote results from Token Matcher
+    vote_results = _extract_vote_results_spacy(doc)
+    votes.extend(vote_results)
+
+    # Also check for roll call pattern (regex works well for this)
+    votes.extend(_extract_rollcall_votes(text))
 
     # Get motion attribution from DependencyMatcher
     motion_info = _extract_motion_attribution_spacy(doc)
@@ -575,28 +585,7 @@ def _extract_votes_regex(text: str, meeting_context: dict) -> dict:
         votes.append(vote)
 
     # Pattern 3: Roll call votes (Ayes: Name, Name. Nays: Name.)
-    rollcall_pattern = r"Ayes?:\s*([^.]+)\.\s*Nays?:\s*([^.]*)"
-    for match in re.finditer(rollcall_pattern, text, re.IGNORECASE):
-        ayes_section = match.group(1)
-        nays_section = match.group(2)
-
-        ayes_names = _extract_names_from_list(ayes_section)
-        nays_names = _extract_names_from_list(nays_section)
-
-        individual_votes = []
-        for name in ayes_names:
-            individual_votes.append({"name": name, "vote": "aye"})
-        for name in nays_names:
-            individual_votes.append({"name": name, "vote": "nay"})
-
-        vote = _create_vote_record(
-            result="passed" if len(ayes_names) > len(nays_names) else "failed",
-            ayes=len(ayes_names),
-            nays=len(nays_names),
-            raw_text=match.group(0),
-            individual_votes=individual_votes,
-        )
-        votes.append(vote)
+    votes.extend(_extract_rollcall_votes(text))
 
     # Try to extract motion/second for each vote
     motion_info = _extract_motion_info(text)
@@ -611,7 +600,7 @@ def _extract_votes_regex(text: str, meeting_context: dict) -> dict:
 def _create_vote_record(
     result: str,
     ayes: int | None,
-    nays: int,
+    nays: int | None,
     raw_text: str,
     individual_votes: list | None = None,
 ) -> dict:
