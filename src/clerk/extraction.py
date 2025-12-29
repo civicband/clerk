@@ -66,6 +66,12 @@ PASS_LEMMAS = {"pass", "carry", "approve"}
 # Words indicating vote failed
 FAIL_LEMMAS = {"defeat", "fail", "reject"}
 
+# Objects that indicate a parliamentary motion (not relocation)
+MOTION_OBJECTS = {
+    "motion", "resolution", "approval", "item", "amendment",
+    "ordinance", "measure", "recommendation", "action", "adoption",
+}
+
 
 def _get_vote_matcher(nlp):
     """Get Token Matcher for vote results, initializing lazily.
@@ -156,6 +162,98 @@ def _get_motion_matcher(nlp):
     ]])
 
     return _motion_matcher
+
+
+def _is_parliamentary_motion(verb_token) -> bool:
+    """Check if a 'move' verb is parliamentary (not relocation).
+
+    Looks at the verb's children to see if it has a motion-related object.
+    """
+    # Check direct objects
+    for child in verb_token.children:
+        if child.dep_ in ("dobj", "attr", "xcomp", "ccomp"):
+            if child.lemma_.lower() in MOTION_OBJECTS:
+                return True
+            # Check if child has motion object ("move to approve")
+            for grandchild in child.children:
+                if grandchild.lemma_.lower() in MOTION_OBJECTS:
+                    return True
+
+    # Check for "move to [verb]" pattern (infinitive complement)
+    for child in verb_token.children:
+        if child.dep_ == "xcomp" and child.pos_ == "VERB":
+            # "move to approve" - this is parliamentary
+            return True
+
+    # Check for prepositional objects that indicate relocation
+    for child in verb_token.children:
+        if child.dep_ == "prep" and child.text.lower() == "to":
+            for pobj in child.children:
+                if pobj.dep_ == "pobj":
+                    # "moved to Oakland" - location, not parliamentary
+                    if pobj.ent_type_ in ("GPE", "LOC", "FAC"):
+                        return False
+
+    # Default: if verb is "second", always parliamentary
+    if verb_token.lemma_ == "second":
+        return True
+
+    # Default for "move" without clear context: uncertain, be conservative
+    return False
+
+
+def _extract_motion_attribution_spacy(doc: object) -> dict | None:
+    """Extract motion/second attribution using DependencyMatcher.
+
+    Args:
+        doc: spaCy Doc object
+
+    Returns:
+        Dict with 'motion_by' and/or 'seconded_by', or None if not found
+    """
+    nlp = get_nlp()
+    if nlp is None:
+        return None
+
+    matcher = _get_motion_matcher(nlp)
+    if matcher is None:
+        return None
+
+    matches = matcher(doc)
+
+    motion_by = None
+    seconded_by = None
+
+    for _match_id, token_ids in matches:
+
+        # Get the matched tokens
+        verb_idx = token_ids[0]  # First token is always the verb
+        verb_token = doc[verb_idx]
+
+        # Skip if this isn't a parliamentary motion
+        if verb_token.lemma_ == "move" and not _is_parliamentary_motion(verb_token):
+            continue
+
+        # Find the subject/agent
+        subject_idx = token_ids[1] if len(token_ids) > 1 else None
+        if subject_idx is not None:
+            subject_token = doc[subject_idx]
+            name = subject_token.text
+
+            # Try to get full name if it's part of a named entity
+            for ent in doc.ents:
+                if subject_token.i >= ent.start and subject_token.i < ent.end:
+                    name = ent.text
+                    break
+
+            if verb_token.lemma_ == "move":
+                motion_by = name
+            elif verb_token.lemma_ == "second":
+                seconded_by = name
+
+    if motion_by or seconded_by:
+        return {"motion_by": motion_by, "seconded_by": seconded_by}
+    return None
 
 
 def _extract_vote_results_spacy(doc: object) -> list[dict]:

@@ -516,3 +516,67 @@ class TestTokenMatcherVotes:
         votes = extraction._extract_vote_results_spacy(doc)
 
         assert len(votes) >= 1
+
+
+class TestDependencyMatcherMotions:
+    """Tests for DependencyMatcher motion attribution."""
+
+    def test_active_voice_motion(self, monkeypatch):
+        """DependencyMatcher extracts 'Smith moved approval'."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        doc = nlp("Smith moved approval of the resolution.")
+        result = extraction._extract_motion_attribution_spacy(doc)
+
+        assert result is not None
+        assert result.get("motion_by") == "Smith"
+
+    def test_passive_voice_motion(self, monkeypatch):
+        """DependencyMatcher extracts 'moved by Smith'."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        doc = nlp("The motion was moved by Smith.")
+        result = extraction._extract_motion_attribution_spacy(doc)
+
+        assert result is not None
+        assert result.get("motion_by") == "Smith"
+
+    def test_seconded_by(self, monkeypatch):
+        """DependencyMatcher extracts 'seconded by Jones'."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        doc = nlp("The item was seconded by Jones.")
+        result = extraction._extract_motion_attribution_spacy(doc)
+
+        assert result is not None
+        assert result.get("seconded_by") == "Jones"
+
+    def test_disambiguation_rejects_relocation(self, monkeypatch):
+        """DependencyMatcher rejects 'moved to Oakland' (not a motion)."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        doc = nlp("The company moved to Oakland last year.")
+        result = extraction._extract_motion_attribution_spacy(doc)
+
+        # Should not extract motion attribution for relocation
+        assert result is None or result.get("motion_by") is None
