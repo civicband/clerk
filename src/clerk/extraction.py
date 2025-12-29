@@ -294,6 +294,7 @@ def create_meeting_context() -> dict:
         "known_persons": set(),
         "known_orgs": set(),
         "attendees": [],
+        # meeting_type is reserved for future use (e.g., "regular", "special", "closed session")
         "meeting_type": None,
     }
 
@@ -317,7 +318,12 @@ def update_context(
             context["known_orgs"].add(org["text"])
 
     if attendees:
-        context["attendees"] = attendees
+        # Accumulate attendees, avoiding duplicates
+        existing = set(context["attendees"])
+        for name in attendees:
+            if name not in existing:
+                context["attendees"].append(name)
+                existing.add(name)
         # Also add attendees to known_persons
         for name in attendees:
             context["known_persons"].add(name)

@@ -314,3 +314,22 @@ class TestMeetingContext:
         assert ctx["attendees"] == attendees
         assert "Smith" in ctx["known_persons"]
         assert "Jones" in ctx["known_persons"]
+
+    def test_update_context_accumulates_attendees(self):
+        """Multiple updates accumulate attendees without duplicates."""
+        extraction = load_extraction_module()
+        ctx = extraction.create_meeting_context()
+
+        # First roll call from page 1
+        extraction.update_context(ctx, attendees=["Smith", "Jones"])
+        assert ctx["attendees"] == ["Smith", "Jones"]
+
+        # Second roll call from page 2 with overlap
+        extraction.update_context(ctx, attendees=["Jones", "Lee", "Brown"])
+        assert ctx["attendees"] == ["Smith", "Jones", "Lee", "Brown"]
+        assert "Lee" in ctx["known_persons"]
+        assert "Brown" in ctx["known_persons"]
+
+        # Third update with all duplicates
+        extraction.update_context(ctx, attendees=["Smith", "Jones"])
+        assert ctx["attendees"] == ["Smith", "Jones", "Lee", "Brown"]
