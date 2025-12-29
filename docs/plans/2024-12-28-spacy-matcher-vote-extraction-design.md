@@ -249,4 +249,31 @@ def test_regex_fallback_when_spacy_unavailable(monkeypatch):
 
 ## Implementation Status
 
-Not yet implemented. This design extends the base text extraction pipeline.
+Implemented. Key components:
+
+- `parse_text()` - Single-parse optimization, parses text once for reuse
+- `_get_vote_matcher()` - Token Matcher for vote results (tally, unanimous, voice)
+- `_get_motion_matcher()` - DependencyMatcher for motion attribution
+- `_extract_vote_results_spacy()` - Token Matcher extraction
+- `_extract_motion_attribution_spacy()` - DependencyMatcher extraction with disambiguation
+- `_extract_rollcall_votes()` - Shared roll-call extraction (regex, works well)
+- `_extract_votes_spacy()` - Integrated spaCy extraction
+- `_extract_votes_regex()` - Regex fallback
+- `extract_votes()` - Main entry point with doc parameter and fallback logic
+
+### Usage
+
+```python
+from clerk.extraction import parse_text, extract_entities, extract_votes
+
+# Parse once, use for both
+doc = parse_text(text)
+entities = extract_entities(text, doc=doc)
+votes = extract_votes(text, doc=doc, meeting_context=context)
+```
+
+### Configuration
+
+Same as base extraction:
+- `ENABLE_EXTRACTION=1` to enable
+- `ENTITY_CONFIDENCE_THRESHOLD=0.7` for entity filtering
