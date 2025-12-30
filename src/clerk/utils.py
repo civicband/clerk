@@ -10,11 +10,12 @@ import pluggy
 import sqlite_utils
 
 from .extraction import (
+    EXTRACTION_ENABLED,
     create_meeting_context,
     detect_roll_call,
     extract_entities,
     extract_votes,
-    parse_texts_batch,
+    get_nlp,
     update_context,
 )
 from .hookspecs import ClerkSpec
@@ -121,12 +122,30 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None)
     if not all_page_data:
         return
 
-    # Phase 2: Single batch parse of ALL texts
+    # Phase 2: Single batch parse of ALL texts with progress updates
+    total_pages = len(all_page_data)
     click.echo(
-        click.style(subdomain, fg="cyan") + f": Parsing {len(all_page_data)} pages..."
+        click.style(subdomain, fg="cyan") + f": Parsing {total_pages} pages..."
     )
     all_texts = [p["text"] for p in all_page_data]
-    all_docs = parse_texts_batch(all_texts)
+
+    # Parse with progress updates every 1000 pages
+    all_docs = []
+    if EXTRACTION_ENABLED:
+        nlp = get_nlp()
+        if nlp is not None:
+            progress_interval = 1000
+            for i, doc in enumerate(nlp.pipe(all_texts, batch_size=500)):
+                all_docs.append(doc)
+                if (i + 1) % progress_interval == 0:
+                    click.echo(
+                        click.style(subdomain, fg="cyan")
+                        + f": Parsed {i + 1}/{total_pages} pages..."
+                    )
+        else:
+            all_docs = [None] * total_pages
+    else:
+        all_docs = [None] * total_pages
 
     # Phase 3: Process pages grouped by meeting date (for context accumulation)
     entries = []
