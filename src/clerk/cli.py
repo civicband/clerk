@@ -335,6 +335,7 @@ def fetch_internal(subdomain, fetcher):
 def build_db_from_text(subdomain):
     """Build database from text files"""
     build_db_from_text_internal(subdomain)
+    rebuild_site_fts_internal(subdomain)
 
 
 def rebuild_site_fts_internal(subdomain):
