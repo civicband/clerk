@@ -43,15 +43,115 @@ def get_nlp():
         return None
 
     try:
-        _nlp = spacy.load("en_core_web_lg")
-        logger.info("Loaded spaCy model en_core_web_lg")
+        _nlp = spacy.load("en_core_web_md")
+        logger.info("Loaded spaCy model en_core_web_md")
     except OSError:
         logger.error(
-            "spaCy model en_core_web_lg not found. Run: python -m spacy download en_core_web_lg"
+            "spaCy model en_core_web_md not found. Run: python -m spacy download en_core_web_md"
         )
         return None
 
+    # Add EntityRuler for title + name patterns (runs before NER)
+    # This helps catch "Councilmember Smith" as PERSON even if NER misses it
+    if "entity_ruler" not in _nlp.pipe_names:
+        ruler = _nlp.add_pipe("entity_ruler", before="ner")
+        _add_title_patterns(ruler)
+        logger.info("Added EntityRuler with title patterns")
+
     return _nlp
+
+
+# Titles that precede person names in civic documents
+CIVIC_TITLES = [
+    "Mayor",
+    "Vice Mayor",
+    "Council Member",
+    "Councilmember",
+    "Councilwoman",
+    "Councilman",
+    "Commissioner",
+    "Chair",
+    "Vice Chair",
+    "Chairman",
+    "Chairwoman",
+    "President",
+    "Vice President",
+    "Member",
+    "Supervisor",
+    "Alderman",
+    "Alderwoman",
+    "Selectman",
+    "Selectwoman",
+    "Director",
+    "Secretary",
+    "Treasurer",
+    "Clerk",
+    "Mr.",
+    "Mrs.",
+    "Ms.",
+    "Dr.",
+]
+
+
+def _add_title_patterns(ruler) -> None:
+    """Add patterns for civic titles + proper names to EntityRuler."""
+    patterns = []
+    for title in CIVIC_TITLES:
+        # Pattern: Title + capitalized word (e.g., "Councilmember Smith")
+        patterns.append(
+            {
+                "label": "PERSON",
+                "pattern": [
+                    {"LOWER": title.lower()},
+                    {"IS_TITLE": True},  # Capitalized word
+                ],
+            }
+        )
+        # Pattern: Title + two capitalized words (e.g., "Mayor John Smith")
+        patterns.append(
+            {
+                "label": "PERSON",
+                "pattern": [
+                    {"LOWER": title.lower()},
+                    {"IS_TITLE": True},
+                    {"IS_TITLE": True},
+                ],
+            }
+        )
+    ruler.add_patterns(patterns)
+
+
+def add_known_persons_to_ruler(known_persons: set[str]) -> None:
+    """Add known person names to the EntityRuler for better recognition.
+
+    Call this with names accumulated from previous pages to help
+    recognize the same names on subsequent pages.
+
+    Args:
+        known_persons: Set of person name strings
+    """
+    nlp = get_nlp()
+    if nlp is None or "entity_ruler" not in nlp.pipe_names:
+        return
+
+    ruler = nlp.get_pipe("entity_ruler")
+
+    # Add exact match patterns for known names
+    patterns = []
+    for name in known_persons:
+        # Skip very short names (likely false positives)
+        if len(name) < 3:
+            continue
+        # Add as exact phrase match
+        patterns.append(
+            {
+                "label": "PERSON",
+                "pattern": name,
+            }
+        )
+
+    if patterns:
+        ruler.add_patterns(patterns)
 
 
 # Lazy-loaded matchers

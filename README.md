@@ -44,7 +44,7 @@ pip install "clerk[pdf,extraction] @ git+https://github.com/civicband/clerk.git"
 **For extraction**, you also need to download the spaCy model and enable the feature:
 
 ```bash
-python -m spacy download en_core_web_lg
+python -m spacy download en_core_web_md
 export ENABLE_EXTRACTION=1
 ```
 
