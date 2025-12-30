@@ -3,8 +3,6 @@
 import json
 import logging
 
-import pytest
-
 from clerk import output
 from clerk.cli import JsonFormatter
 

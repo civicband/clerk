@@ -375,6 +375,8 @@ def build_full_db():
             "page": int,
             "text": str,
             "page_image": str,
+            "entities_json": str,
+            "votes_json": str,
         },
         pk=("id"),
     )
@@ -388,6 +390,8 @@ def build_full_db():
             "page": int,
             "text": str,
             "page_image": str,
+            "entities_json": str,
+            "votes_json": str,
         },
         pk=("id"),
     )

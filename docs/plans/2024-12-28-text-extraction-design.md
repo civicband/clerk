@@ -214,3 +214,30 @@ Post-install: `python -m spacy download en_core_web_trf`
 - Track "current agenda item" from headers
 - Normalize to separate tables if query patterns demand it
 - Fine-tune spaCy model on civic meeting data if accuracy needs improvement
+
+## Implementation Status
+
+Implemented 2024-12-28. See `src/clerk/extraction.py` for the extraction module.
+
+### Usage
+
+1. Install extraction dependencies:
+   ```bash
+   uv sync --extra extraction
+   python -m spacy download en_core_web_trf
+   ```
+
+2. Enable extraction:
+   ```bash
+   export ENABLE_EXTRACTION=1
+   ```
+
+3. Run database build as normal:
+   ```bash
+   clerk build-db-from-text <subdomain>
+   ```
+
+### Configuration
+
+- `ENABLE_EXTRACTION`: Set to `1` to enable (default: `0`)
+- `ENTITY_CONFIDENCE_THRESHOLD`: Minimum confidence for entities (default: `0.7`)
