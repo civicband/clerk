@@ -23,6 +23,31 @@ A Python library for managing civic data pipelines for civic.band. Clerk handles
 uv pip install clerk
 ```
 
+### Optional Features
+
+Clerk has optional dependencies for PDF processing and text extraction:
+
+```bash
+# PDF processing (weasyprint, pdfkit, pdf2image, pypdf)
+uv pip install clerk[pdf]
+
+# Text extraction with spaCy NER
+uv pip install clerk[extraction]
+
+# Both
+uv pip install clerk[pdf,extraction]
+
+# From git
+pip install "clerk[pdf,extraction] @ git+https://github.com/civicband/clerk.git"
+```
+
+**For extraction**, you also need to download the spaCy model and enable the feature:
+
+```bash
+python -m spacy download en_core_web_trf
+export ENABLE_EXTRACTION=1
+```
+
 ### For Development
 
 1. Clone the repository:
@@ -132,6 +157,8 @@ See [docs/plugin-development.md](docs/plugin-development.md) for details.
 ### Environment Variables
 
 - `STORAGE_DIR`: Base directory for site data (default: `../sites`)
+- `ENABLE_EXTRACTION`: Set to `1` to enable spaCy-based entity and vote extraction
+- `ENTITY_CONFIDENCE_THRESHOLD`: Minimum confidence for entity extraction (default: `0.7`)
 
 ### Logfire Configuration
 
