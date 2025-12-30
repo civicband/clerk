@@ -43,10 +43,8 @@ def get_nlp():
         return None
 
     try:
-        # Disable attribute_ruler - we don't use morphological features (MORPH)
-        # Our matchers only use: LEMMA, LOWER, IS_TITLE, LIKE_NUM, DEP, TEXT
-        _nlp = spacy.load("en_core_web_md", disable=["attribute_ruler"])
-        logger.info("Loaded spaCy model en_core_web_md (attribute_ruler disabled)")
+        _nlp = spacy.load("en_core_web_md")
+        logger.info("Loaded spaCy model en_core_web_md")
     except OSError:
         logger.error(
             "spaCy model en_core_web_md not found. Run: python -m spacy download en_core_web_md"
