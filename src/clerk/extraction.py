@@ -43,11 +43,11 @@ def get_nlp():
         return None
 
     try:
-        _nlp = spacy.load("en_core_web_trf")
-        logger.info("Loaded spaCy model en_core_web_trf")
+        _nlp = spacy.load("en_core_web_lg")
+        logger.info("Loaded spaCy model en_core_web_lg")
     except OSError:
         logger.error(
-            "spaCy model en_core_web_trf not found. Run: python -m spacy download en_core_web_trf"
+            "spaCy model en_core_web_lg not found. Run: python -m spacy download en_core_web_lg"
         )
         return None
 
