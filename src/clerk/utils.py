@@ -14,7 +14,7 @@ from .extraction import (
     detect_roll_call,
     extract_entities,
     extract_votes,
-    parse_text,
+    parse_texts_batch,
     update_context,
 )
 from .hookspecs import ClerkSpec
@@ -90,70 +90,87 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None)
             # Sort pages to ensure context accumulates in order
             pages = sorted(os.listdir(f"{txt_dir}/{meeting}/{meeting_date}"))
 
+            # Collect all page data first for batch processing
+            page_data = []
             for page in pages:
                 if not page.endswith(".txt"):
                     continue
-                key_hash = {"kind": "minutes"}
                 page_file_path = f"{txt_dir}/{meeting}/{meeting_date}/{page}"
                 with open(page_file_path) as page_file:
+                    text = page_file.read()
+                    page_number = int(page.split(".")[0])
                     page_image_path = f"/{meeting}/{meeting_date}/{page.split('.')[0]}.png"
                     if table_name == "agendas":
-                        key_hash["kind"] = "agenda"
                         page_image_path = (
                             f"/_agendas/{meeting}/{meeting_date}/{page.split('.')[0]}.png"
                         )
-                    text = page_file.read()
-                    page_number = int(page.split(".")[0])
+                    page_data.append({
+                        "text": text,
+                        "page_number": page_number,
+                        "page_image_path": page_image_path,
+                        "page_file_path": page_file_path,
+                    })
 
-                    # Single parse for both entity and vote extraction
-                    doc = parse_text(text)
+            # Batch parse all texts for this meeting date
+            texts = [p["text"] for p in page_data]
+            docs = parse_texts_batch(texts)
 
-                    # Extract entities and update context
-                    try:
-                        entities = extract_entities(text, doc=doc)
-                        update_context(meeting_context, entities=entities)
-                    except Exception as e:
-                        logger.warning(f"Entity extraction failed for {page_file_path}: {e}")
-                        entities = {"persons": [], "orgs": [], "locations": []}
+            # Now process each page with its pre-parsed doc
+            for i, pdata in enumerate(page_data):
+                text = pdata["text"]
+                doc = docs[i]
+                page_number = pdata["page_number"]
+                page_image_path = pdata["page_image_path"]
+                page_file_path = pdata["page_file_path"]
 
-                    # Detect roll call and update context
-                    try:
-                        attendees = detect_roll_call(text)
-                        if attendees:
-                            update_context(meeting_context, attendees=attendees)
-                    except Exception as e:
-                        logger.warning(f"Roll call detection failed for {page_file_path}: {e}")
+                key_hash = {"kind": "minutes" if table_name != "agendas" else "agenda"}
 
-                    # Extract votes with context
-                    try:
-                        votes = extract_votes(text, doc=doc, meeting_context=meeting_context)
-                    except Exception as e:
-                        logger.warning(f"Vote extraction failed for {page_file_path}: {e}")
-                        votes = {"votes": []}
+                # Extract entities and update context
+                try:
+                    entities = extract_entities(text, doc=doc)
+                    update_context(meeting_context, entities=entities)
+                except Exception as e:
+                    logger.warning(f"Entity extraction failed for {page_file_path}: {e}")
+                    entities = {"persons": [], "orgs": [], "locations": []}
 
-                    key_hash.update(
-                        {
-                            "meeting": meeting,
-                            "date": meeting_date,
-                            "page": page_number,
-                            "text": text,
-                        }
-                    )
-                    if municipality:
-                        key_hash.update({"subdomain": subdomain, "municipality": municipality})
-                    key = sha256(json.dumps(key_hash, sort_keys=True).encode("utf-8")).hexdigest()
-                    key = key[:12]
-                    key_hash.update(
-                        {
-                            "id": key,
-                            "text": text,
-                            "page_image": page_image_path,
-                            "entities_json": json.dumps(entities),
-                            "votes_json": json.dumps(votes),
-                        }
-                    )
-                    del key_hash["kind"]
-                    entries.append(key_hash)
+                # Detect roll call and update context
+                try:
+                    attendees = detect_roll_call(text)
+                    if attendees:
+                        update_context(meeting_context, attendees=attendees)
+                except Exception as e:
+                    logger.warning(f"Roll call detection failed for {page_file_path}: {e}")
+
+                # Extract votes with context
+                try:
+                    votes = extract_votes(text, doc=doc, meeting_context=meeting_context)
+                except Exception as e:
+                    logger.warning(f"Vote extraction failed for {page_file_path}: {e}")
+                    votes = {"votes": []}
+
+                key_hash.update(
+                    {
+                        "meeting": meeting,
+                        "date": meeting_date,
+                        "page": page_number,
+                        "text": text,
+                    }
+                )
+                if municipality:
+                    key_hash.update({"subdomain": subdomain, "municipality": municipality})
+                key = sha256(json.dumps(key_hash, sort_keys=True).encode("utf-8")).hexdigest()
+                key = key[:12]
+                key_hash.update(
+                    {
+                        "id": key,
+                        "text": text,
+                        "page_image": page_image_path,
+                        "entities_json": json.dumps(entities),
+                        "votes_json": json.dumps(votes),
+                    }
+                )
+                del key_hash["kind"]
+                entries.append(key_hash)
         db[table_name].insert_all(entries)
 
 

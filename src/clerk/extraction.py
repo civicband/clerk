@@ -430,6 +430,29 @@ def parse_text(text: str) -> Any:
         return None
 
 
+def parse_texts_batch(texts: list[str], batch_size: int = 100) -> list[Any]:
+    """Parse multiple texts with spaCy using nlp.pipe() for efficiency.
+
+    Args:
+        texts: List of texts to parse
+        batch_size: Number of texts to process at once (default 100)
+
+    Returns:
+        List of spaCy Doc objects (or None for each if unavailable)
+    """
+    if not EXTRACTION_ENABLED:
+        return [None] * len(texts)
+    nlp = get_nlp()
+    if nlp is None:
+        return [None] * len(texts)
+    try:
+        # nlp.pipe() is much more efficient than calling nlp() repeatedly
+        return list(nlp.pipe(texts, batch_size=batch_size))
+    except Exception as e:
+        logger.error(f"spaCy batch processing failed: {e}")
+        return [None] * len(texts)
+
+
 def extract_entities(text: str, doc: Any = None, threshold: float | None = None) -> dict:
     """Extract named entities from text using spaCy NER.
 
