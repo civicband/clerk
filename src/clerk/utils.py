@@ -10,7 +10,6 @@ import pluggy
 import sqlite_utils
 
 from .extraction import (
-    add_known_persons_to_ruler,
     create_meeting_context,
     detect_roll_call,
     extract_entities,
@@ -174,11 +173,6 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None)
                 )
                 del key_hash["kind"]
                 entries.append(key_hash)
-
-            # Feed known persons back to EntityRuler for better recognition on next meeting
-            if meeting_context["known_persons"]:
-                add_known_persons_to_ruler(meeting_context["known_persons"])
-
         db[table_name].insert_all(entries)
 
 
