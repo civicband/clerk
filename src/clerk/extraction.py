@@ -57,6 +57,7 @@ def get_nlp():
 # Lazy-loaded matchers
 _vote_matcher = None
 _motion_matcher = None
+_rollcall_matcher = None
 
 
 # Words indicating vote passed
@@ -199,6 +200,44 @@ def _get_motion_matcher(nlp):
     )
 
     return _motion_matcher
+
+
+def _get_rollcall_matcher(nlp):
+    """Get Token Matcher for roll call patterns, initializing lazily.
+
+    Patterns detect:
+    - "Ayes:" or "Aye:" markers
+    - "Nays:" or "Nay:" markers
+    """
+    global _rollcall_matcher
+
+    if _rollcall_matcher is not None:
+        return _rollcall_matcher
+
+    try:
+        from spacy.matcher import Matcher
+    except ImportError:
+        return None
+
+    _rollcall_matcher = Matcher(nlp.vocab)
+
+    # Pattern: "Ayes:" or "Aye:"
+    _rollcall_matcher.add(
+        "AYES_MARKER",
+        [
+            [{"LOWER": {"IN": ["ayes", "aye"]}}, {"TEXT": ":"}],
+        ],
+    )
+
+    # Pattern: "Nays:" or "Nay:"
+    _rollcall_matcher.add(
+        "NAYS_MARKER",
+        [
+            [{"LOWER": {"IN": ["nays", "nay"]}}, {"TEXT": ":"}],
+        ],
+    )
+
+    return _rollcall_matcher
 
 
 def _is_parliamentary_motion(verb_token) -> bool:
@@ -541,10 +580,105 @@ def extract_votes(text: str, doc: Any = None, meeting_context: dict | None = Non
         return _extract_votes_regex(text, meeting_context)
 
 
-def _extract_rollcall_votes(text: str) -> list[dict]:
+def _extract_rollcall_votes_spacy(doc: Any) -> list[dict]:
+    """Extract roll call votes using Token Matcher + NER.
+
+    Uses Token Matcher to find Ayes/Nays structure, then extracts
+    PERSON entities from those spans.
+
+    Args:
+        doc: spaCy Doc object
+
+    Returns:
+        List of vote records, empty if no roll call found
+    """
+    nlp = get_nlp()
+    if nlp is None:
+        return []
+
+    matcher = _get_rollcall_matcher(nlp)
+    if matcher is None:
+        return []
+
+    matches = matcher(doc)
+    if not matches:
+        return []
+
+    # Find positions of Ayes/Nays markers
+    ayes_positions = []
+    nays_positions = []
+
+    for match_id, _start, end in matches:
+        label = nlp.vocab.strings[match_id]
+        if label == "AYES_MARKER":
+            ayes_positions.append(end)  # Position after the ":"
+        elif label == "NAYS_MARKER":
+            nays_positions.append(end)
+
+    if not ayes_positions:
+        return []  # No roll call found
+
+    votes = []
+
+    # Process each Ayes marker (could be multiple roll calls on a page)
+    for ayes_pos in ayes_positions:
+        # Find the corresponding Nays position (next one after this Ayes)
+        nays_pos = None
+        for np in nays_positions:
+            if np > ayes_pos:
+                nays_pos = np
+                break
+
+        # Find sentence end (period) for the nays section
+        nays_end = len(doc)
+        for j, token in enumerate(doc):
+            if j > (nays_pos if nays_pos else ayes_pos) and token.text == ".":
+                nays_end = j
+                break
+
+        # Extract PERSON entities in ayes span (from ayes_pos to nays_pos or sentence end)
+        ayes_span_end = nays_pos - 2 if nays_pos else nays_end  # -2 to skip "Nays" and ":"
+        ayes_names = []
+        for ent in doc.ents:
+            if ent.label_ == "PERSON" and ent.start >= ayes_pos and ent.end <= ayes_span_end:
+                ayes_names.append(ent.text)
+
+        # Extract PERSON entities in nays span (from nays_pos to sentence end)
+        nays_names = []
+        if nays_pos:
+            for ent in doc.ents:
+                if ent.label_ == "PERSON" and ent.start >= nays_pos and ent.end <= nays_end:
+                    nays_names.append(ent.text)
+
+        # Only create vote record if we found names
+        if ayes_names or nays_names:
+            individual_votes = []
+            for name in ayes_names:
+                individual_votes.append({"name": name, "vote": "aye"})
+            for name in nays_names:
+                individual_votes.append({"name": name, "vote": "nay"})
+
+            # Get raw text for the roll call
+            raw_start = ayes_pos - 2  # Include "Ayes:"
+            raw_end = nays_end + 1 if nays_end < len(doc) else len(doc)
+            raw_text = doc[raw_start:raw_end].text
+
+            vote = _create_vote_record(
+                result="passed" if len(ayes_names) > len(nays_names) else "failed",
+                ayes=len(ayes_names),
+                nays=len(nays_names),
+                raw_text=raw_text,
+                individual_votes=individual_votes,
+            )
+            votes.append(vote)
+
+    return votes
+
+
+def _extract_rollcall_votes_regex(text: str) -> list[dict]:
     """Extract roll call votes using regex pattern.
 
-    Works well for both spaCy and regex paths.
+    Fallback when spaCy extraction returns empty.
     """
     votes = []
     rollcall_pattern = r"Ayes?:\s*([^.]+)\.\s*Nays?:\s*([^.]*)"
@@ -580,8 +714,12 @@ def _extract_votes_spacy(doc: Any, text: str, meeting_context: dict) -> dict:
     vote_results = _extract_vote_results_spacy(doc)
     votes.extend(vote_results)
 
-    # Also check for roll call pattern (regex works well for this)
-    votes.extend(_extract_rollcall_votes(text))
+    # Try spaCy roll call extraction first
+    rollcall_votes = _extract_rollcall_votes_spacy(doc)
+    if not rollcall_votes:
+        # Fall back to regex if spaCy found no roll call votes
+        rollcall_votes = _extract_rollcall_votes_regex(text)
+    votes.extend(rollcall_votes)
 
     # Get motion attribution from DependencyMatcher
     motion_info = _extract_motion_attribution_spacy(doc)
@@ -634,7 +772,7 @@ def _extract_votes_regex(text: str, meeting_context: dict) -> dict:
         votes.append(vote)
 
     # Pattern 3: Roll call votes (Ayes: Name, Name. Nays: Name.)
-    votes.extend(_extract_rollcall_votes(text))
+    votes.extend(_extract_rollcall_votes_regex(text))
 
     # Try to extract motion/second for each vote
     motion_info = _extract_motion_info(text)

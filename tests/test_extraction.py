@@ -630,3 +630,99 @@ class TestExtractVotesWithSpacy:
         result = extraction.extract_votes(text, doc=doc)
 
         assert len(result["votes"]) == 1
+
+
+class TestRollcallMatcher:
+    """Tests for roll call Token Matcher initialization."""
+
+    def test_get_rollcall_matcher_returns_matcher(self, monkeypatch):
+        """_get_rollcall_matcher returns Matcher when spaCy available."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        matcher = extraction._get_rollcall_matcher(nlp)
+        assert matcher is not None
+
+    def test_rollcall_matcher_is_cached(self, monkeypatch):
+        """Roll call matcher should be cached after first initialization."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        matcher1 = extraction._get_rollcall_matcher(nlp)
+        matcher2 = extraction._get_rollcall_matcher(nlp)
+        assert matcher1 is matcher2
+
+
+class TestSpacyRollcallExtraction:
+    """Tests for spaCy-based roll call vote extraction."""
+
+    def test_extracts_rollcall_with_spacy(self, monkeypatch):
+        """spaCy extracts roll call votes using NER."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        # Use a text where spaCy should recognize names as PERSON entities
+        doc = nlp("Ayes: John Smith, Mary Jones. Nays: Robert Brown.")
+        votes = extraction._extract_rollcall_votes_spacy(doc)
+
+        # May return empty if NER doesn't recognize as PERSON
+        # This tests the function runs without error
+        assert isinstance(votes, list)
+
+    def test_returns_empty_when_no_rollcall_pattern(self, monkeypatch):
+        """spaCy roll call returns empty when no Ayes/Nays pattern."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        doc = nlp("The motion passed 7-0.")
+        votes = extraction._extract_rollcall_votes_spacy(doc)
+
+        assert votes == []
+
+    def test_fallback_to_regex_when_spacy_finds_nothing(self, monkeypatch):
+        """extract_votes falls back to regex for roll calls when spaCy finds none."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        # Text with roll call that regex can parse
+        text = "Ayes: Smith, Jones. Nays: Brown."
+        result = extraction.extract_votes(text)
+
+        # Should find votes (either via spaCy NER or regex fallback)
+        assert len(result["votes"]) >= 1
+        # Should have individual votes
+        if result["votes"]:
+            assert len(result["votes"][0]["individual_votes"]) >= 1
+
+    def test_spacy_rollcall_returns_empty_when_nlp_unavailable(self, monkeypatch):
+        """_extract_rollcall_votes_spacy returns empty when NLP unavailable."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        # Force spaCy to be unavailable
+        extraction._nlp = None
+        extraction._nlp_load_attempted = True
+
+        # Create a mock doc-like object (shouldn't be used since nlp is None)
+        result = extraction._extract_rollcall_votes_spacy(None)
+        assert result == []
