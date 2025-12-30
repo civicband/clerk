@@ -24,6 +24,7 @@ pdf = [
 ]
 extraction = [
     "spacy>=3.5.0",
+    "numpy<2",  # spaCy/torch not yet compatible with NumPy 2.x
 ]
 dev = [
     "pytest>=7.4.0",
