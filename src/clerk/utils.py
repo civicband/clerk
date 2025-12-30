@@ -75,23 +75,22 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None)
     directories = [
         directory for directory in sorted(os.listdir(txt_dir)) if directory != ".DS_Store"
     ]
+
+    # Phase 1: Collect ALL page data across all meetings and dates
+    # This enables a single large batch parse instead of many small ones
+    all_page_data = []
+    meeting_date_boundaries = []  # Track where each meeting date starts/ends
+
     for meeting in directories:
-        click.echo(click.style(subdomain, fg="cyan") + ": " + f"Processing {meeting}")
         meeting_dates = [
             meeting_date
             for meeting_date in sorted(os.listdir(f"{txt_dir}/{meeting}"))
             if meeting_date != ".DS_Store"
         ]
-        entries = []
         for meeting_date in meeting_dates:
-            # Create fresh context for each meeting date
-            meeting_context = create_meeting_context()
-
-            # Sort pages to ensure context accumulates in order
+            start_idx = len(all_page_data)
             pages = sorted(os.listdir(f"{txt_dir}/{meeting}/{meeting_date}"))
 
-            # Collect all page data first for batch processing
-            page_data = []
             for page in pages:
                 if not page.endswith(".txt"):
                     continue
@@ -104,76 +103,103 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None)
                         page_image_path = (
                             f"/_agendas/{meeting}/{meeting_date}/{page.split('.')[0]}.png"
                         )
-                    page_data.append(
+                    all_page_data.append(
                         {
                             "text": text,
                             "page_number": page_number,
                             "page_image_path": page_image_path,
                             "page_file_path": page_file_path,
+                            "meeting": meeting,
+                            "meeting_date": meeting_date,
                         }
                     )
 
-            # Batch parse all texts for this meeting date
-            texts = [p["text"] for p in page_data]
-            docs = parse_texts_batch(texts)
+            end_idx = len(all_page_data)
+            if end_idx > start_idx:
+                meeting_date_boundaries.append((meeting, meeting_date, start_idx, end_idx))
 
-            # Now process each page with its pre-parsed doc
-            for i, pdata in enumerate(page_data):
-                text = pdata["text"]
-                doc = docs[i]
-                page_number = pdata["page_number"]
-                page_image_path = pdata["page_image_path"]
-                page_file_path = pdata["page_file_path"]
+    if not all_page_data:
+        return
 
-                key_hash = {"kind": "minutes" if table_name != "agendas" else "agenda"}
+    # Phase 2: Single batch parse of ALL texts
+    click.echo(
+        click.style(subdomain, fg="cyan") + f": Parsing {len(all_page_data)} pages..."
+    )
+    all_texts = [p["text"] for p in all_page_data]
+    all_docs = parse_texts_batch(all_texts)
 
-                # Extract entities and update context
-                try:
-                    entities = extract_entities(text, doc=doc)
-                    update_context(meeting_context, entities=entities)
-                except Exception as e:
-                    logger.warning(f"Entity extraction failed for {page_file_path}: {e}")
-                    entities = {"persons": [], "orgs": [], "locations": []}
+    # Phase 3: Process pages grouped by meeting date (for context accumulation)
+    entries = []
+    current_meeting = None
 
-                # Detect roll call and update context
-                try:
-                    attendees = detect_roll_call(text)
-                    if attendees:
-                        update_context(meeting_context, attendees=attendees)
-                except Exception as e:
-                    logger.warning(f"Roll call detection failed for {page_file_path}: {e}")
+    for meeting, meeting_date, start_idx, end_idx in meeting_date_boundaries:
+        # Log progress per meeting (not per date, to reduce noise)
+        if meeting != current_meeting:
+            click.echo(click.style(subdomain, fg="cyan") + ": " + f"Processing {meeting}")
+            current_meeting = meeting
 
-                # Extract votes with context
-                try:
-                    votes = extract_votes(text, doc=doc, meeting_context=meeting_context)
-                except Exception as e:
-                    logger.warning(f"Vote extraction failed for {page_file_path}: {e}")
-                    votes = {"votes": []}
+        # Create fresh context for each meeting date
+        meeting_context = create_meeting_context()
 
-                key_hash.update(
-                    {
-                        "meeting": meeting,
-                        "date": meeting_date,
-                        "page": page_number,
-                        "text": text,
-                    }
-                )
-                if municipality:
-                    key_hash.update({"subdomain": subdomain, "municipality": municipality})
-                key = sha256(json.dumps(key_hash, sort_keys=True).encode("utf-8")).hexdigest()
-                key = key[:12]
-                key_hash.update(
-                    {
-                        "id": key,
-                        "text": text,
-                        "page_image": page_image_path,
-                        "entities_json": json.dumps(entities),
-                        "votes_json": json.dumps(votes),
-                    }
-                )
-                del key_hash["kind"]
-                entries.append(key_hash)
-        db[table_name].insert_all(entries)
+        # Process pages for this meeting date with their pre-parsed docs
+        for i in range(start_idx, end_idx):
+            pdata = all_page_data[i]
+            doc = all_docs[i]
+            text = pdata["text"]
+            page_number = pdata["page_number"]
+            page_image_path = pdata["page_image_path"]
+            page_file_path = pdata["page_file_path"]
+
+            key_hash = {"kind": "minutes" if table_name != "agendas" else "agenda"}
+
+            # Extract entities and update context
+            try:
+                entities = extract_entities(text, doc=doc)
+                update_context(meeting_context, entities=entities)
+            except Exception as e:
+                logger.warning(f"Entity extraction failed for {page_file_path}: {e}")
+                entities = {"persons": [], "orgs": [], "locations": []}
+
+            # Detect roll call and update context
+            try:
+                attendees = detect_roll_call(text)
+                if attendees:
+                    update_context(meeting_context, attendees=attendees)
+            except Exception as e:
+                logger.warning(f"Roll call detection failed for {page_file_path}: {e}")
+
+            # Extract votes with context
+            try:
+                votes = extract_votes(text, doc=doc, meeting_context=meeting_context)
+            except Exception as e:
+                logger.warning(f"Vote extraction failed for {page_file_path}: {e}")
+                votes = {"votes": []}
+
+            key_hash.update(
+                {
+                    "meeting": meeting,
+                    "date": meeting_date,
+                    "page": page_number,
+                    "text": text,
+                }
+            )
+            if municipality:
+                key_hash.update({"subdomain": subdomain, "municipality": municipality})
+            key = sha256(json.dumps(key_hash, sort_keys=True).encode("utf-8")).hexdigest()
+            key = key[:12]
+            key_hash.update(
+                {
+                    "id": key,
+                    "text": text,
+                    "page_image": page_image_path,
+                    "entities_json": json.dumps(entities),
+                    "votes_json": json.dumps(votes),
+                }
+            )
+            del key_hash["kind"]
+            entries.append(key_hash)
+
+    db[table_name].insert_all(entries)
 
 
 def build_db_from_text_internal(subdomain):

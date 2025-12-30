@@ -43,8 +43,10 @@ def get_nlp():
         return None
 
     try:
-        _nlp = spacy.load("en_core_web_md")
-        logger.info("Loaded spaCy model en_core_web_md")
+        # Disable attribute_ruler - we don't use morphological features (MORPH)
+        # Our matchers only use: LEMMA, LOWER, IS_TITLE, LIKE_NUM, DEP, TEXT
+        _nlp = spacy.load("en_core_web_md", disable=["attribute_ruler"])
+        logger.info("Loaded spaCy model en_core_web_md (attribute_ruler disabled)")
     except OSError:
         logger.error(
             "spaCy model en_core_web_md not found. Run: python -m spacy download en_core_web_md"
@@ -530,12 +532,16 @@ def parse_text(text: str) -> Any:
         return None
 
 
-def parse_texts_batch(texts: list[str], batch_size: int = 100) -> list[Any]:
+def parse_texts_batch(
+    texts: list[str], batch_size: int = 500, n_process: int = 1
+) -> list[Any]:
     """Parse multiple texts with spaCy using nlp.pipe() for efficiency.
 
     Args:
         texts: List of texts to parse
-        batch_size: Number of texts to process at once (default 100)
+        batch_size: Number of texts to process at once (default 500)
+        n_process: Number of parallel processes (default 1, set higher for multicore)
+                   Note: n_process > 1 may have issues on macOS due to fork behavior
 
     Returns:
         List of spaCy Doc objects (or None for each if unavailable)
@@ -547,7 +553,11 @@ def parse_texts_batch(texts: list[str], batch_size: int = 100) -> list[Any]:
         return [None] * len(texts)
     try:
         # nlp.pipe() is much more efficient than calling nlp() repeatedly
-        return list(nlp.pipe(texts, batch_size=batch_size))
+        # n_process > 1 enables multiprocessing for additional speedup
+        if n_process > 1:
+            return list(nlp.pipe(texts, batch_size=batch_size, n_process=n_process))
+        else:
+            return list(nlp.pipe(texts, batch_size=batch_size))
     except Exception as e:
         logger.error(f"spaCy batch processing failed: {e}")
         return [None] * len(texts)
