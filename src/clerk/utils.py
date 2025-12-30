@@ -130,12 +130,21 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None)
     all_texts = [p["text"] for p in all_page_data]
 
     # Parse with progress updates every 1000 pages
+    # n_process > 1 enables multiprocessing for ~2-4x speedup on multi-core machines
+    n_process = int(os.environ.get("SPACY_N_PROCESS", "1"))
     all_docs = []
     if EXTRACTION_ENABLED:
         nlp = get_nlp()
         if nlp is not None:
             progress_interval = 1000
-            for i, doc in enumerate(nlp.pipe(all_texts, batch_size=500)):
+            pipe_kwargs = {"batch_size": 500}
+            if n_process > 1:
+                pipe_kwargs["n_process"] = n_process
+                click.echo(
+                    click.style(subdomain, fg="cyan")
+                    + f": Using {n_process} processes for parsing"
+                )
+            for i, doc in enumerate(nlp.pipe(all_texts, **pipe_kwargs)):
                 all_docs.append(doc)
                 if (i + 1) % progress_interval == 0:
                     click.echo(
