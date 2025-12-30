@@ -270,6 +270,10 @@ def build_db_from_text_internal(subdomain):
         build_table_from_text(subdomain, minutes_txt_dir, db, "minutes")
     if os.path.exists(agendas_txt_dir):
         build_table_from_text(subdomain, agendas_txt_dir, db, "agendas")
+
+    # Explicitly close database to ensure all writes are flushed
+    db.close()
+
     et = time.time()
     elapsed_time = et - st
     logger.info("Database build completed subdomain=%s elapsed_time=%.2f", subdomain, elapsed_time)
