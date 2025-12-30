@@ -159,6 +159,7 @@ See [docs/plugin-development.md](docs/plugin-development.md) for details.
 - `STORAGE_DIR`: Base directory for site data (default: `../sites`)
 - `ENABLE_EXTRACTION`: Set to `1` to enable spaCy-based entity and vote extraction
 - `ENTITY_CONFIDENCE_THRESHOLD`: Minimum confidence for entity extraction (default: `0.7`)
+- `SPACY_N_PROCESS`: Number of CPU cores for parallel spaCy processing (default: `1`). Set to `4` or higher on multi-core machines for ~2x speedup
 
 ### Logfire Configuration
 
