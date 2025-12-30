@@ -587,28 +587,47 @@ def extract_entities(text: str, doc: Any = None, threshold: float | None = None)
     if threshold is None:
         threshold = ENTITY_CONFIDENCE_THRESHOLD
 
+    # Use sets to track seen entities for deduplication
+    seen_persons = set()
+    seen_orgs = set()
+    seen_locations = set()
+
     persons = []
     orgs = []
     locations = []
 
     for ent in doc.ents:
+        # Clean entity text: normalize whitespace and remove line breaks
+        cleaned_text = " ".join(ent.text.split())
+
+        # Skip empty or very short entities after cleaning
+        if len(cleaned_text) < 2:
+            continue
+
         # spaCy transformer models don't have direct confidence scores,
         # but we can use the model's certainty through the kb_id or similar.
         # For now, we'll use a heuristic based on entity length and type.
         # In practice, transformer models are high-confidence.
         confidence = 0.85  # Default for transformer model
 
-        entity_data = {"text": ent.text, "confidence": confidence}
-
         if confidence < threshold:
             continue
 
+        entity_data = {"text": cleaned_text, "confidence": confidence}
+
+        # Deduplicate by checking if we've seen this text before
         if ent.label_ == "PERSON":
-            persons.append(entity_data)
+            if cleaned_text not in seen_persons:
+                seen_persons.add(cleaned_text)
+                persons.append(entity_data)
         elif ent.label_ == "ORG":
-            orgs.append(entity_data)
+            if cleaned_text not in seen_orgs:
+                seen_orgs.add(cleaned_text)
+                orgs.append(entity_data)
         elif ent.label_ in ("GPE", "LOC", "FAC"):
-            locations.append(entity_data)
+            if cleaned_text not in seen_locations:
+                seen_locations.add(cleaned_text)
+                locations.append(entity_data)
 
     return {"persons": persons, "orgs": orgs, "locations": locations}
 
