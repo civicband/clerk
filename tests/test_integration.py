@@ -5,6 +5,7 @@ import sqlite_utils
 from click.testing import CliRunner
 
 from clerk.cli import cli
+from clerk.extraction import EXTRACTION_ENABLED
 
 
 @pytest.mark.integration
@@ -397,6 +398,7 @@ class TestErrorHandling:
         assert backup_db["old_data"].count == 1
 
 
+@pytest.mark.skipif(not EXTRACTION_ENABLED, reason="Extraction disabled or spaCy not available")
 @pytest.mark.integration
 class TestExtractionCaching:
     """Integration tests for extraction caching."""

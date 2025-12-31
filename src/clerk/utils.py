@@ -53,7 +53,7 @@ def load_extraction_cache(cache_file: str, expected_hash: str) -> dict | None:
     """
     try:
         with open(cache_file) as f:
-            data = json.load(f)
+            data: dict = json.load(f)
 
         # Validate structure
         required_keys = {"content_hash", "entities", "votes"}
