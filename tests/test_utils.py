@@ -226,3 +226,110 @@ class TestBuildTableFromTextExtraction:
 
         assert "persons" in entities
         assert "votes" in votes
+
+
+def test_hash_text_content():
+    """Test consistent hashing of text content."""
+    from clerk.utils import hash_text_content
+
+    text1 = "Sample meeting minutes"
+    text2 = "Sample meeting minutes"
+    text3 = "Different content"
+
+    hash1 = hash_text_content(text1)
+    hash2 = hash_text_content(text2)
+    hash3 = hash_text_content(text3)
+
+    assert hash1 == hash2, "Same text should produce same hash"
+    assert hash1 != hash3, "Different text should produce different hash"
+    assert len(hash1) == 64, "SHA256 should produce 64-char hex string"
+
+
+def test_load_extraction_cache_valid(tmp_path):
+    """Test loading valid cache file with matching hash."""
+    from clerk.utils import load_extraction_cache
+    import json
+
+    cache_file = tmp_path / "test.txt.extracted.json"
+    expected_hash = "abc123"
+    cache_data = {
+        "content_hash": "abc123",
+        "model_version": "en_core_web_md",
+        "extracted_at": "2025-12-31T12:00:00Z",
+        "entities": {"persons": ["John Doe"], "orgs": [], "locations": []},
+        "votes": {"votes": []}
+    }
+
+    cache_file.write_text(json.dumps(cache_data))
+
+    result = load_extraction_cache(str(cache_file), expected_hash)
+
+    assert result is not None
+    assert result["content_hash"] == "abc123"
+    assert result["entities"]["persons"] == ["John Doe"]
+
+
+def test_load_extraction_cache_hash_mismatch(tmp_path):
+    """Test cache rejected when hash doesn't match."""
+    from clerk.utils import load_extraction_cache
+    import json
+
+    cache_file = tmp_path / "test.txt.extracted.json"
+    cache_data = {
+        "content_hash": "abc123",
+        "entities": {"persons": [], "orgs": [], "locations": []},
+        "votes": {"votes": []}
+    }
+
+    cache_file.write_text(json.dumps(cache_data))
+
+    result = load_extraction_cache(str(cache_file), "different_hash")
+
+    assert result is None
+
+
+def test_load_extraction_cache_missing_file():
+    """Test cache returns None for missing file."""
+    from clerk.utils import load_extraction_cache
+
+    result = load_extraction_cache("/nonexistent/file.json", "abc123")
+
+    assert result is None
+
+
+def test_load_extraction_cache_corrupted_json(tmp_path):
+    """Test cache returns None for corrupted JSON."""
+    from clerk.utils import load_extraction_cache
+
+    cache_file = tmp_path / "test.txt.extracted.json"
+    cache_file.write_text("{ invalid json")
+
+    result = load_extraction_cache(str(cache_file), "abc123")
+
+    assert result is None
+
+
+def test_save_extraction_cache(tmp_path):
+    """Test saving extraction cache to file."""
+    from clerk.utils import save_extraction_cache
+    import json
+
+    cache_file = tmp_path / "test.txt.extracted.json"
+    cache_data = {
+        "content_hash": "abc123",
+        "model_version": "en_core_web_md",
+        "extracted_at": "2025-12-31T12:00:00Z",
+        "entities": {"persons": ["Jane Smith"], "orgs": ["City Council"], "locations": []},
+        "votes": {"votes": [{"motion": "Test", "result": "passed"}]}
+    }
+
+    save_extraction_cache(str(cache_file), cache_data)
+
+    assert cache_file.exists()
+
+    with open(cache_file) as f:
+        loaded = json.load(f)
+
+    assert loaded["content_hash"] == "abc123"
+    assert loaded["entities"]["persons"] == ["Jane Smith"]
+    assert loaded["votes"]["votes"][0]["motion"] == "Test"

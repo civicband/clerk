@@ -28,6 +28,63 @@ pm.add_hookspecs(ClerkSpec)
 STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
 
 
+def hash_text_content(text: str) -> str:
+    """Hash text content for cache validation.
+
+    Args:
+        text: The text content to hash
+
+    Returns:
+        SHA256 hash as hex string
+    """
+    return sha256(text.encode("utf-8")).hexdigest()
+
+
+def load_extraction_cache(cache_file: str, expected_hash: str) -> dict | None:
+    """Load extraction cache if valid.
+
+    Args:
+        cache_file: Path to .extracted.json cache file
+        expected_hash: Expected content hash
+
+    Returns:
+        Cache data dict if valid, None otherwise
+    """
+    try:
+        with open(cache_file) as f:
+            data = json.load(f)
+
+        # Validate structure
+        required_keys = {"content_hash", "entities", "votes"}
+        if not required_keys.issubset(data.keys()):
+            logger.debug(f"Cache invalid: missing keys in {cache_file}")
+            return None
+
+        # Validate hash match
+        if data["content_hash"] != expected_hash:
+            logger.debug(f"Cache invalid: hash mismatch in {cache_file}")
+            return None
+
+        return data
+    except (json.JSONDecodeError, FileNotFoundError, KeyError) as e:
+        logger.debug(f"Cache invalid: {e} in {cache_file}")
+        return None
+
+
+def save_extraction_cache(cache_file: str, data: dict) -> None:
+    """Save extraction results to cache file.
+
+    Args:
+        cache_file: Path to .extracted.json cache file
+        data: Cache data to save (must include content_hash, entities, votes)
+    """
+    try:
+        with open(cache_file, "w") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        logger.warning(f"Failed to save cache {cache_file}: {e}")
+
+
 def assert_db_exists():
     db = sqlite_utils.Database("civic.db")
     if not db["sites"].exists():
