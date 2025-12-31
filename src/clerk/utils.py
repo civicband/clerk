@@ -125,6 +125,7 @@ def assert_db_exists():
 
 
 def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None, force_extraction=False):
+    st = time.time()
     logger.info(
         "Building table from text subdomain=%s table_name=%s municipality=%s force_extraction=%s",
         subdomain,
@@ -342,6 +343,23 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None,
             entries.append(key_hash)
 
     db[table_name].insert_all(entries)
+
+    # Log performance summary
+    et = time.time()
+    elapsed = et - st
+    total_files = len(all_page_data)
+    cache_hit_rate = round(100 * cache_hits / total_files, 1) if total_files > 0 else 0
+
+    from .output import log
+    log(
+        f"Build completed in {elapsed:.2f}s ({cache_hit_rate}% from cache)",
+        subdomain=subdomain,
+        elapsed_time=f"{elapsed:.2f}",
+        cache_hit_rate=cache_hit_rate,
+        total_pages=total_files,
+        cache_hits=cache_hits,
+        extracted=cache_misses,
+    )
 
 
 def build_db_from_text_internal(subdomain, force_extraction=False):
