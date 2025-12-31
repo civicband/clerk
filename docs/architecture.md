@@ -135,14 +135,17 @@ logfire.instrument_sqlite3()
 │  OCR Phase      │  ← Calls fetcher.ocr()
 │                 │  ← Extracts text from PDFs
 │                 │  ← Saves to {subdomain}/txt/
+│  → needs_extraction  ← Updates civic.db status
 └──────┬──────────┘
        │
        ▼
 ┌─────────────────┐
 │ Transform Phase │  ← Calls fetcher.transform()
 │                 │  ← Calls build_db_from_text()
+│                 │  ← spaCy entity/vote extraction
 │                 │  ← Creates meetings.db
 │                 │  ← Generates record IDs (SHA256)
+│  → needs_deploy │  ← Updates civic.db status
 └──────┬──────────┘
        │
        ▼
@@ -154,9 +157,9 @@ logfire.instrument_sqlite3()
        ▼
 ┌─────────────────┐
 │ Deploy Phase    │  ← Calls deploy_municipality hook
-│ Status:         │  ← Uploads to hosting
-│ → needs_deploy  │  ← Calls post_deploy hook
-│ → deployed      │  ← Updates civic.db status
+│                 │  ← Uploads to hosting
+│                 │  ← Calls post_deploy hook
+│  → deployed     │  ← Updates civic.db status
 └─────────────────┘
 ```
 
@@ -211,7 +214,7 @@ class MyFetcher:
 Sites progress through these statuses:
 
 ```
-new → fetching → needs_ocr → needs_deploy → deployed
+new → fetching → needs_ocr → needs_extraction → needs_deploy → deployed
                                 ↓
                           (errors/manual intervention)
 ```
