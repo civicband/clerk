@@ -124,9 +124,7 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None)
 
     # Phase 2: Single batch parse of ALL texts with progress updates
     total_pages = len(all_page_data)
-    click.echo(
-        click.style(subdomain, fg="cyan") + f": Parsing {total_pages} pages..."
-    )
+    click.echo(click.style(subdomain, fg="cyan") + f": Parsing {total_pages} pages...")
     all_texts = [p["text"] for p in all_page_data]
 
     # Parse with progress updates every 1000 pages
@@ -141,8 +139,7 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None)
             if n_process > 1:
                 pipe_kwargs["n_process"] = n_process
                 click.echo(
-                    click.style(subdomain, fg="cyan")
-                    + f": Using {n_process} processes for parsing"
+                    click.style(subdomain, fg="cyan") + f": Using {n_process} processes for parsing"
                 )
             for i, doc in enumerate(nlp.pipe(all_texts, **pipe_kwargs)):
                 all_docs.append(doc)

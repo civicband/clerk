@@ -9,13 +9,14 @@ import click
 import sqlite_utils
 from dotenv import load_dotenv
 
+# Load .env file BEFORE local imports so extraction.py can read env vars
+load_dotenv()
+
+# ruff: noqa: E402
 from . import output
 from .output import log
 from .plugin_loader import load_plugins_from_directory
 from .utils import assert_db_exists, build_db_from_text_internal, build_table_from_text, pm
-
-# Load .env file early
-load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -231,7 +232,11 @@ def update_site_internal(
         num_sites_in_ocr = db.execute(
             "select count(*) from sites where status = 'needs_ocr'"
         ).fetchone()[0]
-        if num_sites_in_ocr >= 5:
+        num_sites_in_extraction = db.execute(
+            "select count(*) from sites where status = 'needs_extraction'"
+        ).fetchone()[0]
+        total_processing = num_sites_in_ocr + num_sites_in_extraction
+        if total_processing >= 5:
             log("Too many sites in progress. Going to sleep.")
             return
         subdomain_query = db.execute(query).fetchone()
@@ -250,6 +255,16 @@ def update_site_internal(
     if not skip_fetch:
         fetch_internal(subdomain, fetcher)
     fetcher.ocr()  # type: ignore
+
+    # Update status after OCR, before extraction
+    db["sites"].update(  # type: ignore
+        subdomain,
+        {
+            "status": "needs_extraction",
+            "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+        },
+    )
+
     fetcher.transform()  # type: ignore
 
     update_page_count(subdomain)
