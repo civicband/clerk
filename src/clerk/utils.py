@@ -344,9 +344,9 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None,
     db[table_name].insert_all(entries)
 
 
-def build_db_from_text_internal(subdomain):
+def build_db_from_text_internal(subdomain, force_extraction=False):
     st = time.time()
-    logger.info("Building database from text subdomain=%s", subdomain)
+    logger.info("Building database from text subdomain=%s force_extraction=%s", subdomain, force_extraction)
     minutes_txt_dir = f"{STORAGE_DIR}/{subdomain}/txt"
     agendas_txt_dir = f"{STORAGE_DIR}/{subdomain}/_agendas/txt"
     database = f"{STORAGE_DIR}/{subdomain}/meetings.db"
@@ -381,14 +381,14 @@ def build_db_from_text_internal(subdomain):
         pk=("id"),
     )
     if os.path.exists(minutes_txt_dir):
-        build_table_from_text(subdomain, minutes_txt_dir, db, "minutes", force_extraction=False)
+        build_table_from_text(subdomain, minutes_txt_dir, db, "minutes", force_extraction=force_extraction)
     if os.path.exists(agendas_txt_dir):
-        build_table_from_text(subdomain, agendas_txt_dir, db, "agendas", force_extraction=False)
+        build_table_from_text(subdomain, agendas_txt_dir, db, "agendas", force_extraction=force_extraction)
 
     # Explicitly close database to ensure all writes are flushed
     db.close()
 
     et = time.time()
     elapsed_time = et - st
-    logger.info("Database build completed subdomain=%s elapsed_time=%.2f", subdomain, elapsed_time)
+    logger.info("Database build completed subdomain=%s elapsed_time=%.2f force_extraction=%s", subdomain, elapsed_time, force_extraction)
     click.echo(f"Execution time: {elapsed_time} seconds")
