@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 # Load .env file BEFORE local imports so extraction.py can read env vars
 load_dotenv()
 
+# ruff: noqa: E402
 from . import output
 from .output import log
 from .plugin_loader import load_plugins_from_directory
