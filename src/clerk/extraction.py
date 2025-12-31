@@ -530,9 +530,7 @@ def parse_text(text: str) -> Any:
         return None
 
 
-def parse_texts_batch(
-    texts: list[str], batch_size: int = 500, n_process: int = 1
-) -> list[Any]:
+def parse_texts_batch(texts: list[str], batch_size: int = 500, n_process: int = 1) -> list[Any]:
     """Parse multiple texts with spaCy using nlp.pipe() for efficiency.
 
     Args:
