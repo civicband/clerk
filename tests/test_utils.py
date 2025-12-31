@@ -333,3 +333,62 @@ def test_save_extraction_cache(tmp_path):
     assert loaded["content_hash"] == "abc123"
     assert loaded["entities"]["persons"] == ["Jane Smith"]
     assert loaded["votes"]["votes"][0]["motion"] == "Test"
+
+
+def test_build_table_from_text_uses_cache(tmp_path, monkeypatch):
+    """Test that build_table_from_text uses cache when available."""
+    from clerk.utils import build_table_from_text, save_extraction_cache, hash_text_content
+    import sqlite_utils
+    import json
+
+    # Set up test directory structure
+    subdomain = "test.civic.band"
+    txt_dir = tmp_path / "txt"
+    meeting_dir = txt_dir / "city-council"
+    date_dir = meeting_dir / "2024-01-15"
+    date_dir.mkdir(parents=True)
+
+    # Create test text file
+    text_file = date_dir / "001.txt"
+    text_content = "Test meeting minutes"
+    text_file.write_text(text_content)
+
+    # Create cache file with extraction results
+    cache_file = str(text_file) + ".extracted.json"
+    content_hash = hash_text_content(text_content)
+    cache_data = {
+        "content_hash": content_hash,
+        "model_version": "en_core_web_md",
+        "extracted_at": "2025-12-31T12:00:00Z",
+        "entities": {"persons": [{"text": "Cached Person", "confidence": 0.85}], "orgs": [], "locations": []},
+        "votes": {"votes": []}
+    }
+    save_extraction_cache(cache_file, cache_data)
+
+    # Create database
+    db = sqlite_utils.Database(tmp_path / "test.db")
+    db["minutes"].create({
+        "id": str,
+        "meeting": str,
+        "date": str,
+        "page": int,
+        "text": str,
+        "page_image": str,
+        "entities_json": str,
+        "votes_json": str,
+    }, pk="id")
+
+    # Disable extraction so we know results came from cache
+    import clerk.extraction
+    monkeypatch.setattr(clerk.extraction, "EXTRACTION_ENABLED", False)
+
+    # Run build
+    build_table_from_text(subdomain, str(txt_dir), db, "minutes")
+
+    # Verify cache was used
+    rows = list(db["minutes"].rows)
+    assert len(rows) == 1
+
+    entities = json.loads(rows[0]["entities_json"])
+    assert len(entities["persons"]) == 1, "Should have one person"
+    assert entities["persons"][0]["text"] == "Cached Person", "Should use cached entities"
