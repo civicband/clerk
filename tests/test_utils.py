@@ -247,8 +247,9 @@ def test_hash_text_content():
 
 def test_load_extraction_cache_valid(tmp_path):
     """Test loading valid cache file with matching hash."""
-    from clerk.utils import load_extraction_cache
     import json
+
+    from clerk.utils import load_extraction_cache
 
     cache_file = tmp_path / "test.txt.extracted.json"
     expected_hash = "abc123"
@@ -257,7 +258,7 @@ def test_load_extraction_cache_valid(tmp_path):
         "model_version": "en_core_web_md",
         "extracted_at": "2025-12-31T12:00:00Z",
         "entities": {"persons": ["John Doe"], "orgs": [], "locations": []},
-        "votes": {"votes": []}
+        "votes": {"votes": []},
     }
 
     cache_file.write_text(json.dumps(cache_data))
@@ -271,14 +272,15 @@ def test_load_extraction_cache_valid(tmp_path):
 
 def test_load_extraction_cache_hash_mismatch(tmp_path):
     """Test cache rejected when hash doesn't match."""
-    from clerk.utils import load_extraction_cache
     import json
+
+    from clerk.utils import load_extraction_cache
 
     cache_file = tmp_path / "test.txt.extracted.json"
     cache_data = {
         "content_hash": "abc123",
         "entities": {"persons": [], "orgs": [], "locations": []},
-        "votes": {"votes": []}
+        "votes": {"votes": []},
     }
 
     cache_file.write_text(json.dumps(cache_data))
@@ -311,8 +313,9 @@ def test_load_extraction_cache_corrupted_json(tmp_path):
 
 def test_save_extraction_cache(tmp_path):
     """Test saving extraction cache to file."""
-    from clerk.utils import save_extraction_cache
     import json
+
+    from clerk.utils import save_extraction_cache
 
     cache_file = tmp_path / "test.txt.extracted.json"
     cache_data = {
@@ -320,7 +323,7 @@ def test_save_extraction_cache(tmp_path):
         "model_version": "en_core_web_md",
         "extracted_at": "2025-12-31T12:00:00Z",
         "entities": {"persons": ["Jane Smith"], "orgs": ["City Council"], "locations": []},
-        "votes": {"votes": [{"motion": "Test", "result": "passed"}]}
+        "votes": {"votes": [{"motion": "Test", "result": "passed"}]},
     }
 
     save_extraction_cache(str(cache_file), cache_data)
@@ -337,9 +340,11 @@ def test_save_extraction_cache(tmp_path):
 
 def test_build_table_from_text_uses_cache(tmp_path, monkeypatch):
     """Test that build_table_from_text uses cache when available."""
-    from clerk.utils import build_table_from_text, save_extraction_cache, hash_text_content
-    import sqlite_utils
     import json
+
+    import sqlite_utils
+
+    from clerk.utils import build_table_from_text, hash_text_content, save_extraction_cache
 
     # Set up test directory structure
     subdomain = "test.civic.band"
@@ -360,26 +365,34 @@ def test_build_table_from_text_uses_cache(tmp_path, monkeypatch):
         "content_hash": content_hash,
         "model_version": "en_core_web_md",
         "extracted_at": "2025-12-31T12:00:00Z",
-        "entities": {"persons": [{"text": "Cached Person", "confidence": 0.85}], "orgs": [], "locations": []},
-        "votes": {"votes": []}
+        "entities": {
+            "persons": [{"text": "Cached Person", "confidence": 0.85}],
+            "orgs": [],
+            "locations": [],
+        },
+        "votes": {"votes": []},
     }
     save_extraction_cache(cache_file, cache_data)
 
     # Create database
     db = sqlite_utils.Database(tmp_path / "test.db")
-    db["minutes"].create({
-        "id": str,
-        "meeting": str,
-        "date": str,
-        "page": int,
-        "text": str,
-        "page_image": str,
-        "entities_json": str,
-        "votes_json": str,
-    }, pk="id")
+    db["minutes"].create(
+        {
+            "id": str,
+            "meeting": str,
+            "date": str,
+            "page": int,
+            "text": str,
+            "page_image": str,
+            "entities_json": str,
+            "votes_json": str,
+        },
+        pk="id",
+    )
 
     # Disable extraction so we know results came from cache
     import clerk.extraction
+
     monkeypatch.setattr(clerk.extraction, "EXTRACTION_ENABLED", False)
 
     # Run build

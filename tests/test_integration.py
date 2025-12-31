@@ -401,10 +401,13 @@ class TestErrorHandling:
 class TestExtractionCaching:
     """Integration tests for extraction caching."""
 
-    def test_cache_workflow_end_to_end(self, tmp_storage_dir, monkeypatch, cli_module, utils_module):
+    def test_cache_workflow_end_to_end(
+        self, tmp_storage_dir, monkeypatch, cli_module, utils_module
+    ):
         """Test complete cache workflow: first run creates cache, second run uses it."""
-        from clerk.utils import build_db_from_text_internal
         import sqlite_utils
+
+        from clerk.utils import build_db_from_text_internal
 
         # Set up storage directory
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
@@ -423,44 +426,46 @@ class TestExtractionCaching:
         # Create initial database for backup
         db_path = site_dir / "meetings.db"
         db = sqlite_utils.Database(db_path)
-        db["sites"].insert({
-            "subdomain": subdomain,
-            "name": "Cache Test City",
-            "state": "CA",
-            "country": "USA",
-        }, pk="subdomain")
+        db["sites"].insert(
+            {
+                "subdomain": subdomain,
+                "name": "Cache Test City",
+                "state": "CA",
+                "country": "USA",
+            },
+            pk="subdomain",
+        )
         db.close()
 
         # Enable extraction
         monkeypatch.setenv("ENABLE_EXTRACTION", "1")
 
         # First run - should create cache files
-        import time
-        start1 = time.time()
         build_db_from_text_internal(subdomain)
-        elapsed1 = time.time() - start1
 
         # Verify cache files created
         assert (txt_dir / "001.txt.extracted.json").exists()
         assert (txt_dir / "002.txt.extracted.json").exists()
 
-        # Second run - should use cache (faster)
-        start2 = time.time()
+        # Second run - should use cache
         build_db_from_text_internal(subdomain)
-        elapsed2 = time.time() - start2
-
-        # Second run should be faster (cache hits)
-        # Note: May not always be true in tests, but validates workflow
 
         # Verify database populated correctly both times
         db = sqlite_utils.Database(db_path)
         rows = list(db["minutes"].rows)
         assert len(rows) == 2
 
-    def test_force_extraction_bypasses_cache(self, tmp_storage_dir, monkeypatch, cli_module, utils_module):
+    def test_force_extraction_bypasses_cache(
+        self, tmp_storage_dir, monkeypatch, cli_module, utils_module
+    ):
         """Test --force-extraction bypasses cache."""
-        from clerk.utils import build_db_from_text_internal, save_extraction_cache, hash_text_content
         import sqlite_utils
+
+        from clerk.utils import (
+            build_db_from_text_internal,
+            hash_text_content,
+            save_extraction_cache,
+        )
 
         # Set up storage directory
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
@@ -485,19 +490,22 @@ class TestExtractionCaching:
             "model_version": "en_core_web_md",
             "extracted_at": "2020-01-01T00:00:00Z",
             "entities": {"persons": ["Stale Person"], "orgs": [], "locations": []},
-            "votes": {"votes": []}
+            "votes": {"votes": []},
         }
         save_extraction_cache(cache_file, stale_cache)
 
         # Create initial database for backup
         db_path = site_dir / "meetings.db"
         db = sqlite_utils.Database(db_path)
-        db["sites"].insert({
-            "subdomain": subdomain,
-            "name": "Force Test City",
-            "state": "CA",
-            "country": "USA",
-        }, pk="subdomain")
+        db["sites"].insert(
+            {
+                "subdomain": subdomain,
+                "name": "Force Test City",
+                "state": "CA",
+                "country": "USA",
+            },
+            pk="subdomain",
+        )
         db.close()
 
         # Enable extraction
@@ -508,6 +516,7 @@ class TestExtractionCaching:
 
         # Cache should be overwritten with fresh extraction
         import json
+
         with open(cache_file) as f:
             new_cache = json.load(f)
 

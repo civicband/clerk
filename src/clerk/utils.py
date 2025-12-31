@@ -124,7 +124,9 @@ def assert_db_exists():
     return db
 
 
-def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None, force_extraction=False):
+def build_table_from_text(
+    subdomain, txt_dir, db, table_name, municipality=None, force_extraction=False
+):
     st = time.time()
     logger.info(
         "Building table from text subdomain=%s table_name=%s municipality=%s force_extraction=%s",
@@ -208,6 +210,7 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None,
 
     total_files = len(all_page_data)
     from .output import log
+
     log(
         f"Cache hits: {cache_hits}, needs extraction: {cache_misses}",
         subdomain=subdomain,
@@ -217,9 +220,7 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None,
 
     # Phase 2: Batch process only uncached pages
     total_pages = len(all_page_data)
-    uncached_indices = [
-        i for i, p in enumerate(all_page_data) if p["cached_extraction"] is None
-    ]
+    uncached_indices = [i for i, p in enumerate(all_page_data) if p["cached_extraction"] is None]
     all_docs = [None] * total_pages
 
     if uncached_indices:
@@ -351,6 +352,7 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None,
     cache_hit_rate = round(100 * cache_hits / total_files, 1) if total_files > 0 else 0
 
     from .output import log
+
     log(
         f"Build completed in {elapsed:.2f}s ({cache_hit_rate}% from cache)",
         subdomain=subdomain,
@@ -364,7 +366,9 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None,
 
 def build_db_from_text_internal(subdomain, force_extraction=False):
     st = time.time()
-    logger.info("Building database from text subdomain=%s force_extraction=%s", subdomain, force_extraction)
+    logger.info(
+        "Building database from text subdomain=%s force_extraction=%s", subdomain, force_extraction
+    )
     minutes_txt_dir = f"{STORAGE_DIR}/{subdomain}/txt"
     agendas_txt_dir = f"{STORAGE_DIR}/{subdomain}/_agendas/txt"
     database = f"{STORAGE_DIR}/{subdomain}/meetings.db"
@@ -399,14 +403,23 @@ def build_db_from_text_internal(subdomain, force_extraction=False):
         pk=("id"),
     )
     if os.path.exists(minutes_txt_dir):
-        build_table_from_text(subdomain, minutes_txt_dir, db, "minutes", force_extraction=force_extraction)
+        build_table_from_text(
+            subdomain, minutes_txt_dir, db, "minutes", force_extraction=force_extraction
+        )
     if os.path.exists(agendas_txt_dir):
-        build_table_from_text(subdomain, agendas_txt_dir, db, "agendas", force_extraction=force_extraction)
+        build_table_from_text(
+            subdomain, agendas_txt_dir, db, "agendas", force_extraction=force_extraction
+        )
 
     # Explicitly close database to ensure all writes are flushed
     db.close()
 
     et = time.time()
     elapsed_time = et - st
-    logger.info("Database build completed subdomain=%s elapsed_time=%.2f force_extraction=%s", subdomain, elapsed_time, force_extraction)
+    logger.info(
+        "Database build completed subdomain=%s elapsed_time=%.2f force_extraction=%s",
+        subdomain,
+        elapsed_time,
+        force_extraction,
+    )
     click.echo(f"Execution time: {elapsed_time} seconds")
