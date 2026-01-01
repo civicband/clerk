@@ -128,13 +128,12 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None)
 
     # Phase 2: Single batch parse of ALL texts with progress updates
     total_pages = len(all_page_data)
-    click.echo(click.style(subdomain, fg="cyan") + f": Parsing {total_pages} pages...")
     all_texts = [p["text"] for p in all_page_data]
 
-    # Parse with progress updates every 1000 pages
     # n_process > 1 enables multiprocessing for ~2-4x speedup on multi-core machines
     n_process = int(os.environ.get("SPACY_N_PROCESS", "2"))
     all_docs = []
+
     if EXTRACTION_ENABLED:
         nlp = get_nlp()
         if nlp is not None:
@@ -142,15 +141,71 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None)
             pipe_kwargs = {"batch_size": 500}
             if n_process > 1:
                 pipe_kwargs["n_process"] = n_process
+
+            # Check if we need chunking (large batch processing)
+            if len(all_texts) <= SPACY_CHUNK_SIZE:
+                # Small batch - process all at once (existing behavior)
                 click.echo(
-                    click.style(subdomain, fg="cyan") + f": Using {n_process} processes for parsing"
+                    click.style(subdomain, fg="cyan") + f": Parsing {total_pages} pages..."
                 )
-            for i, doc in enumerate(nlp.pipe(all_texts, **pipe_kwargs)):
-                all_docs.append(doc)
-                if (i + 1) % progress_interval == 0:
+                if n_process > 1:
                     click.echo(
                         click.style(subdomain, fg="cyan")
-                        + f": Parsed {i + 1}/{total_pages} pages..."
+                        + f": Using {n_process} processes for parsing"
+                    )
+
+                for i, doc in enumerate(nlp.pipe(all_texts, **pipe_kwargs)):
+                    all_docs.append(doc)
+                    if (i + 1) % progress_interval == 0:
+                        click.echo(
+                            click.style(subdomain, fg="cyan")
+                            + f": Parsed {i + 1}/{total_pages} pages..."
+                        )
+            else:
+                # Large batch - process in chunks to bound memory
+                num_chunks = (total_pages + SPACY_CHUNK_SIZE - 1) // SPACY_CHUNK_SIZE
+                click.echo(
+                    click.style(subdomain, fg="cyan")
+                    + f": Parsing {total_pages} pages in {num_chunks} chunks..."
+                )
+                if n_process > 1:
+                    click.echo(
+                        click.style(subdomain, fg="cyan")
+                        + f": Using {n_process} processes for parsing"
+                    )
+
+                for chunk_idx in range(num_chunks):
+                    chunk_start = chunk_idx * SPACY_CHUNK_SIZE
+                    chunk_end = min(chunk_start + SPACY_CHUNK_SIZE, total_pages)
+                    chunk_texts = all_texts[chunk_start:chunk_end]
+                    chunk_size = len(chunk_texts)
+
+                    click.echo(
+                        click.style(subdomain, fg="cyan")
+                        + f": Processing chunk {chunk_idx + 1}/{num_chunks} ({chunk_size} pages)..."
+                    )
+
+                    chunk_docs = []
+                    for i, doc in enumerate(nlp.pipe(chunk_texts, **pipe_kwargs)):
+                        chunk_docs.append(doc)
+                        # Progress within chunk (every 1000 pages)
+                        if (i + 1) % progress_interval == 0:
+                            global_progress = chunk_start + i + 1
+                            click.echo(
+                                click.style(subdomain, fg="cyan")
+                                + f": Parsed {global_progress}/{total_pages} pages..."
+                            )
+
+                    all_docs.extend(chunk_docs)
+
+                    # Explicit memory cleanup between chunks (not after last chunk)
+                    if chunk_idx < num_chunks - 1:
+                        import gc
+                        gc.collect()
+
+                    click.echo(
+                        click.style(subdomain, fg="cyan")
+                        + f": Completed chunk {chunk_idx + 1}/{num_chunks}"
                     )
         else:
             all_docs = [None] * total_pages

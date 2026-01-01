@@ -283,3 +283,111 @@ def test_spacy_n_process_default_is_two(mocker, monkeypatch, tmp_path):
     # Check that nlp.pipe was called with n_process=2
     call_kwargs = mock_nlp.pipe.call_args[1]
     assert call_kwargs.get("n_process") == 2
+
+
+class TestChunkedProcessing:
+    """Tests for chunked processing of large batches."""
+
+    def test_small_batch_no_chunking(self, mocker, monkeypatch, tmp_path):
+        """Test that batches under SPACY_CHUNK_SIZE are not chunked."""
+        monkeypatch.delenv("SPACY_N_PROCESS", raising=False)
+
+        # Mock get_nlp
+        mock_nlp = mocker.MagicMock()
+        mock_docs = [mocker.MagicMock() for _ in range(100)]
+        mock_nlp.pipe.return_value = iter(mock_docs)
+        mocker.patch("clerk.utils.get_nlp", return_value=mock_nlp)
+        mocker.patch("clerk.utils.EXTRACTION_ENABLED", True)
+
+        # Create 100 text files (under CHUNK_SIZE)
+        txt_dir = tmp_path / "txt"
+        txt_dir.mkdir()
+        meeting_dir = txt_dir / "CityCouncil"
+        meeting_dir.mkdir()
+        date_dir = meeting_dir / "2024-01-15"
+        date_dir.mkdir()
+        for i in range(100):
+            (date_dir / f"{i}.txt").write_text(f"content {i}")
+
+        db = sqlite_utils.Database(tmp_path / "test.db")
+        db["minutes"].create(
+            {
+                "id": str,
+                "meeting": str,
+                "date": str,
+                "page": int,
+                "text": str,
+                "page_image": str,
+                "entities_json": str,
+                "votes_json": str,
+            },
+            pk="id",
+        )
+
+        from clerk.utils import build_table_from_text
+        build_table_from_text(
+            db=db,
+            subdomain="test",
+            table_name="minutes",
+            txt_dir=str(txt_dir)
+        )
+
+        # Should call nlp.pipe exactly once (no chunking)
+        assert mock_nlp.pipe.call_count == 1
+
+    def test_large_batch_uses_chunking(self, mocker, monkeypatch, tmp_path):
+        """Test that batches over SPACY_CHUNK_SIZE are chunked."""
+        monkeypatch.delenv("SPACY_N_PROCESS", raising=False)
+        monkeypatch.setattr("clerk.utils.SPACY_CHUNK_SIZE", 100)  # Lower threshold for testing
+
+        # Mock get_nlp
+        mock_nlp = mocker.MagicMock()
+        # Return different docs for each call
+        mock_nlp.pipe.side_effect = [
+            iter([mocker.MagicMock() for _ in range(100)]),  # First chunk
+            iter([mocker.MagicMock() for _ in range(50)]),   # Second chunk
+        ]
+        mocker.patch("clerk.utils.get_nlp", return_value=mock_nlp)
+        mocker.patch("clerk.utils.EXTRACTION_ENABLED", True)
+
+        # Mock gc.collect to verify it's called
+        mock_gc = mocker.patch("gc.collect")
+
+        # Create 150 text files (over CHUNK_SIZE of 100)
+        txt_dir = tmp_path / "txt"
+        txt_dir.mkdir()
+        meeting_dir = txt_dir / "CityCouncil"
+        meeting_dir.mkdir()
+        date_dir = meeting_dir / "2024-01-15"
+        date_dir.mkdir()
+        for i in range(150):
+            (date_dir / f"{i}.txt").write_text(f"content {i}")
+
+        db = sqlite_utils.Database(tmp_path / "test.db")
+        db["minutes"].create(
+            {
+                "id": str,
+                "meeting": str,
+                "date": str,
+                "page": int,
+                "text": str,
+                "page_image": str,
+                "entities_json": str,
+                "votes_json": str,
+            },
+            pk="id",
+        )
+
+        from clerk.utils import build_table_from_text
+        build_table_from_text(
+            db=db,
+            subdomain="test",
+            table_name="minutes",
+            txt_dir=str(txt_dir)
+        )
+
+        # Should call nlp.pipe twice (2 chunks: 100 + 50)
+        assert mock_nlp.pipe.call_count == 2
+
+        # Should call gc.collect once (after first chunk, not after last)
+        assert mock_gc.call_count == 1
