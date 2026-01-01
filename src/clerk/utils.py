@@ -100,6 +100,27 @@ def group_pages_by_meeting_date(page_files: list[PageFile]) -> list[MeetingDateG
 
     return groups
 
+
+def create_meetings_schema(db):
+    """Create standard schema for meetings database.
+
+    Args:
+        db: sqlite_utils.Database instance
+    """
+    schema = {
+        "id": str,
+        "meeting": str,
+        "date": str,
+        "page": int,
+        "text": str,
+        "page_image": str,
+        "entities_json": str,
+        "votes_json": str,
+    }
+    db["minutes"].create(schema, pk=("id"))
+    db["agendas"].create(schema, pk=("id"))
+
+
 # Maximum pages to process in a single spaCy batch before chunking
 # Prevents memory spikes on large datasets while maintaining efficiency
 SPACY_CHUNK_SIZE = 20_000

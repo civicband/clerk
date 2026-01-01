@@ -1,6 +1,7 @@
 """Tests for refactored utility functions."""
 import pytest
-from clerk.utils import PageFile, MeetingDateGroup, group_pages_by_meeting_date
+import sqlite_utils
+from clerk.utils import PageFile, MeetingDateGroup, group_pages_by_meeting_date, create_meetings_schema
 
 
 def test_group_pages_by_meeting_date_single_meeting():
@@ -45,3 +46,28 @@ def test_group_pages_by_meeting_date_empty():
     """Test grouping with no pages."""
     groups = group_pages_by_meeting_date([])
     assert groups == []
+
+
+def test_create_meetings_schema():
+    """Test schema creation for meetings database."""
+    db = sqlite_utils.Database(memory=True)
+
+    create_meetings_schema(db)
+
+    assert "minutes" in db.table_names()
+    assert "agendas" in db.table_names()
+
+    # Check schema
+    minutes_cols = {col.name: col.type for col in db["minutes"].columns}
+    assert minutes_cols["id"] == "TEXT"
+    assert minutes_cols["meeting"] == "TEXT"
+    assert minutes_cols["date"] == "TEXT"
+    assert minutes_cols["page"] == "INTEGER"
+    assert minutes_cols["text"] == "TEXT"
+    assert minutes_cols["page_image"] == "TEXT"
+    assert minutes_cols["entities_json"] == "TEXT"
+    assert minutes_cols["votes_json"] == "TEXT"
+
+    # Check primary key
+    assert db["minutes"].pks == ["id"]
+    assert db["agendas"].pks == ["id"]
