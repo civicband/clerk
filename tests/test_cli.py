@@ -345,7 +345,9 @@ class TestBuildDbFromTextInternal:
         minutes_count = db["minutes"].count
         assert minutes_count == 2
 
-    def test_build_db_from_text_skips_extraction_by_default(self, tmp_path, monkeypatch, cli_module, utils_module):
+    def test_build_db_from_text_skips_extraction_by_default(
+        self, tmp_path, monkeypatch, cli_module, utils_module
+    ):
         """build-db-from-text should skip extraction by default"""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
@@ -354,6 +356,7 @@ class TestBuildDbFromTextInternal:
 
         # Monkeypatch EXTRACTION_ENABLED directly (env var is read at import time)
         import clerk.extraction
+
         monkeypatch.setattr(clerk.extraction, "EXTRACTION_ENABLED", True)
         # Also need to monkeypatch in utils module since it imports it
         monkeypatch.setattr(utils_module, "EXTRACTION_ENABLED", True)
@@ -364,17 +367,19 @@ class TestBuildDbFromTextInternal:
         db = assert_db_exists()
 
         # Create test site
-        db["sites"].insert({
-            "subdomain": "test.civic.band",
-            "name": "Test City",
-            "state": "CA",
-            "country": "US",
-            "kind": "city-council",
-            "scraper": "test",
-            "pages": 0,
-            "start_year": 2020,
-            "status": "new"
-        })
+        db["sites"].insert(
+            {
+                "subdomain": "test.civic.band",
+                "name": "Test City",
+                "state": "CA",
+                "country": "US",
+                "kind": "city-council",
+                "scraper": "test",
+                "pages": 0,
+                "start_year": 2020,
+                "status": "new",
+            }
+        )
 
         # Create text files
         site_dir = tmp_path / "test.civic.band"
@@ -402,6 +407,7 @@ class TestBuildDbFromTextInternal:
 
         # Verify extraction was skipped (empty structures, not extracted data)
         import json
+
         entities = json.loads(rows[0]["entities_json"])
         votes = json.loads(rows[0]["votes_json"])
         assert entities == {"persons": [], "orgs": [], "locations": []}
@@ -473,7 +479,7 @@ class TestMigrateExtractionSchema:
 
         # Run migration
         runner = CliRunner()
-        result = runner.invoke(cli, ['migrate-extraction-schema'])
+        result = runner.invoke(cli, ["migrate-extraction-schema"])
 
         assert result.exit_code == 0
         assert "Migration complete" in result.output
@@ -492,8 +498,8 @@ class TestMigrateExtractionSchema:
         runner = CliRunner()
 
         # Run migration twice
-        result1 = runner.invoke(cli, ['migrate-extraction-schema'])
-        result2 = runner.invoke(cli, ['migrate-extraction-schema'])
+        result1 = runner.invoke(cli, ["migrate-extraction-schema"])
+        result2 = runner.invoke(cli, ["migrate-extraction-schema"])
 
         assert result1.exit_code == 0
         assert result2.exit_code == 0
@@ -520,37 +526,41 @@ class TestExtractEntities:
         # Create database and run migration
         db = assert_db_exists()
         runner = CliRunner()
-        runner.invoke(cli, ['migrate-extraction-schema'])
+        runner.invoke(cli, ["migrate-extraction-schema"])
 
         # Site 1: completed, old extraction
-        db["sites"].insert({
-            "subdomain": "site1.civic.band",
-            "name": "Site 1",
-            "state": "CA",
-            "country": "US",
-            "kind": "city-council",
-            "scraper": "test",
-            "pages": 0,
-            "start_year": 2020,
-            "status": "new",
-            "extraction_status": "completed",
-            "last_extracted": "2024-01-01T00:00:00"
-        })
+        db["sites"].insert(
+            {
+                "subdomain": "site1.civic.band",
+                "name": "Site 1",
+                "state": "CA",
+                "country": "US",
+                "kind": "city-council",
+                "scraper": "test",
+                "pages": 0,
+                "start_year": 2020,
+                "status": "new",
+                "extraction_status": "completed",
+                "last_extracted": "2024-01-01T00:00:00",
+            }
+        )
 
         # Site 2: pending, no extraction yet (should be selected)
-        db["sites"].insert({
-            "subdomain": "site2.civic.band",
-            "name": "Site 2",
-            "state": "CA",
-            "country": "US",
-            "kind": "city-council",
-            "scraper": "test",
-            "pages": 0,
-            "start_year": 2020,
-            "status": "new",
-            "extraction_status": "pending",
-            "last_extracted": None
-        })
+        db["sites"].insert(
+            {
+                "subdomain": "site2.civic.band",
+                "name": "Site 2",
+                "state": "CA",
+                "country": "US",
+                "kind": "city-council",
+                "scraper": "test",
+                "pages": 0,
+                "start_year": 2020,
+                "status": "new",
+                "extraction_status": "pending",
+                "last_extracted": None,
+            }
+        )
 
         # Create site structure for site2
         site_dir = tmp_path / "site2.civic.band"
@@ -559,7 +569,9 @@ class TestExtractEntities:
 
         # Create empty database for site2
         site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
-        site_db["minutes"].create({"id": str, "text": str, "entities_json": str, "votes_json": str}, pk="id")
+        site_db["minutes"].create(
+            {"id": str, "text": str, "entities_json": str, "votes_json": str}, pk="id"
+        )
 
         # Run command
         runner = CliRunner()
@@ -583,20 +595,22 @@ class TestExtractEntities:
         # Create database and run migration
         db = assert_db_exists()
         runner = CliRunner()
-        runner.invoke(cli, ['migrate-extraction-schema'])
-        db["sites"].insert({
-            "subdomain": "completed.civic.band",
-            "name": "Completed",
-            "state": "CA",
-            "country": "US",
-            "kind": "city-council",
-            "scraper": "test",
-            "pages": 0,
-            "start_year": 2020,
-            "status": "new",
-            "extraction_status": "completed",
-            "last_extracted": "2024-01-01T00:00:00"
-        })
+        runner.invoke(cli, ["migrate-extraction-schema"])
+        db["sites"].insert(
+            {
+                "subdomain": "completed.civic.band",
+                "name": "Completed",
+                "state": "CA",
+                "country": "US",
+                "kind": "city-council",
+                "scraper": "test",
+                "pages": 0,
+                "start_year": 2020,
+                "status": "new",
+                "extraction_status": "completed",
+                "last_extracted": "2024-01-01T00:00:00",
+            }
+        )
 
         runner = CliRunner()
         result = runner.invoke(cli, ["extract-entities", "--next-site"])
@@ -618,28 +632,32 @@ class TestExtractEntities:
 
         # Run migration first
         runner = CliRunner()
-        runner.invoke(cli, ['migrate-extraction-schema'])
+        runner.invoke(cli, ["migrate-extraction-schema"])
 
         # Create test site
-        db["sites"].insert({
-            "subdomain": "test.civic.band",
-            "name": "Test City",
-            "state": "CA",
-            "country": "US",
-            "kind": "city-council",
-            "scraper": "test",
-            "pages": 0,
-            "start_year": 2020,
-            "status": "new",
-            "extraction_status": "pending",
-            "last_extracted": None
-        })
+        db["sites"].insert(
+            {
+                "subdomain": "test.civic.band",
+                "name": "Test City",
+                "state": "CA",
+                "country": "US",
+                "kind": "city-council",
+                "scraper": "test",
+                "pages": 0,
+                "start_year": 2020,
+                "status": "new",
+                "extraction_status": "pending",
+                "last_extracted": None,
+            }
+        )
 
         # Create site structure
         site_dir = tmp_path / "test.civic.band"
         site_dir.mkdir()
         site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
-        site_db["minutes"].create({"id": str, "text": str, "entities_json": str, "votes_json": str}, pk="id")
+        site_db["minutes"].create(
+            {"id": str, "text": str, "entities_json": str, "votes_json": str}, pk="id"
+        )
 
         # Mock the deployment hooks to track calls
         deploy_called = []
@@ -672,7 +690,9 @@ class TestExtractEntities:
         assert site["extraction_status"] == "completed"
         assert site["last_extracted"] is not None
 
-    def test_extract_entities_production_mode_calls_deployment(self, tmp_path, monkeypatch, cli_module):
+    def test_extract_entities_production_mode_calls_deployment(
+        self, tmp_path, monkeypatch, cli_module
+    ):
         """Without CIVIC_DEV_MODE, deployment hooks should be called"""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
@@ -686,28 +706,32 @@ class TestExtractEntities:
 
         # Run migration first
         runner = CliRunner()
-        runner.invoke(cli, ['migrate-extraction-schema'])
+        runner.invoke(cli, ["migrate-extraction-schema"])
 
         # Create test site
-        db["sites"].insert({
-            "subdomain": "test.civic.band",
-            "name": "Test City",
-            "state": "CA",
-            "country": "US",
-            "kind": "city-council",
-            "scraper": "test",
-            "pages": 0,
-            "start_year": 2020,
-            "status": "new",
-            "extraction_status": "pending",
-            "last_extracted": None
-        })
+        db["sites"].insert(
+            {
+                "subdomain": "test.civic.band",
+                "name": "Test City",
+                "state": "CA",
+                "country": "US",
+                "kind": "city-council",
+                "scraper": "test",
+                "pages": 0,
+                "start_year": 2020,
+                "status": "new",
+                "extraction_status": "pending",
+                "last_extracted": None,
+            }
+        )
 
         # Create site structure
         site_dir = tmp_path / "test.civic.band"
         site_dir.mkdir()
         site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
-        site_db["minutes"].create({"id": str, "text": str, "entities_json": str, "votes_json": str}, pk="id")
+        site_db["minutes"].create(
+            {"id": str, "text": str, "entities_json": str, "votes_json": str}, pk="id"
+        )
 
         # Mock the deployment hooks
         deploy_called = []
@@ -755,28 +779,32 @@ class TestExtractEntities:
 
         # Run migration first
         runner = CliRunner()
-        runner.invoke(cli, ['migrate-extraction-schema'])
+        runner.invoke(cli, ["migrate-extraction-schema"])
 
         # Create test site
-        db["sites"].insert({
-            "subdomain": "test.civic.band",
-            "name": "Test City",
-            "state": "CA",
-            "country": "US",
-            "kind": "city-council",
-            "scraper": "test",
-            "pages": 0,
-            "start_year": 2020,
-            "status": "new",
-            "extraction_status": "pending",
-            "last_extracted": None
-        })
+        db["sites"].insert(
+            {
+                "subdomain": "test.civic.band",
+                "name": "Test City",
+                "state": "CA",
+                "country": "US",
+                "kind": "city-council",
+                "scraper": "test",
+                "pages": 0,
+                "start_year": 2020,
+                "status": "new",
+                "extraction_status": "pending",
+                "last_extracted": None,
+            }
+        )
 
         # Create site structure
         site_dir = tmp_path / "test.civic.band"
         site_dir.mkdir()
         site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
-        site_db["minutes"].create({"id": str, "text": str, "entities_json": str, "votes_json": str}, pk="id")
+        site_db["minutes"].create(
+            {"id": str, "text": str, "entities_json": str, "votes_json": str}, pk="id"
+        )
 
         # Mock extract_entities_for_site to raise exception
         def failing_extract(subdomain, force_extraction=False):
@@ -816,43 +844,49 @@ class TestExtractEntities:
 
         # Run migration first
         runner = CliRunner()
-        runner.invoke(cli, ['migrate-extraction-schema'])
+        runner.invoke(cli, ["migrate-extraction-schema"])
 
         # Site 1: completed (should skip)
-        db["sites"].insert({
-            "subdomain": "completed.civic.band",
-            "name": "Completed",
-            "state": "CA",
-            "country": "US",
-            "kind": "city-council",
-            "scraper": "test",
-            "pages": 0,
-            "start_year": 2020,
-            "status": "new",
-            "extraction_status": "completed",
-            "last_extracted": "2024-01-01T00:00:00"
-        })
+        db["sites"].insert(
+            {
+                "subdomain": "completed.civic.band",
+                "name": "Completed",
+                "state": "CA",
+                "country": "US",
+                "kind": "city-council",
+                "scraper": "test",
+                "pages": 0,
+                "start_year": 2020,
+                "status": "new",
+                "extraction_status": "completed",
+                "last_extracted": "2024-01-01T00:00:00",
+            }
+        )
 
         # Site 2: failed (should retry - selected by --next-site)
-        db["sites"].insert({
-            "subdomain": "failed.civic.band",
-            "name": "Failed",
-            "state": "CA",
-            "country": "US",
-            "kind": "city-council",
-            "scraper": "test",
-            "pages": 0,
-            "start_year": 2020,
-            "status": "new",
-            "extraction_status": "failed",
-            "last_extracted": None
-        })
+        db["sites"].insert(
+            {
+                "subdomain": "failed.civic.band",
+                "name": "Failed",
+                "state": "CA",
+                "country": "US",
+                "kind": "city-council",
+                "scraper": "test",
+                "pages": 0,
+                "start_year": 2020,
+                "status": "new",
+                "extraction_status": "failed",
+                "last_extracted": None,
+            }
+        )
 
         # Create site structure for failed site
         site_dir = tmp_path / "failed.civic.band"
         site_dir.mkdir()
         site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
-        site_db["minutes"].create({"id": str, "text": str, "entities_json": str, "votes_json": str}, pk="id")
+        site_db["minutes"].create(
+            {"id": str, "text": str, "entities_json": str, "votes_json": str}, pk="id"
+        )
 
         # Run --next-site
         runner = CliRunner()
@@ -905,19 +939,21 @@ class TestExtractEntitiesIntegration:
         assert "last_extracted" in site_columns_after
 
         # Step 3: Create a test site
-        db["sites"].insert({
-            "subdomain": "test.civic.band",
-            "name": "Test City",
-            "state": "CA",
-            "country": "US",
-            "kind": "city-council",
-            "scraper": "test",
-            "pages": 0,
-            "start_year": 2020,
-            "status": "new",
-            "extraction_status": "pending",
-            "last_extracted": None
-        })
+        db["sites"].insert(
+            {
+                "subdomain": "test.civic.band",
+                "name": "Test City",
+                "state": "CA",
+                "country": "US",
+                "kind": "city-council",
+                "scraper": "test",
+                "pages": 0,
+                "start_year": 2020,
+                "status": "new",
+                "extraction_status": "pending",
+                "last_extracted": None,
+            }
+        )
 
         # Create site structure with actual data
         site_dir = tmp_path / "test.civic.band"
@@ -925,27 +961,32 @@ class TestExtractEntitiesIntegration:
         site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
 
         # Create tables with actual records
-        site_db["minutes"].create({
-            "id": str,
-            "meeting": str,
-            "date": str,
-            "page": int,
-            "text": str,
-            "page_image": str,
-            "entities_json": str,
-            "votes_json": str
-        }, pk="id")
+        site_db["minutes"].create(
+            {
+                "id": str,
+                "meeting": str,
+                "date": str,
+                "page": int,
+                "text": str,
+                "page_image": str,
+                "entities_json": str,
+                "votes_json": str,
+            },
+            pk="id",
+        )
 
-        site_db["minutes"].insert({
-            "id": "test-minute-1",
-            "meeting": "2024-01-01_CityCouncil",
-            "date": "2024-01-01",
-            "page": 1,
-            "text": "Meeting called to order.",
-            "page_image": "/path/to/image.png",
-            "entities_json": "{}",
-            "votes_json": "{}"
-        })
+        site_db["minutes"].insert(
+            {
+                "id": "test-minute-1",
+                "meeting": "2024-01-01_CityCouncil",
+                "date": "2024-01-01",
+                "page": 1,
+                "text": "Meeting called to order.",
+                "page_image": "/path/to/image.png",
+                "entities_json": "{}",
+                "votes_json": "{}",
+            }
+        )
 
         # Verify initial state
         site_before = db["sites"].get("test.civic.band")

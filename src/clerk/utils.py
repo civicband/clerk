@@ -90,7 +90,6 @@ def save_extraction_cache(cache_file: str, data: dict) -> None:
         logger.warning(f"Failed to save cache {cache_file}: {e}")
 
 
-
 def assert_db_exists():
     db = sqlite_utils.Database("civic.db")
     if not db["sites"].exists():
@@ -130,7 +129,13 @@ def assert_db_exists():
 
 
 def build_table_from_text(
-    subdomain, txt_dir, db, table_name, municipality=None, skip_extraction=True, force_extraction=False
+    subdomain,
+    txt_dir,
+    db,
+    table_name,
+    municipality=None,
+    skip_extraction=True,
+    force_extraction=False,
 ):
     """Build database table from text files
 
@@ -485,13 +490,21 @@ def build_db_from_text_internal(subdomain, skip_extraction=True, force_extractio
     )
     if os.path.exists(minutes_txt_dir):
         build_table_from_text(
-            subdomain, minutes_txt_dir, db, "minutes",
-            skip_extraction=skip_extraction, force_extraction=force_extraction
+            subdomain,
+            minutes_txt_dir,
+            db,
+            "minutes",
+            skip_extraction=skip_extraction,
+            force_extraction=force_extraction,
         )
     if os.path.exists(agendas_txt_dir):
         build_table_from_text(
-            subdomain, agendas_txt_dir, db, "agendas",
-            skip_extraction=skip_extraction, force_extraction=force_extraction
+            subdomain,
+            agendas_txt_dir,
+            db,
+            "agendas",
+            skip_extraction=skip_extraction,
+            force_extraction=force_extraction,
         )
 
     # Explicitly close database to ensure all writes are flushed
@@ -578,23 +591,30 @@ def extract_entities_for_site(subdomain, force_extraction=False):
             else:
                 cache_misses += 1
 
-            all_page_data.append({
-                "page_id": page["id"],
-                "text": text,
-                "page_file_path": page_file_path,
-                "content_hash": content_hash,
-                "cached_extraction": cached_extraction,
-            })
+            all_page_data.append(
+                {
+                    "page_id": page["id"],
+                    "text": text,
+                    "page_file_path": page_file_path,
+                    "content_hash": content_hash,
+                    "cached_extraction": cached_extraction,
+                }
+            )
 
         # Phase 2: Batch process only uncached pages
-        uncached_indices = [i for i, p in enumerate(all_page_data) if p["cached_extraction"] is None]
+        uncached_indices = [
+            i for i, p in enumerate(all_page_data) if p["cached_extraction"] is None
+        ]
         all_docs = [None] * len(all_page_data)
 
         if uncached_indices and EXTRACTION_ENABLED:
             uncached_texts = [all_page_data[i]["text"] for i in uncached_indices]
             nlp = get_nlp()
             if nlp:
-                log(f"Batch processing {len(uncached_texts)} uncached pages with nlp.pipe()", subdomain=subdomain)
+                log(
+                    f"Batch processing {len(uncached_texts)} uncached pages with nlp.pipe()",
+                    subdomain=subdomain,
+                )
                 # Single batch process with nlp.pipe()
                 for processed, doc in enumerate(nlp.pipe(uncached_texts, batch_size=500)):
                     original_idx = uncached_indices[processed]
@@ -639,22 +659,21 @@ def extract_entities_for_site(subdomain, force_extraction=False):
             # Update database
             db[table_name].update(
                 pdata["page_id"],
-                {
-                    "entities_json": json.dumps(entities),
-                    "votes_json": json.dumps(votes)
-                }
+                {"entities_json": json.dumps(entities), "votes_json": json.dumps(votes)},
             )
 
         log(
             f"Extraction complete for {table_name}: {cache_hits} from cache, {cache_misses} extracted",
             subdomain=subdomain,
             cache_hits=cache_hits,
-            cache_misses=cache_misses
+            cache_misses=cache_misses,
         )
 
     et = time.time()
     elapsed = et - st
-    log(f"Total extraction time: {elapsed:.2f}s", subdomain=subdomain, elapsed_time=f"{elapsed:.2f}")
+    log(
+        f"Total extraction time: {elapsed:.2f}s", subdomain=subdomain, elapsed_time=f"{elapsed:.2f}"
+    )
 
     # Close database to ensure changes are committed
     db.close()

@@ -368,7 +368,9 @@ def build_db_from_text(subdomain, with_extraction, force_extraction=False):
     """
     # skip_extraction is inverse of with_extraction
     skip_extraction = not with_extraction
-    build_db_from_text_internal(subdomain, skip_extraction=skip_extraction, force_extraction=force_extraction)
+    build_db_from_text_internal(
+        subdomain, skip_extraction=skip_extraction, force_extraction=force_extraction
+    )
     rebuild_site_fts_internal(subdomain)
 
 
@@ -592,10 +594,13 @@ def extract_entities_internal(subdomain, next_site=False):
         extract_entities_for_site(subdomain, force_extraction=False)
 
         # Mark extraction as completed BEFORE deployment
-        db["sites"].update(subdomain, {
-            "extraction_status": "completed",
-            "last_extracted": datetime.datetime.now().isoformat()
-        })
+        db["sites"].update(
+            subdomain,
+            {
+                "extraction_status": "completed",
+                "last_extracted": datetime.datetime.now().isoformat(),
+            },
+        )
 
         log("Extraction completed successfully", subdomain=subdomain)
 
@@ -603,12 +608,17 @@ def extract_entities_internal(subdomain, next_site=False):
         if not os.environ.get("CIVIC_DEV_MODE"):
             try:
                 site_db = sqlite_utils.Database(f"{STORAGE_DIR}/{subdomain}/meetings.db")
-                pm.hook.deploy_municipality(subdomain=subdomain, municipality=site["name"], db=site_db)
+                pm.hook.deploy_municipality(
+                    subdomain=subdomain, municipality=site["name"], db=site_db
+                )
                 pm.hook.post_deploy(subdomain=subdomain, municipality=site["name"])
                 log("Deployed updated database", subdomain=subdomain)
             except Exception as deploy_error:
-                log(f"Deployment failed but extraction completed: {deploy_error}",
-                    subdomain=subdomain, level="error")
+                log(
+                    f"Deployment failed but extraction completed: {deploy_error}",
+                    subdomain=subdomain,
+                    level="error",
+                )
                 # Don't raise - extraction succeeded
         else:
             log("DEV MODE: Skipping deployment", subdomain=subdomain)

@@ -734,4 +734,8 @@ class TestExtractEntitiesForSite:
         page = list(db["minutes"].rows)[0]
         assert page["id"] == "test123"
         entities = json.loads(page["entities_json"])
-        assert entities == {"persons": [], "orgs": [], "locations": []}  # Empty arrays when spaCy unavailable
+        assert entities == {
+            "persons": [],
+            "orgs": [],
+            "locations": [],
+        }  # Empty arrays when spaCy unavailable
