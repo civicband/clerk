@@ -1,7 +1,8 @@
 """Tests for refactored utility functions."""
 import pytest
 import sqlite_utils
-from clerk.utils import PageFile, MeetingDateGroup, group_pages_by_meeting_date, create_meetings_schema, collect_page_files
+from clerk.utils import PageFile, MeetingDateGroup, group_pages_by_meeting_date, create_meetings_schema, collect_page_files, batch_parse_with_spacy
+from clerk.extraction import EXTRACTION_ENABLED
 
 
 def test_group_pages_by_meeting_date_single_meeting():
@@ -111,3 +112,44 @@ def test_collect_page_files_empty(tmp_path):
     page_files = collect_page_files(str(txt_dir))
 
     assert page_files == []
+
+
+@pytest.mark.skipif(not EXTRACTION_ENABLED, reason="Extraction not enabled")
+def test_batch_parse_with_spacy():
+    """Test batch parsing with spaCy."""
+    from clerk.extraction import get_nlp
+
+    # Skip if spaCy model not available
+    if get_nlp() is None:
+        pytest.skip("spaCy model not installed")
+
+    texts = ["This is a test.", "Another test sentence."]
+
+    docs = batch_parse_with_spacy(texts, "test.civic.band")
+
+    assert len(docs) == 2
+    assert docs[0] is not None
+    assert len(list(docs[0])) > 0  # Has tokens
+
+
+def test_batch_parse_with_spacy_extraction_disabled():
+    """Test batch parsing when extraction is disabled."""
+    import os
+    old_val = os.environ.get("ENABLE_EXTRACTION")
+    os.environ["ENABLE_EXTRACTION"] = "0"
+
+    try:
+        texts = ["Test"]
+        docs = batch_parse_with_spacy(texts, "test.civic.band")
+        assert all(doc is None for doc in docs)
+    finally:
+        if old_val:
+            os.environ["ENABLE_EXTRACTION"] = old_val
+        else:
+            os.environ.pop("ENABLE_EXTRACTION", None)
+
+
+def test_batch_parse_with_spacy_empty():
+    """Test with empty text list."""
+    docs = batch_parse_with_spacy([], "test.civic.band")
+    assert docs == []

@@ -175,6 +175,52 @@ def collect_page_files(txt_dir: str) -> list[PageFile]:
     return page_files
 
 
+def batch_parse_with_spacy(texts: list[str], subdomain: str) -> list:
+    """Batch parse texts with spaCy using nlp.pipe().
+
+    Args:
+        texts: List of text strings to parse
+        subdomain: Site subdomain for logging
+
+    Returns:
+        List of spaCy Doc objects (or None if extraction disabled)
+    """
+    if not texts:
+        return []
+
+    if not EXTRACTION_ENABLED:
+        return [None] * len(texts)
+
+    nlp = get_nlp()
+    if nlp is None:
+        return [None] * len(texts)
+
+    total_pages = len(texts)
+    click.echo(click.style(subdomain, fg="cyan") + f": Parsing {total_pages} pages...")
+
+    n_process = int(os.environ.get("SPACY_N_PROCESS", "1"))
+    pipe_kwargs = {"batch_size": 500}
+
+    if n_process > 1:
+        pipe_kwargs["n_process"] = n_process
+        click.echo(
+            click.style(subdomain, fg="cyan") + f": Using {n_process} processes for parsing"
+        )
+
+    all_docs = []
+    progress_interval = 1000
+
+    for i, doc in enumerate(nlp.pipe(texts, **pipe_kwargs)):
+        all_docs.append(doc)
+        if (i + 1) % progress_interval == 0:
+            click.echo(
+                click.style(subdomain, fg="cyan")
+                + f": Parsed {i + 1}/{total_pages} pages..."
+            )
+
+    return all_docs
+
+
 # Maximum pages to process in a single spaCy batch before chunking
 # Prevents memory spikes on large datasets while maintaining efficiency
 SPACY_CHUNK_SIZE = 20_000
