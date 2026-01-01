@@ -518,7 +518,6 @@ class TestChunkedProcessing:
 
         # Should call gc.collect twice (after chunk 1 and 2, but NOT after chunk 3)
         assert mock_gc.call_count == 2
-||||||| 7eccb15
 
 
 def test_hash_text_content():
