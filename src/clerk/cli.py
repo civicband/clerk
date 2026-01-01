@@ -347,9 +347,14 @@ def fetch_internal(subdomain, fetcher):
     "-s",
     "--subdomain",
 )
-def build_db_from_text(subdomain):
+@click.option(
+    "--force-extraction",
+    is_flag=True,
+    help="Ignore cache and re-extract all pages",
+)
+def build_db_from_text(subdomain, force_extraction=False):
     """Build database from text files"""
-    build_db_from_text_internal(subdomain)
+    build_db_from_text_internal(subdomain, force_extraction=force_extraction)
     rebuild_site_fts_internal(subdomain)
 
 

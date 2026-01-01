@@ -5,6 +5,7 @@ import sqlite_utils
 from click.testing import CliRunner
 
 from clerk.cli import cli
+from clerk.extraction import EXTRACTION_ENABLED
 
 
 @pytest.mark.integration
@@ -395,6 +396,134 @@ class TestErrorHandling:
         backup_db = sqlite_utils.Database(backup_path)
         assert "old_data" in backup_db.table_names()
         assert backup_db["old_data"].count == 1
+
+
+@pytest.mark.skipif(not EXTRACTION_ENABLED, reason="Extraction disabled or spaCy not available")
+@pytest.mark.integration
+class TestExtractionCaching:
+    """Integration tests for extraction caching."""
+
+    def test_cache_workflow_end_to_end(
+        self, tmp_storage_dir, monkeypatch, cli_module, utils_module
+    ):
+        """Test complete cache workflow: first run creates cache, second run uses it."""
+        import sqlite_utils
+
+        from clerk.utils import build_db_from_text_internal
+
+        # Set up storage directory
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
+        monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_storage_dir))
+
+        subdomain = "cachetest.civic.band"
+        site_dir = tmp_storage_dir / subdomain
+        txt_dir = site_dir / "txt" / "city-council" / "2024-01-15"
+        txt_dir.mkdir(parents=True)
+
+        # Create test text files
+        (txt_dir / "001.txt").write_text("Meeting called to order")
+        (txt_dir / "002.txt").write_text("Roll call taken")
+
+        # Create initial database for backup
+        db_path = site_dir / "meetings.db"
+        db = sqlite_utils.Database(db_path)
+        db["sites"].insert(
+            {
+                "subdomain": subdomain,
+                "name": "Cache Test City",
+                "state": "CA",
+                "country": "USA",
+            },
+            pk="subdomain",
+        )
+        db.close()
+
+        # Enable extraction
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+
+        # First run - should create cache files
+        build_db_from_text_internal(subdomain)
+
+        # Verify cache files created
+        assert (txt_dir / "001.txt.extracted.json").exists()
+        assert (txt_dir / "002.txt.extracted.json").exists()
+
+        # Second run - should use cache
+        build_db_from_text_internal(subdomain)
+
+        # Verify database populated correctly both times
+        db = sqlite_utils.Database(db_path)
+        rows = list(db["minutes"].rows)
+        assert len(rows) == 2
+
+    def test_force_extraction_bypasses_cache(
+        self, tmp_storage_dir, monkeypatch, cli_module, utils_module
+    ):
+        """Test --force-extraction bypasses cache."""
+        import sqlite_utils
+
+        from clerk.utils import (
+            build_db_from_text_internal,
+            hash_text_content,
+            save_extraction_cache,
+        )
+
+        # Set up storage directory
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
+        monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_storage_dir))
+
+        subdomain = "forcetest.civic.band"
+        site_dir = tmp_storage_dir / subdomain
+        txt_dir = site_dir / "txt" / "city-council" / "2024-01-15"
+        txt_dir.mkdir(parents=True)
+
+        # Create test file
+        text_file = txt_dir / "001.txt"
+        text_content = "Original meeting text"
+        text_file.write_text(text_content)
+
+        # Create stale cache with wrong data
+        cache_file = str(text_file) + ".extracted.json"
+        content_hash = hash_text_content(text_content)
+        stale_cache = {
+            "content_hash": content_hash,
+            "model_version": "en_core_web_md",
+            "extracted_at": "2020-01-01T00:00:00Z",
+            "entities": {"persons": ["Stale Person"], "orgs": [], "locations": []},
+            "votes": {"votes": []},
+        }
+        save_extraction_cache(cache_file, stale_cache)
+
+        # Create initial database for backup
+        db_path = site_dir / "meetings.db"
+        db = sqlite_utils.Database(db_path)
+        db["sites"].insert(
+            {
+                "subdomain": subdomain,
+                "name": "Force Test City",
+                "state": "CA",
+                "country": "USA",
+            },
+            pk="subdomain",
+        )
+        db.close()
+
+        # Enable extraction
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+
+        # Run with force_extraction=True
+        build_db_from_text_internal(subdomain, force_extraction=True)
+
+        # Cache should be overwritten with fresh extraction
+        import json
+
+        with open(cache_file) as f:
+            new_cache = json.load(f)
+
+        # Timestamp should be updated (not 2020)
+        assert new_cache["extracted_at"] > "2025-01-01"
 
 
 @pytest.mark.integration

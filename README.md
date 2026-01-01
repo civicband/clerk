@@ -162,6 +162,24 @@ See [docs/plugin-development.md](docs/plugin-development.md) for details.
 - `SPACY_N_PROCESS`: Number of CPU cores for parallel spaCy processing (default: `2`).
   Set to `1` to minimize memory usage (~5GB) or `4` for maximum speed (~20GB memory).
 
+### Extraction Caching
+
+Extraction results are automatically cached in `.extracted.json` files alongside text files. This speeds up subsequent database rebuilds from hours to minutes:
+
+- **First run:** Processes all pages with spaCy, creates cache files (~1.6GB for 547k pages)
+- **Subsequent runs:** Only processes new/changed pages (95%+ cache hit rate typical)
+- **Force reprocessing:** Use `--force-extraction` flag to bypass cache
+
+```bash
+# Normal rebuild (uses cache)
+clerk build-db-from-text --subdomain example.civic.band
+
+# Force fresh extraction (ignores cache)
+clerk build-db-from-text --subdomain example.civic.band --force-extraction
+```
+
+Cache files are automatically invalidated when text content changes.
+
 ### Logfire Configuration
 
 Clerk includes Pydantic Logfire for observability:

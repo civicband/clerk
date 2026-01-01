@@ -518,3 +518,183 @@ class TestChunkedProcessing:
 
         # Should call gc.collect twice (after chunk 1 and 2, but NOT after chunk 3)
         assert mock_gc.call_count == 2
+||||||| 7eccb15
+
+
+def test_hash_text_content():
+    """Test consistent hashing of text content."""
+    from clerk.utils import hash_text_content
+
+    text1 = "Sample meeting minutes"
+    text2 = "Sample meeting minutes"
+    text3 = "Different content"
+
+    hash1 = hash_text_content(text1)
+    hash2 = hash_text_content(text2)
+    hash3 = hash_text_content(text3)
+
+    assert hash1 == hash2, "Same text should produce same hash"
+    assert hash1 != hash3, "Different text should produce different hash"
+    assert len(hash1) == 64, "SHA256 should produce 64-char hex string"
+
+
+def test_load_extraction_cache_valid(tmp_path):
+    """Test loading valid cache file with matching hash."""
+    import json
+
+    from clerk.utils import load_extraction_cache
+
+    cache_file = tmp_path / "test.txt.extracted.json"
+    expected_hash = "abc123"
+    cache_data = {
+        "content_hash": "abc123",
+        "model_version": "en_core_web_md",
+        "extracted_at": "2025-12-31T12:00:00Z",
+        "entities": {"persons": ["John Doe"], "orgs": [], "locations": []},
+        "votes": {"votes": []},
+    }
+
+    cache_file.write_text(json.dumps(cache_data))
+
+    result = load_extraction_cache(str(cache_file), expected_hash)
+
+    assert result is not None
+    assert result["content_hash"] == "abc123"
+    assert result["entities"]["persons"] == ["John Doe"]
+
+
+def test_load_extraction_cache_hash_mismatch(tmp_path):
+    """Test cache rejected when hash doesn't match."""
+    import json
+
+    from clerk.utils import load_extraction_cache
+
+    cache_file = tmp_path / "test.txt.extracted.json"
+    cache_data = {
+        "content_hash": "abc123",
+        "entities": {"persons": [], "orgs": [], "locations": []},
+        "votes": {"votes": []},
+    }
+
+    cache_file.write_text(json.dumps(cache_data))
+
+    result = load_extraction_cache(str(cache_file), "different_hash")
+
+    assert result is None
+
+
+def test_load_extraction_cache_missing_file():
+    """Test cache returns None for missing file."""
+    from clerk.utils import load_extraction_cache
+
+    result = load_extraction_cache("/nonexistent/file.json", "abc123")
+
+    assert result is None
+
+
+def test_load_extraction_cache_corrupted_json(tmp_path):
+    """Test cache returns None for corrupted JSON."""
+    from clerk.utils import load_extraction_cache
+
+    cache_file = tmp_path / "test.txt.extracted.json"
+    cache_file.write_text("{ invalid json")
+
+    result = load_extraction_cache(str(cache_file), "abc123")
+
+    assert result is None
+
+
+def test_save_extraction_cache(tmp_path):
+    """Test saving extraction cache to file."""
+    import json
+
+    from clerk.utils import save_extraction_cache
+
+    cache_file = tmp_path / "test.txt.extracted.json"
+    cache_data = {
+        "content_hash": "abc123",
+        "model_version": "en_core_web_md",
+        "extracted_at": "2025-12-31T12:00:00Z",
+        "entities": {"persons": ["Jane Smith"], "orgs": ["City Council"], "locations": []},
+        "votes": {"votes": [{"motion": "Test", "result": "passed"}]},
+    }
+
+    save_extraction_cache(str(cache_file), cache_data)
+
+    assert cache_file.exists()
+
+    with open(cache_file) as f:
+        loaded = json.load(f)
+
+    assert loaded["content_hash"] == "abc123"
+    assert loaded["entities"]["persons"] == ["Jane Smith"]
+    assert loaded["votes"]["votes"][0]["motion"] == "Test"
+
+
+def test_build_table_from_text_uses_cache(tmp_path, monkeypatch):
+    """Test that build_table_from_text uses cache when available."""
+    import json
+
+    import sqlite_utils
+
+    from clerk.utils import build_table_from_text, hash_text_content, save_extraction_cache
+
+    # Set up test directory structure
+    subdomain = "test.civic.band"
+    txt_dir = tmp_path / "txt"
+    meeting_dir = txt_dir / "city-council"
+    date_dir = meeting_dir / "2024-01-15"
+    date_dir.mkdir(parents=True)
+
+    # Create test text file
+    text_file = date_dir / "001.txt"
+    text_content = "Test meeting minutes"
+    text_file.write_text(text_content)
+
+    # Create cache file with extraction results
+    cache_file = str(text_file) + ".extracted.json"
+    content_hash = hash_text_content(text_content)
+    cache_data = {
+        "content_hash": content_hash,
+        "model_version": "en_core_web_md",
+        "extracted_at": "2025-12-31T12:00:00Z",
+        "entities": {
+            "persons": [{"text": "Cached Person", "confidence": 0.85}],
+            "orgs": [],
+            "locations": [],
+        },
+        "votes": {"votes": []},
+    }
+    save_extraction_cache(cache_file, cache_data)
+
+    # Create database
+    db = sqlite_utils.Database(tmp_path / "test.db")
+    db["minutes"].create(
+        {
+            "id": str,
+            "meeting": str,
+            "date": str,
+            "page": int,
+            "text": str,
+            "page_image": str,
+            "entities_json": str,
+            "votes_json": str,
+        },
+        pk="id",
+    )
+
+    # Disable extraction so we know results came from cache
+    import clerk.extraction
+
+    monkeypatch.setattr(clerk.extraction, "EXTRACTION_ENABLED", False)
+
+    # Run build
+    build_table_from_text(subdomain, str(txt_dir), db, "minutes")
+
+    # Verify cache was used
+    rows = list(db["minutes"].rows)
+    assert len(rows) == 1
+
+    entities = json.loads(rows[0]["entities_json"])
+    assert len(entities["persons"]) == 1, "Should have one person"
+    assert entities["persons"][0]["text"] == "Cached Person", "Should use cached entities"
