@@ -116,12 +116,23 @@ def assert_db_exists():
     return db
 
 
-def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None):
+def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None, skip_extraction=True):
+    """Build database table from text files
+
+    Args:
+        subdomain: Site subdomain (e.g., "alameda.ca.civic.band")
+        txt_dir: Directory containing text files
+        db: sqlite_utils Database object
+        table_name: Name of table to create ("minutes" or "agendas")
+        municipality: Optional municipality name for aggregate database
+        skip_extraction: If True, skip entity/vote extraction (default True)
+    """
     logger.info(
-        "Building table from text subdomain=%s table_name=%s municipality=%s",
+        "Building table from text subdomain=%s table_name=%s municipality=%s skip_extraction=%s",
         subdomain,
         table_name,
         municipality,
+        skip_extraction,
     )
     directories = [
         directory for directory in sorted(os.listdir(txt_dir)) if directory != ".DS_Store"
@@ -227,27 +238,33 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None)
 
             key_hash = {"kind": "minutes" if table_name != "agendas" else "agenda"}
 
-            # Extract entities and update context
-            try:
-                entities = extract_entities(text, doc=doc)
-                update_context(meeting_context, entities=entities)
-            except Exception as e:
-                logger.warning(f"Entity extraction failed for {page_file_path}: {e}")
+            # Only extract if not skipping
+            if not skip_extraction and EXTRACTION_ENABLED:
+                # Extract entities and update context
+                try:
+                    entities = extract_entities(text, doc=doc)
+                    update_context(meeting_context, entities=entities)
+                except Exception as e:
+                    logger.warning(f"Entity extraction failed for {page_file_path}: {e}")
+                    entities = {"persons": [], "orgs": [], "locations": []}
+
+                # Detect roll call and update context
+                try:
+                    attendees = detect_roll_call(text)
+                    if attendees:
+                        update_context(meeting_context, attendees=attendees)
+                except Exception as e:
+                    logger.warning(f"Roll call detection failed for {page_file_path}: {e}")
+
+                # Extract votes with context
+                try:
+                    votes = extract_votes(text, doc=doc, meeting_context=meeting_context)
+                except Exception as e:
+                    logger.warning(f"Vote extraction failed for {page_file_path}: {e}")
+                    votes = {"votes": []}
+            else:
+                # Empty structures when skipping extraction
                 entities = {"persons": [], "orgs": [], "locations": []}
-
-            # Detect roll call and update context
-            try:
-                attendees = detect_roll_call(text)
-                if attendees:
-                    update_context(meeting_context, attendees=attendees)
-            except Exception as e:
-                logger.warning(f"Roll call detection failed for {page_file_path}: {e}")
-
-            # Extract votes with context
-            try:
-                votes = extract_votes(text, doc=doc, meeting_context=meeting_context)
-            except Exception as e:
-                logger.warning(f"Vote extraction failed for {page_file_path}: {e}")
                 votes = {"votes": []}
 
             key_hash.update(
@@ -277,9 +294,9 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None)
     db[table_name].insert_all(entries)
 
 
-def build_db_from_text_internal(subdomain):
+def build_db_from_text_internal(subdomain, skip_extraction=True):
     st = time.time()
-    logger.info("Building database from text subdomain=%s", subdomain)
+    logger.info("Building database from text subdomain=%s skip_extraction=%s", subdomain, skip_extraction)
     minutes_txt_dir = f"{STORAGE_DIR}/{subdomain}/txt"
     agendas_txt_dir = f"{STORAGE_DIR}/{subdomain}/_agendas/txt"
     database = f"{STORAGE_DIR}/{subdomain}/meetings.db"
@@ -314,9 +331,9 @@ def build_db_from_text_internal(subdomain):
         pk=("id"),
     )
     if os.path.exists(minutes_txt_dir):
-        build_table_from_text(subdomain, minutes_txt_dir, db, "minutes")
+        build_table_from_text(subdomain, minutes_txt_dir, db, "minutes", skip_extraction=skip_extraction)
     if os.path.exists(agendas_txt_dir):
-        build_table_from_text(subdomain, agendas_txt_dir, db, "agendas")
+        build_table_from_text(subdomain, agendas_txt_dir, db, "agendas", skip_extraction=skip_extraction)
 
     # Explicitly close database to ensure all writes are flushed
     db.close()
