@@ -349,9 +349,14 @@ class TestBuildDbFromTextInternal:
         """build-db-from-text should skip extraction by default"""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
-        monkeypatch.setenv("ENABLE_EXTRACTION", "1")  # Extraction available but should be skipped
         monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_path))
         monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_path))
+
+        # Monkeypatch EXTRACTION_ENABLED directly (env var is read at import time)
+        import clerk.extraction
+        monkeypatch.setattr(clerk.extraction, "EXTRACTION_ENABLED", True)
+        # Also need to monkeypatch in utils module since it imports it
+        monkeypatch.setattr(utils_module, "EXTRACTION_ENABLED", True)
 
         from clerk.utils import assert_db_exists
         import clerk.utils
@@ -382,31 +387,25 @@ class TestBuildDbFromTextInternal:
         site_db = sqlite_utils.Database(db_path)
         site_db["temp"].insert({"id": 1})
 
-        # Mock extract_entities to track if it's called
-        extract_called = []
-        original_extract = clerk.utils.extract_entities
-
-        def mock_extract(*args, **kwargs):
-            extract_called.append(True)
-            return original_extract(*args, **kwargs)
-
-        monkeypatch.setattr(clerk.utils, "extract_entities", mock_extract)
-
         # Run build-db-from-text (should skip extraction by default)
         runner = CliRunner()
         result = runner.invoke(cli, ["build-db-from-text", "-s", "test.civic.band"])
 
         assert result.exit_code == 0
 
-        # Verify extraction was NOT called
-        assert len(extract_called) == 0, "extract_entities should not be called by default"
-
-        # Verify database was still created with text
+        # Verify database was created with text
         site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
         assert site_db["minutes"].exists()
         rows = list(site_db["minutes"].rows)
         assert len(rows) == 1
         assert rows[0]["text"] == "Meeting text"
+
+        # Verify extraction was skipped (empty structures, not extracted data)
+        import json
+        entities = json.loads(rows[0]["entities_json"])
+        votes = json.loads(rows[0]["votes_json"])
+        assert entities == {"persons": [], "orgs": [], "locations": []}
+        assert votes == {"votes": []}
 
 
 @pytest.mark.slow

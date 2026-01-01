@@ -446,17 +446,18 @@ def extract_entities_for_site(subdomain, force_extraction=False):
                 votes = cached["votes"]
             else:
                 if not EXTRACTION_ENABLED:
-                    # Skip extraction if disabled
-                    continue
-
-                # Extract entities and votes using pre-parsed doc
-                try:
-                    entities = extract_entities(pdata["text"], doc=doc)
-                    votes = extract_votes(pdata["text"], doc=doc, meeting_context={})
-                except Exception as e:
-                    logger.warning(f"Extraction failed for {pdata['page_file_path']}: {e}")
+                    # Set empty structures when extraction is disabled
                     entities = {"persons": [], "orgs": [], "locations": []}
                     votes = {"votes": []}
+                else:
+                    # Extract entities and votes using pre-parsed doc
+                    try:
+                        entities = extract_entities(pdata["text"], doc=doc)
+                        votes = extract_votes(pdata["text"], doc=doc, meeting_context={})
+                    except Exception as e:
+                        logger.warning(f"Extraction failed for {pdata['page_file_path']}: {e}")
+                        entities = {"persons": [], "orgs": [], "locations": []}
+                        votes = {"votes": []}
 
                 # Write cache
                 content_hash = pdata["content_hash"]
