@@ -391,3 +391,130 @@ class TestChunkedProcessing:
 
         # Should call gc.collect once (after first chunk, not after last)
         assert mock_gc.call_count == 1
+
+    def test_exact_chunk_boundary(self, mocker, monkeypatch, tmp_path):
+        """Test that exact chunk size doesn't trigger unnecessary chunking."""
+        monkeypatch.delenv("SPACY_N_PROCESS", raising=False)
+        monkeypatch.setattr("clerk.utils.SPACY_CHUNK_SIZE", 100)
+
+        # Mock get_nlp
+        mock_nlp = mocker.MagicMock()
+        mock_nlp.pipe.return_value = iter([mocker.MagicMock() for _ in range(100)])
+        mocker.patch("clerk.utils.get_nlp", return_value=mock_nlp)
+        mocker.patch("clerk.utils.EXTRACTION_ENABLED", True)
+
+        # Create exactly CHUNK_SIZE files
+        txt_dir = tmp_path / "txt"
+        txt_dir.mkdir()
+        meeting_dir = txt_dir / "CityCouncil"
+        meeting_dir.mkdir()
+        date_dir = meeting_dir / "2024-01-15"
+        date_dir.mkdir()
+        for i in range(100):
+            (date_dir / f"{i}.txt").write_text(f"content {i}")
+
+        db = sqlite_utils.Database(tmp_path / "test.db")
+        db["minutes"].create(
+            {
+                "id": str,
+                "meeting": str,
+                "date": str,
+                "page": int,
+                "text": str,
+                "page_image": str,
+                "entities_json": str,
+                "votes_json": str,
+            },
+            pk="id",
+        )
+
+        from clerk.utils import build_table_from_text
+        build_table_from_text(
+            db=db,
+            subdomain="test",
+            table_name="minutes",
+            txt_dir=str(txt_dir)
+        )
+
+        # Exactly at boundary - should use small batch path (no chunking)
+        assert mock_nlp.pipe.call_count == 1
+
+    def test_empty_batch_no_processing(self, mocker, monkeypatch, tmp_path):
+        """Test that empty directory doesn't attempt spaCy processing."""
+        monkeypatch.delenv("SPACY_N_PROCESS", raising=False)
+
+        # Mock get_nlp - should NOT be called
+        mock_nlp = mocker.MagicMock()
+        mocker.patch("clerk.utils.get_nlp", return_value=mock_nlp)
+        mocker.patch("clerk.utils.EXTRACTION_ENABLED", True)
+
+        # Create empty txt directory
+        txt_dir = tmp_path / "txt"
+        txt_dir.mkdir()
+
+        db = sqlite_utils.Database(tmp_path / "test.db")
+
+        from clerk.utils import build_table_from_text
+        build_table_from_text(
+            db=db,
+            subdomain="test",
+            table_name="minutes",
+            txt_dir=str(txt_dir)
+        )
+
+        # Should not call nlp.pipe at all
+        assert mock_nlp.pipe.call_count == 0
+
+    def test_gc_not_called_after_last_chunk(self, mocker, monkeypatch, tmp_path):
+        """Test that gc.collect() is NOT called after the final chunk."""
+        monkeypatch.delenv("SPACY_N_PROCESS", raising=False)
+        monkeypatch.setattr("clerk.utils.SPACY_CHUNK_SIZE", 50)
+
+        # Mock get_nlp
+        mock_nlp = mocker.MagicMock()
+        mock_nlp.pipe.side_effect = [
+            iter([mocker.MagicMock() for _ in range(50)]),  # Chunk 1
+            iter([mocker.MagicMock() for _ in range(50)]),  # Chunk 2
+            iter([mocker.MagicMock() for _ in range(25)]),  # Chunk 3 (last)
+        ]
+        mocker.patch("clerk.utils.get_nlp", return_value=mock_nlp)
+        mocker.patch("clerk.utils.EXTRACTION_ENABLED", True)
+
+        # Mock gc.collect
+        mock_gc = mocker.patch("gc.collect")
+
+        # Create 125 text files (3 chunks: 50, 50, 25)
+        txt_dir = tmp_path / "txt"
+        txt_dir.mkdir()
+        meeting_dir = txt_dir / "CityCouncil"
+        meeting_dir.mkdir()
+        date_dir = meeting_dir / "2024-01-15"
+        date_dir.mkdir()
+        for i in range(125):
+            (date_dir / f"{i}.txt").write_text(f"content {i}")
+
+        db = sqlite_utils.Database(tmp_path / "test.db")
+        db["minutes"].create(
+            {
+                "id": str,
+                "meeting": str,
+                "date": str,
+                "page": int,
+                "text": str,
+                "page_image": str,
+                "entities_json": str,
+                "votes_json": str,
+            },
+            pk="id",
+        )
+
+        from clerk.utils import build_table_from_text
+        build_table_from_text(
+            db=db,
+            subdomain="test",
+            table_name="minutes",
+            txt_dir=str(txt_dir)
+        )
+
+        # Should call gc.collect twice (after chunk 1 and 2, but NOT after chunk 3)
+        assert mock_gc.call_count == 2
