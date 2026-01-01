@@ -26,6 +26,7 @@ from .hookspecs import ClerkSpec
 @dataclass
 class PageFile:
     """Represents a single page file with its metadata."""
+
     meeting: str
     date: str
     page_num: int
@@ -36,6 +37,7 @@ class PageFile:
 @dataclass
 class MeetingDateGroup:
     """Groups page indices by meeting and date."""
+
     meeting: str
     date: str
     page_indices: list[int]
@@ -44,6 +46,7 @@ class MeetingDateGroup:
 @dataclass
 class PageData:
     """Page data with cache information for extraction."""
+
     page_id: str
     text: str
     page_file_path: str
@@ -80,11 +83,11 @@ def group_pages_by_meeting_date(page_files: list[PageFile]) -> list[MeetingDateG
 
         if key != current_key:
             if current_key is not None:
-                groups.append(MeetingDateGroup(
-                    meeting=current_key[0],
-                    date=current_key[1],
-                    page_indices=current_indices
-                ))
+                groups.append(
+                    MeetingDateGroup(
+                        meeting=current_key[0], date=current_key[1], page_indices=current_indices
+                    )
+                )
             current_key = key
             current_indices = [idx]
         else:
@@ -92,11 +95,11 @@ def group_pages_by_meeting_date(page_files: list[PageFile]) -> list[MeetingDateG
 
     # Don't forget the last group
     if current_key is not None:
-        groups.append(MeetingDateGroup(
-            meeting=current_key[0],
-            date=current_key[1],
-            page_indices=current_indices
-        ))
+        groups.append(
+            MeetingDateGroup(
+                meeting=current_key[0], date=current_key[1], page_indices=current_indices
+            )
+        )
 
     return groups
 
@@ -137,24 +140,27 @@ def collect_page_files(txt_dir: str) -> list[PageFile]:
     if not os.path.exists(txt_dir):
         return page_files
 
-    meetings = sorted([
-        d for d in os.listdir(txt_dir)
-        if d != ".DS_Store" and os.path.isdir(os.path.join(txt_dir, d))
-    ])
+    meetings = sorted(
+        [
+            d
+            for d in os.listdir(txt_dir)
+            if d != ".DS_Store" and os.path.isdir(os.path.join(txt_dir, d))
+        ]
+    )
 
     for meeting in meetings:
         meeting_path = os.path.join(txt_dir, meeting)
-        dates = sorted([
-            d for d in os.listdir(meeting_path)
-            if d != ".DS_Store" and os.path.isdir(os.path.join(meeting_path, d))
-        ])
+        dates = sorted(
+            [
+                d
+                for d in os.listdir(meeting_path)
+                if d != ".DS_Store" and os.path.isdir(os.path.join(meeting_path, d))
+            ]
+        )
 
         for date in dates:
             date_path = os.path.join(meeting_path, date)
-            pages = sorted([
-                p for p in os.listdir(date_path)
-                if p.endswith(".txt")
-            ])
+            pages = sorted([p for p in os.listdir(date_path) if p.endswith(".txt")])
 
             for page in pages:
                 page_path = os.path.join(date_path, page)
@@ -164,13 +170,15 @@ def collect_page_files(txt_dir: str) -> list[PageFile]:
                 page_num = int(page.split(".")[0])
                 page_image_path = f"/{meeting}/{date}/{page.split('.')[0]}.png"
 
-                page_files.append(PageFile(
-                    meeting=meeting,
-                    date=date,
-                    page_num=page_num,
-                    text=text,
-                    page_image_path=page_image_path
-                ))
+                page_files.append(
+                    PageFile(
+                        meeting=meeting,
+                        date=date,
+                        page_num=page_num,
+                        text=text,
+                        page_image_path=page_image_path,
+                    )
+                )
 
     return page_files
 
@@ -203,9 +211,7 @@ def batch_parse_with_spacy(texts: list[str], subdomain: str) -> list:
 
     if n_process > 1:
         pipe_kwargs["n_process"] = n_process
-        click.echo(
-            click.style(subdomain, fg="cyan") + f": Using {n_process} processes for parsing"
-        )
+        click.echo(click.style(subdomain, fg="cyan") + f": Using {n_process} processes for parsing")
 
     all_docs = []
     progress_interval = 1000
@@ -214,8 +220,7 @@ def batch_parse_with_spacy(texts: list[str], subdomain: str) -> list:
         all_docs.append(doc)
         if (i + 1) % progress_interval == 0:
             click.echo(
-                click.style(subdomain, fg="cyan")
-                + f": Parsed {i + 1}/{total_pages} pages..."
+                click.style(subdomain, fg="cyan") + f": Parsed {i + 1}/{total_pages} pages..."
             )
 
     return all_docs
@@ -227,7 +232,7 @@ def process_page_for_db(
     context: dict,
     subdomain: str,
     table_name: str,
-    municipality: str | None
+    municipality: str | None,
 ) -> dict:
     """Process a single page for database insertion.
 
@@ -301,6 +306,11 @@ def process_page_for_db(
         "votes_json": json.dumps(votes),
     }
 
+    # Add optional fields for aggregate databases
+    if municipality:
+        entry["subdomain"] = subdomain
+        entry["municipality"] = municipality
+
     return entry
 
 
@@ -325,10 +335,7 @@ def load_pages_from_db(subdomain: str, table_name: str) -> list[dict]:
 
 
 def collect_page_data_with_cache(
-    pages: list[dict],
-    subdomain: str,
-    table_name: str,
-    force_extraction: bool
+    pages: list[dict], subdomain: str, table_name: str, force_extraction: bool
 ) -> list[PageData]:
     """Collect page data with cache checking.
 
@@ -387,19 +394,21 @@ def collect_page_data_with_cache(
         else:
             cache_misses += 1
 
-        all_page_data.append(PageData(
-            page_id=page["id"],
-            text=text,
-            page_file_path=page_file_path,
-            content_hash=content_hash,
-            cached_extraction=cached_extraction,
-        ))
+        all_page_data.append(
+            PageData(
+                page_id=page["id"],
+                text=text,
+                page_file_path=page_file_path,
+                content_hash=content_hash,
+                cached_extraction=cached_extraction,
+            )
+        )
 
     log(
         f"Cache status: {cache_hits} hits, {cache_misses} misses",
         subdomain=subdomain,
         cache_hits=cache_hits,
-        cache_misses=cache_misses
+        cache_misses=cache_misses,
     )
 
     return all_page_data
@@ -424,7 +433,10 @@ def batch_process_uncached_pages(page_data: list[PageData], subdomain: str) -> l
         uncached_texts = [page_data[i].text for i in uncached_indices]
         nlp = get_nlp()
         if nlp:
-            log(f"Batch processing {len(uncached_texts)} uncached pages with nlp.pipe()", subdomain=subdomain)
+            log(
+                f"Batch processing {len(uncached_texts)} uncached pages with nlp.pipe()",
+                subdomain=subdomain,
+            )
             # Single batch process with nlp.pipe()
             for processed, doc in enumerate(nlp.pipe(uncached_texts, batch_size=500)):
                 original_idx = uncached_indices[processed]
@@ -433,12 +445,7 @@ def batch_process_uncached_pages(page_data: list[PageData], subdomain: str) -> l
     return all_docs
 
 
-def save_extractions_to_db(
-    page_data: list[PageData],
-    docs: list,
-    subdomain: str,
-    table_name: str
-):
+def save_extractions_to_db(page_data: list[PageData], docs: list, subdomain: str, table_name: str):
     """Save extractions to database (extract or use cache).
 
     For each page: use cached extraction OR extract from doc,
@@ -491,11 +498,7 @@ def save_extractions_to_db(
 
         # Update database
         db[table_name].update(
-            pdata.page_id,
-            {
-                "entities_json": json.dumps(entities),
-                "votes_json": json.dumps(votes)
-            }
+            pdata.page_id, {"entities_json": json.dumps(entities), "votes_json": json.dumps(votes)}
         )
 
 
@@ -646,8 +649,12 @@ def build_table_from_text(
     entries = []
     for meeting_date_group in group_pages_by_meeting_date(page_files):
         # Log progress per meeting
-        if meeting_date_group.meeting != getattr(build_table_from_text, '_last_meeting', None):
-            click.echo(click.style(subdomain, fg="cyan") + ": " + f"Processing {meeting_date_group.meeting}")
+        if meeting_date_group.meeting != getattr(build_table_from_text, "_last_meeting", None):
+            click.echo(
+                click.style(subdomain, fg="cyan")
+                + ": "
+                + f"Processing {meeting_date_group.meeting}"
+            )
             build_table_from_text._last_meeting = meeting_date_group.meeting
 
         # Create fresh context for each meeting date
@@ -656,8 +663,7 @@ def build_table_from_text(
         # Process pages for this meeting date with their pre-parsed docs
         for idx in meeting_date_group.page_indices:
             entry = process_page_for_db(
-                page_files[idx], docs[idx], meeting_context,
-                subdomain, table_name, municipality
+                page_files[idx], docs[idx], meeting_context, subdomain, table_name, municipality
             )
             entries.append(entry)
 
@@ -670,6 +676,7 @@ def build_table_from_text(
     total_files = len(page_files)
 
     from .output import log
+
     log(
         f"Build completed in {elapsed:.2f}s",
         subdomain=subdomain,

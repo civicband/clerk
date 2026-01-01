@@ -1,9 +1,21 @@
 """Tests for refactored utility functions."""
+
 import json
+
 import pytest
 import sqlite_utils
-from clerk.utils import PageFile, MeetingDateGroup, group_pages_by_meeting_date, create_meetings_schema, collect_page_files, batch_parse_with_spacy, process_page_for_db, load_pages_from_db, collect_page_data_with_cache
+
 from clerk.extraction import EXTRACTION_ENABLED, create_meeting_context
+from clerk.utils import (
+    PageFile,
+    batch_parse_with_spacy,
+    collect_page_data_with_cache,
+    collect_page_files,
+    create_meetings_schema,
+    group_pages_by_meeting_date,
+    load_pages_from_db,
+    process_page_for_db,
+)
 
 
 def test_group_pages_by_meeting_date_single_meeting():
@@ -136,6 +148,7 @@ def test_batch_parse_with_spacy():
 def test_batch_parse_with_spacy_extraction_disabled():
     """Test batch parsing when extraction is disabled."""
     import os
+
     old_val = os.environ.get("ENABLE_EXTRACTION")
     os.environ["ENABLE_EXTRACTION"] = "0"
 
@@ -163,7 +176,7 @@ def test_process_page_for_db():
         date="2024-01-15",
         page_num=1,
         text="Mayor Smith called the meeting to order. Motion to approve passed 5-0.",
-        page_image_path="/council/2024-01-15/0001.png"
+        page_image_path="/council/2024-01-15/0001.png",
     )
 
     context = create_meeting_context()
@@ -175,7 +188,7 @@ def test_process_page_for_db():
         context=context,
         subdomain="test.civic.band",
         table_name="minutes",
-        municipality=None
+        municipality=None,
     )
 
     assert entry["meeting"] == "council"
@@ -201,14 +214,30 @@ def test_load_pages_from_db(tmp_path):
     create_meetings_schema(db)
 
     # Insert test data
-    db["minutes"].insert_all([
-        {"id": "abc", "meeting": "council", "date": "2024-01-15", "page": 1,
-         "text": "test", "page_image": "/path.png", "entities_json": "{}",
-         "votes_json": "{}"},
-        {"id": "def", "meeting": "council", "date": "2024-01-15", "page": 2,
-         "text": "test2", "page_image": "/path2.png", "entities_json": "{}",
-         "votes_json": "{}"},
-    ])
+    db["minutes"].insert_all(
+        [
+            {
+                "id": "abc",
+                "meeting": "council",
+                "date": "2024-01-15",
+                "page": 1,
+                "text": "test",
+                "page_image": "/path.png",
+                "entities_json": "{}",
+                "votes_json": "{}",
+            },
+            {
+                "id": "def",
+                "meeting": "council",
+                "date": "2024-01-15",
+                "page": 2,
+                "text": "test2",
+                "page_image": "/path2.png",
+                "entities_json": "{}",
+                "votes_json": "{}",
+            },
+        ]
+    )
     db.close()
 
     # Create subdomain directory structure
@@ -218,6 +247,7 @@ def test_load_pages_from_db(tmp_path):
 
     # Test loading (need to set STORAGE_DIR)
     import os
+
     old_storage = os.environ.get("STORAGE_DIR")
     os.environ["STORAGE_DIR"] = str(tmp_path)
 
@@ -254,16 +284,15 @@ def test_collect_page_data_with_cache(tmp_path):
         "content_hash": hash_text_content(test_content),
         "extracted_at": "2024-01-01T00:00:00",
         "entities": {"persons": [], "orgs": [], "locations": []},
-        "votes": {"votes": []}
+        "votes": {"votes": []},
     }
     cache_file.write_text(json.dumps(cache_data))
 
-    pages = [
-        {"id": "test1", "meeting": "council", "date": "2024-01-15", "page": 1}
-    ]
+    pages = [{"id": "test1", "meeting": "council", "date": "2024-01-15", "page": 1}]
 
     # Mock STORAGE_DIR
     import os
+
     old_storage = os.environ.get("STORAGE_DIR")
     os.environ["STORAGE_DIR"] = str(tmp_path)
     subdomain_dir = tmp_path / "test.civic.band"
