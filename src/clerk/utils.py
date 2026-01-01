@@ -4,6 +4,7 @@ import logging
 import os
 import shutil
 import time
+from dataclasses import dataclass
 from hashlib import sha256
 
 import click
@@ -20,6 +21,35 @@ from .extraction import (
     update_context,
 )
 from .hookspecs import ClerkSpec
+
+
+@dataclass
+class PageFile:
+    """Represents a single page file with its metadata."""
+    meeting: str
+    date: str
+    page_num: int
+    text: str
+    page_image_path: str
+
+
+@dataclass
+class MeetingDateGroup:
+    """Groups page indices by meeting and date."""
+    meeting: str
+    date: str
+    page_indices: list[int]
+
+
+@dataclass
+class PageData:
+    """Page data with cache information for extraction."""
+    page_id: str
+    text: str
+    page_file_path: str
+    content_hash: str | None
+    cached_extraction: dict | None  # {"entities": ..., "votes": ...}
+
 
 logger = logging.getLogger(__name__)
 
