@@ -392,3 +392,50 @@ class TestBuildFullDb:
         full_db = sqlite_utils.Database(full_db_path)
         assert "minutes" in full_db.table_names()
         assert "agendas" in full_db.table_names()
+
+
+@pytest.mark.unit
+class TestMigrateExtractionSchema:
+    """Unit tests for migrate-extraction-schema command."""
+
+    def test_migrate_extraction_schema_adds_columns(self, tmp_path, monkeypatch):
+        """Migration adds extraction_status and last_extracted columns"""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        from clerk.utils import assert_db_exists
+
+        # Create database without extraction columns
+        db = assert_db_exists()
+
+        # Run migration
+        runner = CliRunner()
+        result = runner.invoke(cli, ['migrate-extraction-schema'])
+
+        assert result.exit_code == 0
+        assert "Migration complete" in result.output
+
+        # Verify columns exist
+        columns = {col.name for col in db["sites"].columns}
+        assert "extraction_status" in columns
+        assert "last_extracted" in columns
+
+    def test_migrate_extraction_schema_is_idempotent(self, tmp_path, monkeypatch):
+        """Running migration multiple times is safe"""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        from clerk.utils import assert_db_exists
+
+        runner = CliRunner()
+
+        # Run migration twice
+        result1 = runner.invoke(cli, ['migrate-extraction-schema'])
+        result2 = runner.invoke(cli, ['migrate-extraction-schema'])
+
+        assert result1.exit_code == 0
+        assert result2.exit_code == 0
+
+        # Verify no errors and columns still exist
+        db = assert_db_exists()
+        columns = {col.name for col in db["sites"].columns}
+        assert "extraction_status" in columns
+        assert "last_extracted" in columns

@@ -488,7 +488,31 @@ def remove_all_image_dirs():
             shutil.rmtree(agendas_image_dir)
 
 
+@cli.command()
+def migrate_extraction_schema():
+    """Add extraction tracking columns to sites table"""
+    db = assert_db_exists()
+
+    try:
+        # Add columns if they don't exist
+        existing_columns = {col.name for col in db["sites"].columns}
+
+        if "extraction_status" not in existing_columns:
+            db.execute("ALTER TABLE sites ADD COLUMN extraction_status TEXT DEFAULT 'pending'")
+
+        if "last_extracted" not in existing_columns:
+            db.execute("ALTER TABLE sites ADD COLUMN last_extracted TEXT")
+
+        # Set pending for all sites that don't have a status
+        db.execute("UPDATE sites SET extraction_status = 'pending' WHERE extraction_status IS NULL")
+
+        click.echo("Migration complete: extraction_status and last_extracted columns added")
+    finally:
+        db.close()
+
+
 cli.add_command(new)
 cli.add_command(update)
 cli.add_command(build_full_db)
 cli.add_command(remove_all_image_dirs)
+cli.add_command(migrate_extraction_schema)
