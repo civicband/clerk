@@ -547,7 +547,7 @@ class TestChunkedProcessing:
 
         # Create 250 text files to trigger chunking (100 + 100 + 50)
         for i in range(250):
-            page_file = minutes_dir / f"{i+1}.txt"
+            page_file = minutes_dir / f"{i + 1}.txt"
             page_file.write_text(f"Meeting content page {i}\nSome text here.")
 
         db_path = site_dir / "site.db"
@@ -557,10 +557,7 @@ class TestChunkedProcessing:
 
         # Should complete without errors and process all pages
         build_table_from_text(
-            db=db,
-            subdomain="test.civic.band",
-            table_name="minutes",
-            txt_dir=str(site_dir / "txt")
+            db=db, subdomain="test.civic.band", table_name="minutes", txt_dir=str(site_dir / "txt")
         )
 
         # Verify all pages were processed

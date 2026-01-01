@@ -299,6 +299,7 @@ def build_table_from_text(
                     # Explicit memory cleanup between chunks (not after last chunk)
                     if chunk_idx < num_chunks - 1:
                         import gc
+
                         gc.collect()
 
                     click.echo(

@@ -234,6 +234,7 @@ class TestSpacyChunkSize:
     def test_spacy_chunk_size_constant_exists(self):
         """Test that SPACY_CHUNK_SIZE constant is defined."""
         from clerk.utils import SPACY_CHUNK_SIZE
+
         assert SPACY_CHUNK_SIZE == 20_000
 
 
@@ -252,7 +253,9 @@ def test_spacy_n_process_default_is_two(mocker, monkeypatch, tmp_path):
 
     # Mock extraction and context functions to avoid dependencies
     mocker.patch("clerk.utils.create_meeting_context", return_value={})
-    mocker.patch("clerk.utils.extract_entities", return_value={"persons": [], "orgs": [], "locations": []})
+    mocker.patch(
+        "clerk.utils.extract_entities", return_value={"persons": [], "orgs": [], "locations": []}
+    )
     mocker.patch("clerk.utils.detect_roll_call", return_value=None)
     mocker.patch("clerk.utils.extract_votes", return_value={"votes": []})
     mocker.patch("clerk.utils.update_context")
@@ -273,12 +276,7 @@ def test_spacy_n_process_default_is_two(mocker, monkeypatch, tmp_path):
     # Create a test page file
     (date_dir / "1.txt").write_text("test content")
 
-    build_table_from_text(
-        subdomain="test",
-        txt_dir=str(txt_dir),
-        db=db,
-        table_name="minutes"
-    )
+    build_table_from_text(subdomain="test", txt_dir=str(txt_dir), db=db, table_name="minutes")
 
     # Check that nlp.pipe was called with n_process=2
     call_kwargs = mock_nlp.pipe.call_args[1]
@@ -325,12 +323,8 @@ class TestChunkedProcessing:
         )
 
         from clerk.utils import build_table_from_text
-        build_table_from_text(
-            db=db,
-            subdomain="test",
-            table_name="minutes",
-            txt_dir=str(txt_dir)
-        )
+
+        build_table_from_text(db=db, subdomain="test", table_name="minutes", txt_dir=str(txt_dir))
 
         # Should call nlp.pipe exactly once (no chunking)
         assert mock_nlp.pipe.call_count == 1
@@ -345,7 +339,7 @@ class TestChunkedProcessing:
         # Return different docs for each call
         mock_nlp.pipe.side_effect = [
             iter([mocker.MagicMock() for _ in range(100)]),  # First chunk
-            iter([mocker.MagicMock() for _ in range(50)]),   # Second chunk
+            iter([mocker.MagicMock() for _ in range(50)]),  # Second chunk
         ]
         mocker.patch("clerk.utils.get_nlp", return_value=mock_nlp)
         mocker.patch("clerk.utils.EXTRACTION_ENABLED", True)
@@ -379,12 +373,8 @@ class TestChunkedProcessing:
         )
 
         from clerk.utils import build_table_from_text
-        build_table_from_text(
-            db=db,
-            subdomain="test",
-            table_name="minutes",
-            txt_dir=str(txt_dir)
-        )
+
+        build_table_from_text(db=db, subdomain="test", table_name="minutes", txt_dir=str(txt_dir))
 
         # Should call nlp.pipe twice (2 chunks: 100 + 50)
         assert mock_nlp.pipe.call_count == 2
@@ -429,12 +419,8 @@ class TestChunkedProcessing:
         )
 
         from clerk.utils import build_table_from_text
-        build_table_from_text(
-            db=db,
-            subdomain="test",
-            table_name="minutes",
-            txt_dir=str(txt_dir)
-        )
+
+        build_table_from_text(db=db, subdomain="test", table_name="minutes", txt_dir=str(txt_dir))
 
         # Exactly at boundary - should use small batch path (no chunking)
         assert mock_nlp.pipe.call_count == 1
@@ -455,12 +441,8 @@ class TestChunkedProcessing:
         db = sqlite_utils.Database(tmp_path / "test.db")
 
         from clerk.utils import build_table_from_text
-        build_table_from_text(
-            db=db,
-            subdomain="test",
-            table_name="minutes",
-            txt_dir=str(txt_dir)
-        )
+
+        build_table_from_text(db=db, subdomain="test", table_name="minutes", txt_dir=str(txt_dir))
 
         # Should not call nlp.pipe at all
         assert mock_nlp.pipe.call_count == 0
@@ -509,12 +491,8 @@ class TestChunkedProcessing:
         )
 
         from clerk.utils import build_table_from_text
-        build_table_from_text(
-            db=db,
-            subdomain="test",
-            table_name="minutes",
-            txt_dir=str(txt_dir)
-        )
+
+        build_table_from_text(db=db, subdomain="test", table_name="minutes", txt_dir=str(txt_dir))
 
         # Should call gc.collect twice (after chunk 1 and 2, but NOT after chunk 3)
         assert mock_gc.call_count == 2
