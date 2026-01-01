@@ -572,22 +572,27 @@ def extract_entities_internal(subdomain, next_site=False):
         # Run extraction
         extract_entities_for_site(subdomain, force_extraction=False)
 
-        # Deploy unless in dev mode
-        if not os.environ.get("CIVIC_DEV_MODE"):
-            site_db = sqlite_utils.Database(f"{STORAGE_DIR}/{subdomain}/meetings.db")
-            pm.hook.deploy_municipality(subdomain=subdomain, municipality=site["name"], db=site_db)
-            pm.hook.post_deploy(subdomain=subdomain, municipality=site["name"])
-            log("Deployed updated database", subdomain=subdomain)
-        else:
-            log("DEV MODE: Skipping deployment", subdomain=subdomain)
-
-        # Mark as completed
+        # Mark extraction as completed BEFORE deployment
         db["sites"].update(subdomain, {
             "extraction_status": "completed",
             "last_extracted": datetime.datetime.now().isoformat()
         })
 
         log("Extraction completed successfully", subdomain=subdomain)
+
+        # Deploy unless in dev mode (separate error handling)
+        if not os.environ.get("CIVIC_DEV_MODE"):
+            try:
+                site_db = sqlite_utils.Database(f"{STORAGE_DIR}/{subdomain}/meetings.db")
+                pm.hook.deploy_municipality(subdomain=subdomain, municipality=site["name"], db=site_db)
+                pm.hook.post_deploy(subdomain=subdomain, municipality=site["name"])
+                log("Deployed updated database", subdomain=subdomain)
+            except Exception as deploy_error:
+                log(f"Deployment failed but extraction completed: {deploy_error}",
+                    subdomain=subdomain, level="error")
+                # Don't raise - extraction succeeded
+        else:
+            log("DEV MODE: Skipping deployment", subdomain=subdomain)
 
     except Exception as e:
         db["sites"].update(subdomain, {"extraction_status": "failed"})
