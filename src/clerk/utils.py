@@ -58,6 +58,48 @@ pm.add_hookspecs(ClerkSpec)
 
 STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
 
+
+def group_pages_by_meeting_date(page_files: list[PageFile]) -> list[MeetingDateGroup]:
+    """Group page files by (meeting, date) for context management.
+
+    Args:
+        page_files: List of PageFile objects
+
+    Returns:
+        List of MeetingDateGroup objects with page indices
+    """
+    if not page_files:
+        return []
+
+    groups = []
+    current_key = None
+    current_indices = []
+
+    for idx, pf in enumerate(page_files):
+        key = (pf.meeting, pf.date)
+
+        if key != current_key:
+            if current_key is not None:
+                groups.append(MeetingDateGroup(
+                    meeting=current_key[0],
+                    date=current_key[1],
+                    page_indices=current_indices
+                ))
+            current_key = key
+            current_indices = [idx]
+        else:
+            current_indices.append(idx)
+
+    # Don't forget the last group
+    if current_key is not None:
+        groups.append(MeetingDateGroup(
+            meeting=current_key[0],
+            date=current_key[1],
+            page_indices=current_indices
+        ))
+
+    return groups
+
 # Maximum pages to process in a single spaCy batch before chunking
 # Prevents memory spikes on large datasets while maintaining efficiency
 SPACY_CHUNK_SIZE = 20_000
