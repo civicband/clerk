@@ -235,3 +235,51 @@ class TestSpacyChunkSize:
         """Test that SPACY_CHUNK_SIZE constant is defined."""
         from clerk.utils import SPACY_CHUNK_SIZE
         assert SPACY_CHUNK_SIZE == 20_000
+
+
+def test_spacy_n_process_default_is_two(mocker, monkeypatch, tmp_path):
+    """Test that SPACY_N_PROCESS defaults to 2."""
+    # Clear any existing env var
+    monkeypatch.delenv("SPACY_N_PROCESS", raising=False)
+
+    # Mock get_nlp to avoid spaCy dependency
+    mock_nlp = mocker.MagicMock()
+    # Make pipe return a mock doc for each text passed in
+    mock_doc = mocker.MagicMock()
+    mock_nlp.pipe.return_value = iter([mock_doc])
+    mocker.patch("clerk.utils.get_nlp", return_value=mock_nlp)
+    mocker.patch("clerk.utils.EXTRACTION_ENABLED", True)
+
+    # Mock extraction and context functions to avoid dependencies
+    mocker.patch("clerk.utils.create_meeting_context", return_value={})
+    mocker.patch("clerk.utils.extract_entities", return_value={"persons": [], "orgs": [], "locations": []})
+    mocker.patch("clerk.utils.detect_roll_call", return_value=None)
+    mocker.patch("clerk.utils.extract_votes", return_value={"votes": []})
+    mocker.patch("clerk.utils.update_context")
+
+    # Create minimal test data
+    import sqlite_utils
+
+    from clerk.utils import build_table_from_text
+
+    db = sqlite_utils.Database(str(tmp_path / "test.db"))
+
+    # Create directory structure: txt_dir/meeting/meeting_date/page.txt
+    txt_dir = tmp_path / "txt"
+    meeting_dir = txt_dir / "CityCouncil"
+    date_dir = meeting_dir / "2024-01-01"
+    date_dir.mkdir(parents=True)
+
+    # Create a test page file
+    (date_dir / "1.txt").write_text("test content")
+
+    build_table_from_text(
+        subdomain="test",
+        txt_dir=str(txt_dir),
+        db=db,
+        table_name="minutes"
+    )
+
+    # Check that nlp.pipe was called with n_process=2
+    call_kwargs = mock_nlp.pipe.call_args[1]
+    assert call_kwargs.get("n_process") == 2

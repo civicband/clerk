@@ -133,7 +133,7 @@ def build_table_from_text(subdomain, txt_dir, db, table_name, municipality=None)
 
     # Parse with progress updates every 1000 pages
     # n_process > 1 enables multiprocessing for ~2-4x speedup on multi-core machines
-    n_process = int(os.environ.get("SPACY_N_PROCESS", "1"))
+    n_process = int(os.environ.get("SPACY_N_PROCESS", "2"))
     all_docs = []
     if EXTRACTION_ENABLED:
         nlp = get_nlp()
