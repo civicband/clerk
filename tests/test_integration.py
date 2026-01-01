@@ -406,10 +406,10 @@ class TestExtractionCaching:
     def test_cache_workflow_end_to_end(
         self, tmp_storage_dir, monkeypatch, cli_module, utils_module
     ):
-        """Test complete cache workflow: first run creates cache, second run uses it."""
+        """Test complete cache workflow: extraction creates cache, subsequent runs use it."""
         import sqlite_utils
 
-        from clerk.utils import build_db_from_text_internal
+        from clerk.utils import build_db_from_text_internal, extract_entities_for_site
 
         # Set up storage directory
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
@@ -421,9 +421,9 @@ class TestExtractionCaching:
         txt_dir = site_dir / "txt" / "city-council" / "2024-01-15"
         txt_dir.mkdir(parents=True)
 
-        # Create test text files
-        (txt_dir / "001.txt").write_text("Meeting called to order")
-        (txt_dir / "002.txt").write_text("Roll call taken")
+        # Create test text files (4-digit naming like real pages)
+        (txt_dir / "0001.txt").write_text("Meeting called to order")
+        (txt_dir / "0002.txt").write_text("Roll call taken")
 
         # Create initial database for backup
         db_path = site_dir / "meetings.db"
@@ -442,17 +442,20 @@ class TestExtractionCaching:
         # Enable extraction
         monkeypatch.setenv("ENABLE_EXTRACTION", "1")
 
-        # First run - should create cache files
-        build_db_from_text_internal(subdomain, skip_extraction=False)
+        # Build database (without extraction - no cache created)
+        build_db_from_text_internal(subdomain, skip_extraction=True)
+
+        # First extraction run - should create cache files
+        extract_entities_for_site(subdomain, force_extraction=False)
 
         # Verify cache files created
-        assert (txt_dir / "001.txt.extracted.json").exists()
-        assert (txt_dir / "002.txt.extracted.json").exists()
+        assert (txt_dir / "0001.txt.extracted.json").exists()
+        assert (txt_dir / "0002.txt.extracted.json").exists()
 
-        # Second run - should use cache
-        build_db_from_text_internal(subdomain, skip_extraction=False)
+        # Second extraction run - should use cache
+        extract_entities_for_site(subdomain, force_extraction=False)
 
-        # Verify database populated correctly both times
+        # Verify database populated correctly
         db = sqlite_utils.Database(db_path)
         rows = list(db["minutes"].rows)
         assert len(rows) == 2
@@ -460,11 +463,12 @@ class TestExtractionCaching:
     def test_force_extraction_bypasses_cache(
         self, tmp_storage_dir, monkeypatch, cli_module, utils_module
     ):
-        """Test --force-extraction bypasses cache."""
+        """Test --force-extraction bypasses cache during extraction phase."""
         import sqlite_utils
 
         from clerk.utils import (
             build_db_from_text_internal,
+            extract_entities_for_site,
             hash_text_content,
             save_extraction_cache,
         )
@@ -479,8 +483,8 @@ class TestExtractionCaching:
         txt_dir = site_dir / "txt" / "city-council" / "2024-01-15"
         txt_dir.mkdir(parents=True)
 
-        # Create test file
-        text_file = txt_dir / "001.txt"
+        # Create test file (4-digit naming like real pages)
+        text_file = txt_dir / "0001.txt"
         text_content = "Original meeting text"
         text_file.write_text(text_content)
 
@@ -513,8 +517,11 @@ class TestExtractionCaching:
         # Enable extraction
         monkeypatch.setenv("ENABLE_EXTRACTION", "1")
 
-        # Run with force_extraction=True (and skip_extraction=False to enable extraction)
-        build_db_from_text_internal(subdomain, skip_extraction=False, force_extraction=True)
+        # Build database first
+        build_db_from_text_internal(subdomain, skip_extraction=True)
+
+        # Run extraction with force_extraction=True to bypass cache
+        extract_entities_for_site(subdomain, force_extraction=True)
 
         # Cache should be overwritten with fresh extraction
         import json
