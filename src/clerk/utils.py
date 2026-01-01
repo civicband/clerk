@@ -27,6 +27,10 @@ pm.add_hookspecs(ClerkSpec)
 
 STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
 
+# Maximum pages to process in a single spaCy batch before chunking
+# Prevents memory spikes on large datasets while maintaining efficiency
+SPACY_CHUNK_SIZE = 20_000
+
 
 def assert_db_exists():
     db = sqlite_utils.Database("civic.db")

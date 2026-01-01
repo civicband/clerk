@@ -226,3 +226,12 @@ class TestBuildTableFromTextExtraction:
 
         assert "persons" in entities
         assert "votes" in votes
+
+
+class TestSpacyChunkSize:
+    """Tests for SPACY_CHUNK_SIZE constant."""
+
+    def test_spacy_chunk_size_constant_exists(self):
+        """Test that SPACY_CHUNK_SIZE constant is defined."""
+        from clerk.utils import SPACY_CHUNK_SIZE
+        assert SPACY_CHUNK_SIZE == 20_000
