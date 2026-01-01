@@ -1,5 +1,6 @@
 """Unit tests for clerk.utils module."""
 
+import json
 import os
 from pathlib import Path
 
@@ -226,3 +227,64 @@ class TestBuildTableFromTextExtraction:
 
         assert "persons" in entities
         assert "votes" in votes
+
+
+
+class TestExtractEntitiesForSite:
+    """Tests for extract_entities_for_site function."""
+
+    def test_extract_entities_for_site_updates_database(self, tmp_path, monkeypatch):
+        """Extract entities reads text files and updates database"""
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setenv("ENABLE_EXTRACTION", "0")  # Disable actual spaCy
+
+        from clerk.utils import extract_entities_for_site
+
+        # Create site structure with text files and database
+        subdomain = "test.civic.band"
+        site_dir = tmp_path / subdomain
+        txt_dir = site_dir / "txt"
+        meeting_dir = txt_dir / "2024-01-01_Meeting"
+        meeting_date_dir = meeting_dir / "2024-01-01"
+        meeting_date_dir.mkdir(parents=True)
+
+        # Write text file
+        (meeting_date_dir / "0001.txt").write_text("Test meeting text")
+
+        # Create database with proper schema
+        db = sqlite_utils.Database(str(site_dir / "meetings.db"))
+        db["minutes"].create(
+            {
+                "id": str,
+                "meeting": str,
+                "date": str,
+                "page": int,
+                "text": str,
+                "page_image": str,
+                "entities_json": str,
+                "votes_json": str,
+            },
+            pk="id",
+        )
+        db["minutes"].insert(
+            {
+                "id": "test123",
+                "meeting": "2024-01-01_Meeting",
+                "date": "2024-01-01",
+                "page": 1,
+                "text": "Test meeting text",
+                "page_image": "/path/to/image.png",
+                "entities_json": "{}",
+                "votes_json": "{}",
+            }
+        )
+
+        # Run extraction
+        extract_entities_for_site(subdomain, force_extraction=False)
+
+        # Verify database was updated (entities_json should have empty arrays when extraction runs without spaCy)
+        page = list(db["minutes"].rows)[0]
+        assert page["id"] == "test123"
+        entities = json.loads(page["entities_json"])
+        assert entities == {"persons": [], "orgs": [], "locations": []}  # Empty arrays when spaCy unavailable
+

@@ -1,3 +1,4 @@
+import datetime
 import json
 import logging
 import os
@@ -26,6 +27,55 @@ pm = pluggy.PluginManager("civicband.clerk")
 pm.add_hookspecs(ClerkSpec)
 
 STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
+
+
+
+def hash_text_content(text):
+    """Hash text content for cache validation"""
+    return sha256(text.encode("utf-8")).hexdigest()
+
+
+def load_extraction_cache(cache_file, expected_hash):
+    """Load extraction cache if valid, return None if invalid or missing
+
+    Args:
+        cache_file: Path to .extracted.json cache file
+        expected_hash: Expected content hash for validation
+
+    Returns:
+        Cache data dict if valid, None otherwise
+    """
+    try:
+        with open(cache_file) as f:
+            data = json.load(f)
+
+        # Validate structure
+        required_keys = {"content_hash", "entities", "votes"}
+        if not required_keys.issubset(data.keys()):
+            logger.debug(f"Cache invalid: missing keys in {cache_file}")
+            return None
+
+        # Validate hash match
+        if data["content_hash"] != expected_hash:
+            logger.debug(f"Cache invalid: hash mismatch in {cache_file}")
+            return None
+
+        return data
+    except (json.JSONDecodeError, FileNotFoundError, KeyError) as e:
+        logger.debug(f"Cache invalid: {e} in {cache_file}")
+        return None
+
+
+def save_extraction_cache(cache_file, data):
+    """Save extraction results to cache file
+
+    Args:
+        cache_file: Path to .extracted.json cache file
+        data: Dict with content_hash, extracted_at, entities, votes
+    """
+    with open(cache_file, "w") as f:
+        json.dump(data, f, indent=2)
+
 
 
 def assert_db_exists():
@@ -275,3 +325,125 @@ def build_db_from_text_internal(subdomain):
     elapsed_time = et - st
     logger.info("Database build completed subdomain=%s elapsed_time=%.2f", subdomain, elapsed_time)
     click.echo(f"Execution time: {elapsed_time} seconds")
+
+
+def extract_entities_for_site(subdomain, force_extraction=False):
+    """Extract entities for all pages in a site's database
+
+    Reads existing database records, processes uncached pages with spaCy,
+    and updates entities_json/votes_json columns.
+
+    Args:
+        subdomain: Site subdomain (e.g., "alameda.ca.civic.band")
+        force_extraction: If True, bypass cache and re-extract all pages
+    """
+    from .output import log
+
+    st = time.time()
+    logger.info("Extracting entities subdomain=%s force_extraction=%s", subdomain, force_extraction)
+
+    storage_dir = os.environ.get("STORAGE_DIR", "../sites")
+    site_db_path = f"{storage_dir}/{subdomain}/meetings.db"
+    db = sqlite_utils.Database(site_db_path)
+
+    # Process both minutes and agendas
+    for table_name in ["minutes", "agendas"]:
+        if not db[table_name].exists():
+            continue
+
+        txt_subdir = "txt" if table_name == "minutes" else "_agendas/txt"
+        txt_dir = f"{storage_dir}/{subdomain}/{txt_subdir}"
+
+        if not os.path.exists(txt_dir):
+            continue
+
+        # Read all pages from database
+        pages = list(db[table_name].rows)
+        log(f"Found {len(pages)} pages in {table_name}", subdomain=subdomain)
+
+        cache_hits = 0
+        cache_misses = 0
+
+        # For each page, check cache and extract if needed
+        for page in pages:
+            meeting = page["meeting"]
+            date = page["date"]
+            page_num = page["page"]
+
+            # Find corresponding text file
+            page_file_path = f"{txt_dir}/{meeting}/{date}/{page_num:04d}.txt"
+
+            if not os.path.exists(page_file_path):
+                logger.warning(f"Text file not found: {page_file_path}")
+                continue
+
+            with open(page_file_path) as f:
+                text = f.read()
+
+            # Check cache
+            cached_extraction = None
+            content_hash = None
+
+            if not force_extraction:
+                content_hash = hash_text_content(text)
+                cache_file = f"{page_file_path}.extracted.json"
+                cached_extraction = load_extraction_cache(cache_file, content_hash)
+
+                if cached_extraction:
+                    cache_hits += 1
+                    entities = cached_extraction["entities"]
+                    votes = cached_extraction["votes"]
+                else:
+                    cache_misses += 1
+            else:
+                cache_misses += 1
+
+            # Extract if not cached
+            if not cached_extraction:
+                if not EXTRACTION_ENABLED:
+                    # Skip extraction if disabled
+                    continue
+
+                # Extract entities and votes (would use spaCy here)
+                try:
+                    entities = extract_entities(text)
+                    votes = extract_votes(text, meeting_context={})
+                except Exception as e:
+                    logger.warning(f"Extraction failed for {page_file_path}: {e}")
+                    entities = {"persons": [], "orgs": [], "locations": []}
+                    votes = {"votes": []}
+
+                # Write cache
+                if content_hash is None:
+                    content_hash = hash_text_content(text)
+                cache_file = f"{page_file_path}.extracted.json"
+                cache_data = {
+                    "content_hash": content_hash,
+                    "extracted_at": datetime.datetime.now().isoformat(),
+                    "entities": entities,
+                    "votes": votes,
+                }
+                save_extraction_cache(cache_file, cache_data)
+
+            # Update database
+            db[table_name].update(
+                page["id"],
+                {
+                    "entities_json": json.dumps(entities),
+                    "votes_json": json.dumps(votes)
+                }
+            )
+
+        log(
+            f"Extraction complete for {table_name}: {cache_hits} from cache, {cache_misses} extracted",
+            subdomain=subdomain,
+            cache_hits=cache_hits,
+            cache_misses=cache_misses
+        )
+
+    et = time.time()
+    elapsed = et - st
+    log(f"Total extraction time: {elapsed:.2f}s", subdomain=subdomain, elapsed_time=f"{elapsed:.2f}")
+    
+    # Close database to ensure changes are committed
+    db.close()
