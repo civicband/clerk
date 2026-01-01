@@ -676,3 +676,132 @@ class TestExtractEntities:
         assert deploy_called[0]["subdomain"] == "test.civic.band"
         assert deploy_called[0]["municipality"] == "Test City"
         assert post_deploy_called[0]["subdomain"] == "test.civic.band"
+
+    def test_extract_entities_failure_marks_status_failed(self, tmp_path, monkeypatch, cli_module):
+        """Extraction failures should mark status as failed"""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setenv("CIVIC_DEV_MODE", "1")
+
+        from clerk.utils import assert_db_exists
+        import clerk.utils
+
+        db = assert_db_exists()
+
+        # Run migration first
+        runner = CliRunner()
+        runner.invoke(cli, ['migrate-extraction-schema'])
+
+        # Create test site
+        db["sites"].insert({
+            "subdomain": "test.civic.band",
+            "name": "Test City",
+            "state": "CA",
+            "country": "US",
+            "kind": "city-council",
+            "scraper": "test",
+            "pages": 0,
+            "start_year": 2020,
+            "status": "new",
+            "extraction_status": "pending",
+            "last_extracted": None
+        })
+
+        # Create site structure
+        site_dir = tmp_path / "test.civic.band"
+        site_dir.mkdir()
+        site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
+        site_db["minutes"].create({"id": str, "text": str, "entities_json": str, "votes_json": str}, pk="id")
+
+        # Mock extract_entities_for_site to raise exception
+        def failing_extract(subdomain, force_extraction=False):
+            raise RuntimeError("Test extraction failure")
+
+        monkeypatch.setattr(clerk.utils, "extract_entities_for_site", failing_extract)
+
+        # Run command - should fail but update status
+        runner = CliRunner()
+        result = runner.invoke(cli, ["extract-entities", "--subdomain", "test.civic.band"])
+
+        # Command should fail (non-zero exit code)
+        assert result.exit_code != 0
+
+        # Status should be marked as failed
+        site = db["sites"].get("test.civic.band")
+        assert site["extraction_status"] == "failed"
+
+        # last_extracted should NOT be updated (still None)
+        assert site["last_extracted"] is None
+
+        # Error should be logged
+        assert "Extraction failed" in result.output
+        assert "Test extraction failure" in result.output
+
+    def test_extract_entities_failed_sites_can_retry(self, tmp_path, monkeypatch, cli_module):
+        """Failed sites should be selected by --next-site for retry"""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setenv("ENABLE_EXTRACTION", "0")
+        monkeypatch.setenv("CIVIC_DEV_MODE", "1")
+
+        from clerk.utils import assert_db_exists
+
+        db = assert_db_exists()
+
+        # Run migration first
+        runner = CliRunner()
+        runner.invoke(cli, ['migrate-extraction-schema'])
+
+        # Site 1: completed (should skip)
+        db["sites"].insert({
+            "subdomain": "completed.civic.band",
+            "name": "Completed",
+            "state": "CA",
+            "country": "US",
+            "kind": "city-council",
+            "scraper": "test",
+            "pages": 0,
+            "start_year": 2020,
+            "status": "new",
+            "extraction_status": "completed",
+            "last_extracted": "2024-01-01T00:00:00"
+        })
+
+        # Site 2: failed (should retry - selected by --next-site)
+        db["sites"].insert({
+            "subdomain": "failed.civic.band",
+            "name": "Failed",
+            "state": "CA",
+            "country": "US",
+            "kind": "city-council",
+            "scraper": "test",
+            "pages": 0,
+            "start_year": 2020,
+            "status": "new",
+            "extraction_status": "failed",
+            "last_extracted": None
+        })
+
+        # Create site structure for failed site
+        site_dir = tmp_path / "failed.civic.band"
+        site_dir.mkdir()
+        site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
+        site_db["minutes"].create({"id": str, "text": str, "entities_json": str, "votes_json": str}, pk="id")
+
+        # Run --next-site
+        runner = CliRunner()
+        result = runner.invoke(cli, ["extract-entities", "--next-site"])
+
+        assert result.exit_code == 0
+
+        # Verify failed site was selected and processed
+        site = db["sites"].get("failed.civic.band")
+        assert site["extraction_status"] == "completed"
+        assert site["last_extracted"] is not None
+
+        # Completed site should remain unchanged
+        completed_site = db["sites"].get("completed.civic.band")
+        assert completed_site["extraction_status"] == "completed"
+        assert completed_site["last_extracted"] == "2024-01-01T00:00:00"
