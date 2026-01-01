@@ -441,7 +441,7 @@ class TestExtractionIntegration:
 
         from clerk.utils import build_db_from_text_internal
 
-        build_db_from_text_internal("test-site")
+        build_db_from_text_internal("test-site", skip_extraction=False)
 
         # Verify extraction results
         db = sqlite_utils.Database(site_dir / "meetings.db")
