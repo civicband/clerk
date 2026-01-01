@@ -324,6 +324,87 @@ def load_pages_from_db(subdomain: str, table_name: str) -> list[dict]:
     return list(db[table_name].rows)
 
 
+def collect_page_data_with_cache(
+    pages: list[dict],
+    subdomain: str,
+    table_name: str,
+    force_extraction: bool
+) -> list[PageData]:
+    """Collect page data with cache checking.
+
+    Reads text files and checks extraction cache for each page.
+
+    Args:
+        pages: List of page dicts from database
+        subdomain: Site subdomain
+        table_name: "minutes" or "agendas"
+        force_extraction: If True, ignore cache
+
+    Returns:
+        List of PageData objects with cache information
+    """
+    from .output import log
+
+    storage_dir = os.environ.get("STORAGE_DIR", "../sites")
+    txt_subdir = "txt" if table_name == "minutes" else "_agendas/txt"
+    txt_dir = f"{storage_dir}/{subdomain}/{txt_subdir}"
+
+    if not os.path.exists(txt_dir):
+        return []
+
+    all_page_data = []
+    cache_hits = 0
+    cache_misses = 0
+
+    for page in pages:
+        meeting = page["meeting"]
+        date = page["date"]
+        page_num = page["page"]
+
+        # Find corresponding text file
+        page_file_path = f"{txt_dir}/{meeting}/{date}/{page_num:04d}.txt"
+
+        if not os.path.exists(page_file_path):
+            logger.warning(f"Text file not found: {page_file_path}")
+            continue
+
+        with open(page_file_path) as f:
+            text = f.read()
+
+        # Check cache
+        cached_extraction = None
+        content_hash = None
+
+        if not force_extraction:
+            content_hash = hash_text_content(text)
+            cache_file = f"{page_file_path}.extracted.json"
+            cached_extraction = load_extraction_cache(cache_file, content_hash)
+
+            if cached_extraction:
+                cache_hits += 1
+            else:
+                cache_misses += 1
+        else:
+            cache_misses += 1
+
+        all_page_data.append(PageData(
+            page_id=page["id"],
+            text=text,
+            page_file_path=page_file_path,
+            content_hash=content_hash,
+            cached_extraction=cached_extraction,
+        ))
+
+    log(
+        f"Cache status: {cache_hits} hits, {cache_misses} misses",
+        subdomain=subdomain,
+        cache_hits=cache_hits,
+        cache_misses=cache_misses
+    )
+
+    return all_page_data
+
+
 # Maximum pages to process in a single spaCy batch before chunking
 # Prevents memory spikes on large datasets while maintaining efficiency
 SPACY_CHUNK_SIZE = 20_000
