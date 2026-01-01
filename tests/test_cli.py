@@ -358,8 +358,8 @@ class TestBuildDbFromTextInternal:
         # Also need to monkeypatch in utils module since it imports it
         monkeypatch.setattr(utils_module, "EXTRACTION_ENABLED", True)
 
-        from clerk.utils import assert_db_exists
         import clerk.utils
+        from clerk.utils import assert_db_exists
 
         db = assert_db_exists()
 
@@ -748,8 +748,8 @@ class TestExtractEntities:
         monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_path))
         monkeypatch.setenv("CIVIC_DEV_MODE", "1")
 
-        from clerk.utils import assert_db_exists
         import clerk.utils
+        from clerk.utils import assert_db_exists
 
         db = assert_db_exists()
 
@@ -869,7 +869,6 @@ class TestExtractEntities:
         completed_site = db["sites"].get("completed.civic.band")
         assert completed_site["extraction_status"] == "completed"
         assert completed_site["last_extracted"] == "2024-01-01T00:00:00"
-from clerk.cli import cli
 
 
 @pytest.mark.integration

@@ -443,14 +443,14 @@ class TestExtractionCaching:
         monkeypatch.setenv("ENABLE_EXTRACTION", "1")
 
         # First run - should create cache files
-        build_db_from_text_internal(subdomain)
+        build_db_from_text_internal(subdomain, skip_extraction=False)
 
         # Verify cache files created
         assert (txt_dir / "001.txt.extracted.json").exists()
         assert (txt_dir / "002.txt.extracted.json").exists()
 
         # Second run - should use cache
-        build_db_from_text_internal(subdomain)
+        build_db_from_text_internal(subdomain, skip_extraction=False)
 
         # Verify database populated correctly both times
         db = sqlite_utils.Database(db_path)
@@ -513,8 +513,8 @@ class TestExtractionCaching:
         # Enable extraction
         monkeypatch.setenv("ENABLE_EXTRACTION", "1")
 
-        # Run with force_extraction=True
-        build_db_from_text_internal(subdomain, force_extraction=True)
+        # Run with force_extraction=True (and skip_extraction=False to enable extraction)
+        build_db_from_text_internal(subdomain, skip_extraction=False, force_extraction=True)
 
         # Cache should be overwritten with fresh extraction
         import json

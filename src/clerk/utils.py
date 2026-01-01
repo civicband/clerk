@@ -91,54 +91,6 @@ def save_extraction_cache(cache_file: str, data: dict) -> None:
 
 
 
-def hash_text_content(text):
-    """Hash text content for cache validation"""
-    return sha256(text.encode("utf-8")).hexdigest()
-
-
-def load_extraction_cache(cache_file, expected_hash):
-    """Load extraction cache if valid, return None if invalid or missing
-
-    Args:
-        cache_file: Path to .extracted.json cache file
-        expected_hash: Expected content hash for validation
-
-    Returns:
-        Cache data dict if valid, None otherwise
-    """
-    try:
-        with open(cache_file) as f:
-            data = json.load(f)
-
-        # Validate structure
-        required_keys = {"content_hash", "entities", "votes"}
-        if not required_keys.issubset(data.keys()):
-            logger.debug(f"Cache invalid: missing keys in {cache_file}")
-            return None
-
-        # Validate hash match
-        if data["content_hash"] != expected_hash:
-            logger.debug(f"Cache invalid: hash mismatch in {cache_file}")
-            return None
-
-        return data
-    except (json.JSONDecodeError, FileNotFoundError, KeyError) as e:
-        logger.debug(f"Cache invalid: {e} in {cache_file}")
-        return None
-
-
-def save_extraction_cache(cache_file, data):
-    """Save extraction results to cache file
-
-    Args:
-        cache_file: Path to .extracted.json cache file
-        data: Dict with content_hash, extracted_at, entities, votes
-    """
-    with open(cache_file, "w") as f:
-        json.dump(data, f, indent=2)
-
-
-
 def assert_db_exists():
     db = sqlite_utils.Database("civic.db")
     if not db["sites"].exists():
@@ -393,56 +345,57 @@ def build_table_from_text(
 
             key_hash = {"kind": "minutes" if table_name != "agendas" else "agenda"}
 
-            # Handle extraction based on skip_extraction and force_extraction flags
-            if skip_extraction:
-                # Skip extraction entirely - use empty structures
+            # Handle extraction based on skip_extraction, force_extraction, and cache availability
+            # Priority: Cache first (if available and not forcing), then skip/extract based on flags
+            if cached_extraction and not force_extraction:
+                # Use cache if available (regardless of skip_extraction - it's already computed)
+                entities = cached_extraction["entities"]
+                votes = cached_extraction["votes"]
+                # Update context with cached entities
+                update_context(meeting_context, entities=entities)
+            elif skip_extraction:
+                # No cache available and skipping extraction - use empty structures
                 entities = {"persons": [], "orgs": [], "locations": []}
                 votes = {"votes": []}
             elif EXTRACTION_ENABLED:
-                # Use cached extraction if available (unless force_extraction is True)
-                if cached_extraction and not force_extraction:
-                    entities = cached_extraction["entities"]
-                    votes = cached_extraction["votes"]
-                    # Update context with cached entities
+                # Extract entities and update context
+                try:
+                    entities = extract_entities(text, doc=doc)
                     update_context(meeting_context, entities=entities)
-                else:
-                    # Extract entities and update context
-                    try:
-                        entities = extract_entities(text, doc=doc)
-                        update_context(meeting_context, entities=entities)
-                    except Exception as e:
-                        logger.warning(f"Entity extraction failed for {page_file_path}: {e}")
-                        entities = {"persons": [], "orgs": [], "locations": []}
+                except Exception as e:
+                    logger.warning(f"Entity extraction failed for {page_file_path}: {e}")
+                    entities = {"persons": [], "orgs": [], "locations": []}
 
-                    # Extract votes with context
-                    try:
-                        votes = extract_votes(text, doc=doc, meeting_context=meeting_context)
-                    except Exception as e:
-                        logger.warning(f"Vote extraction failed for {page_file_path}: {e}")
-                        votes = {"votes": []}
+                # Extract votes with context
+                try:
+                    votes = extract_votes(text, doc=doc, meeting_context=meeting_context)
+                except Exception as e:
+                    logger.warning(f"Vote extraction failed for {page_file_path}: {e}")
+                    votes = {"votes": []}
 
-                    # Write cache if this was a fresh extraction
-                    cache_file = f"{page_file_path}.extracted.json"
-                    cache_data = {
-                        "content_hash": pdata["content_hash"],
-                        "model_version": get_nlp().meta["version"] if get_nlp() else "unknown",
-                        "extracted_at": datetime.datetime.now().isoformat(),
-                        "entities": entities,
-                        "votes": votes,
-                    }
-                    save_extraction_cache(cache_file, cache_data)
+                # Write cache if this was a fresh extraction
+                cache_file = f"{page_file_path}.extracted.json"
+                cache_data = {
+                    "content_hash": pdata["content_hash"],
+                    "model_version": get_nlp().meta["version"] if get_nlp() else "unknown",
+                    "extracted_at": datetime.datetime.now().isoformat(),
+                    "entities": entities,
+                    "votes": votes,
+                }
+                save_extraction_cache(cache_file, cache_data)
+            else:
+                # Extraction disabled - use empty structures
+                entities = {"persons": [], "orgs": [], "locations": []}
+                votes = {"votes": []}
 
-                # Detect roll call and update context (ALWAYS run when extraction is enabled, regardless of cache)
+            # Detect roll call and update context (ALWAYS run if we have entities, regardless of cache)
+            if EXTRACTION_ENABLED and (cached_extraction or not skip_extraction):
                 try:
                     attendees = detect_roll_call(text)
                     if attendees:
                         update_context(meeting_context, attendees=attendees)
                 except Exception as e:
                     logger.warning(f"Roll call detection failed for {page_file_path}: {e}")
-            else:
-                # Extraction disabled - use empty structures
-                entities = {"persons": [], "orgs": [], "locations": []}
-                votes = {"votes": []}
 
             key_hash.update(
                 {
@@ -702,6 +655,6 @@ def extract_entities_for_site(subdomain, force_extraction=False):
     et = time.time()
     elapsed = et - st
     log(f"Total extraction time: {elapsed:.2f}s", subdomain=subdomain, elapsed_time=f"{elapsed:.2f}")
-    
+
     # Close database to ensure changes are committed
     db.close()
