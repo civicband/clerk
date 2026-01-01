@@ -1,7 +1,7 @@
 """Tests for refactored utility functions."""
 import pytest
 import sqlite_utils
-from clerk.utils import PageFile, MeetingDateGroup, group_pages_by_meeting_date, create_meetings_schema
+from clerk.utils import PageFile, MeetingDateGroup, group_pages_by_meeting_date, create_meetings_schema, collect_page_files
 
 
 def test_group_pages_by_meeting_date_single_meeting():
@@ -71,3 +71,43 @@ def test_create_meetings_schema():
     # Check primary key
     assert db["minutes"].pks == ["id"]
     assert db["agendas"].pks == ["id"]
+
+
+def test_collect_page_files(tmp_path):
+    """Test collecting page files from directory structure."""
+    # Create fixture directory structure: txt_dir/meeting/date/page.txt
+    txt_dir = tmp_path / "txt"
+    meeting_dir = txt_dir / "council"
+    date_dir = meeting_dir / "2024-01-15"
+    date_dir.mkdir(parents=True)
+
+    # Create page files
+    (date_dir / "0001.txt").write_text("Page 1 content")
+    (date_dir / "0002.txt").write_text("Page 2 content")
+
+    # Second date
+    date_dir2 = meeting_dir / "2024-02-20"
+    date_dir2.mkdir(parents=True)
+    (date_dir2 / "0001.txt").write_text("Page 3 content")
+
+    page_files = collect_page_files(str(txt_dir))
+
+    assert len(page_files) == 3
+    assert page_files[0].meeting == "council"
+    assert page_files[0].date == "2024-01-15"
+    assert page_files[0].page_num == 1
+    assert page_files[0].text == "Page 1 content"
+    assert page_files[0].page_image_path == "/council/2024-01-15/0001.png"
+
+    assert page_files[2].date == "2024-02-20"
+    assert page_files[2].page_num == 1
+
+
+def test_collect_page_files_empty(tmp_path):
+    """Test with empty directory."""
+    txt_dir = tmp_path / "empty"
+    txt_dir.mkdir()
+
+    page_files = collect_page_files(str(txt_dir))
+
+    assert page_files == []

@@ -121,6 +121,60 @@ def create_meetings_schema(db):
     db["agendas"].create(schema, pk=("id"))
 
 
+def collect_page_files(txt_dir: str) -> list[PageFile]:
+    """Collect all page files from nested directory structure.
+
+    Flattens meeting/date/page directory structure into a flat list.
+
+    Args:
+        txt_dir: Root directory containing meeting subdirectories
+
+    Returns:
+        List of PageFile objects sorted by meeting, date, page
+    """
+    page_files = []
+
+    if not os.path.exists(txt_dir):
+        return page_files
+
+    meetings = sorted([
+        d for d in os.listdir(txt_dir)
+        if d != ".DS_Store" and os.path.isdir(os.path.join(txt_dir, d))
+    ])
+
+    for meeting in meetings:
+        meeting_path = os.path.join(txt_dir, meeting)
+        dates = sorted([
+            d for d in os.listdir(meeting_path)
+            if d != ".DS_Store" and os.path.isdir(os.path.join(meeting_path, d))
+        ])
+
+        for date in dates:
+            date_path = os.path.join(meeting_path, date)
+            pages = sorted([
+                p for p in os.listdir(date_path)
+                if p.endswith(".txt")
+            ])
+
+            for page in pages:
+                page_path = os.path.join(date_path, page)
+                with open(page_path) as f:
+                    text = f.read()
+
+                page_num = int(page.split(".")[0])
+                page_image_path = f"/{meeting}/{date}/{page.split('.')[0]}.png"
+
+                page_files.append(PageFile(
+                    meeting=meeting,
+                    date=date,
+                    page_num=page_num,
+                    text=text,
+                    page_image_path=page_image_path
+                ))
+
+    return page_files
+
+
 # Maximum pages to process in a single spaCy batch before chunking
 # Prevents memory spikes on large datasets while maintaining efficiency
 SPACY_CHUNK_SIZE = 20_000
