@@ -348,28 +348,25 @@ def fetch_internal(subdomain, fetcher):
     "--subdomain",
 )
 @click.option(
-    "--with-extraction",
+    "--extract-entities",
     is_flag=True,
     default=False,
-    help="Enable entity/vote extraction (slower, ~20 min per site)",
+    help="Extract entities for uncached pages (slower, ~20 min per site)",
 )
 @click.option(
-    "--force-extraction",
+    "--ignore-cache",
     is_flag=True,
-    help="Ignore cache and re-extract all pages",
+    help="Ignore cache and extract all pages (requires --extract-entities)",
 )
-def build_db_from_text(subdomain, with_extraction, force_extraction=False):
+def build_db_from_text(subdomain, extract_entities, ignore_cache=False):
     """Build database from text files
 
-    By default, skips entity/vote extraction for fast database building.
-    Use --with-extraction to enable extraction during build (slower).
-    Use --force-extraction to bypass cache and re-extract all pages.
-    For most cases, use the separate 'extract-entities' command instead.
+    By default, rebuilds database from text files using cached entity extractions.
+    Use --extract-entities to extract entities for uncached pages.
+    Use --ignore-cache with --extract-entities to re-extract all pages.
     """
-    # skip_extraction is inverse of with_extraction
-    skip_extraction = not with_extraction
     build_db_from_text_internal(
-        subdomain, skip_extraction=skip_extraction, force_extraction=force_extraction
+        subdomain, extract_entities=extract_entities, ignore_cache=ignore_cache
     )
     rebuild_site_fts_internal(subdomain)
 
@@ -542,8 +539,6 @@ def extract_entities(subdomain, next_site=False):
 
 def extract_entities_internal(subdomain, next_site=False):
     """Internal implementation of extract-entities command"""
-    from .utils import extract_entities_for_site
-
     db = assert_db_exists()
 
     if next_site:
@@ -590,8 +585,9 @@ def extract_entities_internal(subdomain, next_site=False):
     db["sites"].update(subdomain, {"extraction_status": "in_progress"})
 
     try:
-        # Run extraction
-        extract_entities_for_site(subdomain, force_extraction=False)
+        # Run extraction - rebuild DB from text with entity extraction enabled
+        build_db_from_text_internal(subdomain, extract_entities=True, ignore_cache=False)
+        rebuild_site_fts_internal(subdomain)
 
         # Mark extraction as completed BEFORE deployment
         db["sites"].update(

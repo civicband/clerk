@@ -302,7 +302,7 @@ def test_collect_page_data_with_cache(tmp_path):
 
     try:
         page_data = collect_page_data_with_cache(
-            pages, "test.civic.band", "minutes", force_extraction=False
+            pages, "test.civic.band", "minutes", ignore_cache=False
         )
 
         assert len(page_data) == 1

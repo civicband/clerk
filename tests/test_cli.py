@@ -515,10 +515,12 @@ class TestMigrateExtractionSchema:
 class TestExtractEntities:
     """Unit tests for extract-entities command."""
 
-    def test_extract_entities_next_site_selects_pending(self, tmp_path, monkeypatch):
+    def test_extract_entities_next_site_selects_pending(self, tmp_path, monkeypatch, cli_module, utils_module):
         """extract-entities --next-site selects next pending site"""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_path))
         monkeypatch.setenv("ENABLE_EXTRACTION", "0")
         monkeypatch.setenv("CIVIC_DEV_MODE", "1")
         from clerk.utils import assert_db_exists
@@ -562,9 +564,15 @@ class TestExtractEntities:
             }
         )
 
-        # Create site structure for site2
+        # Create site structure for site2 with text files
         site_dir = tmp_path / "site2.civic.band"
         site_dir.mkdir()
+
+        # Create text files for extraction
+        txt_dir = site_dir / "txt" / "council" / "2024-01-01"
+        txt_dir.mkdir(parents=True)
+        (txt_dir / "0001.txt").write_text("Test meeting content")
+
         (site_dir / "meetings.db").touch()
 
         # Create empty database for site2
@@ -618,11 +626,12 @@ class TestExtractEntities:
         assert result.exit_code == 0
         assert "No sites need extraction" in result.output
 
-    def test_extract_entities_dev_mode_skips_deployment(self, tmp_path, monkeypatch, cli_module):
+    def test_extract_entities_dev_mode_skips_deployment(self, tmp_path, monkeypatch, cli_module, utils_module):
         """CIVIC_DEV_MODE=1 should skip deployment hooks"""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
         monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_path))
         monkeypatch.setenv("ENABLE_EXTRACTION", "0")
         monkeypatch.setenv("CIVIC_DEV_MODE", "1")
 
@@ -651,9 +660,15 @@ class TestExtractEntities:
             }
         )
 
-        # Create site structure
+        # Create site structure with text files
         site_dir = tmp_path / "test.civic.band"
         site_dir.mkdir()
+
+        # Create text files for extraction
+        txt_dir = site_dir / "txt" / "council" / "2024-01-01"
+        txt_dir.mkdir(parents=True)
+        (txt_dir / "0001.txt").write_text("Test meeting content")
+
         site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
         site_db["minutes"].create(
             {"id": str, "text": str, "entities_json": str, "votes_json": str}, pk="id"
@@ -691,12 +706,13 @@ class TestExtractEntities:
         assert site["last_extracted"] is not None
 
     def test_extract_entities_production_mode_calls_deployment(
-        self, tmp_path, monkeypatch, cli_module
+        self, tmp_path, monkeypatch, cli_module, utils_module
     ):
         """Without CIVIC_DEV_MODE, deployment hooks should be called"""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
         monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_path))
         monkeypatch.setenv("ENABLE_EXTRACTION", "0")
         # DON'T set CIVIC_DEV_MODE (production mode)
 
@@ -725,9 +741,15 @@ class TestExtractEntities:
             }
         )
 
-        # Create site structure
+        # Create site structure with text files
         site_dir = tmp_path / "test.civic.band"
         site_dir.mkdir()
+
+        # Create text files for extraction
+        txt_dir = site_dir / "txt" / "council" / "2024-01-01"
+        txt_dir.mkdir(parents=True)
+        (txt_dir / "0001.txt").write_text("Test meeting content")
+
         site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
         site_db["minutes"].create(
             {"id": str, "text": str, "entities_json": str, "votes_json": str}, pk="id"
@@ -765,11 +787,12 @@ class TestExtractEntities:
         assert deploy_called[0]["municipality"] == "Test City"
         assert post_deploy_called[0]["subdomain"] == "test.civic.band"
 
-    def test_extract_entities_failure_marks_status_failed(self, tmp_path, monkeypatch, cli_module):
+    def test_extract_entities_failure_marks_status_failed(self, tmp_path, monkeypatch, cli_module, utils_module):
         """Extraction failures should mark status as failed"""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
         monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_path))
         monkeypatch.setenv("CIVIC_DEV_MODE", "1")
 
         import clerk.utils
@@ -798,19 +821,25 @@ class TestExtractEntities:
             }
         )
 
-        # Create site structure
+        # Create site structure with text files
         site_dir = tmp_path / "test.civic.band"
         site_dir.mkdir()
+
+        # Create text files for extraction
+        txt_dir = site_dir / "txt" / "council" / "2024-01-01"
+        txt_dir.mkdir(parents=True)
+        (txt_dir / "0001.txt").write_text("Test meeting content")
+
         site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
         site_db["minutes"].create(
             {"id": str, "text": str, "entities_json": str, "votes_json": str}, pk="id"
         )
 
-        # Mock extract_entities_for_site to raise exception
-        def failing_extract(subdomain, force_extraction=False):
+        # Mock build_db_from_text_internal to raise exception
+        def failing_build(subdomain, extract_entities=False, ignore_cache=False):
             raise RuntimeError("Test extraction failure")
 
-        monkeypatch.setattr(clerk.utils, "extract_entities_for_site", failing_extract)
+        monkeypatch.setattr(cli_module, "build_db_from_text_internal", failing_build)
 
         # Run command - should fail but update status
         runner = CliRunner()
@@ -830,11 +859,12 @@ class TestExtractEntities:
         assert "Extraction failed" in result.output
         assert "Test extraction failure" in result.output
 
-    def test_extract_entities_failed_sites_can_retry(self, tmp_path, monkeypatch, cli_module):
+    def test_extract_entities_failed_sites_can_retry(self, tmp_path, monkeypatch, cli_module, utils_module):
         """Failed sites should be selected by --next-site for retry"""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
         monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_path))
         monkeypatch.setenv("ENABLE_EXTRACTION", "0")
         monkeypatch.setenv("CIVIC_DEV_MODE", "1")
 
@@ -880,9 +910,15 @@ class TestExtractEntities:
             }
         )
 
-        # Create site structure for failed site
+        # Create site structure for failed site with text files
         site_dir = tmp_path / "failed.civic.band"
         site_dir.mkdir()
+
+        # Create text files for extraction
+        txt_dir = site_dir / "txt" / "council" / "2024-01-01"
+        txt_dir.mkdir(parents=True)
+        (txt_dir / "0001.txt").write_text("Test meeting content")
+
         site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
         site_db["minutes"].create(
             {"id": str, "text": str, "entities_json": str, "votes_json": str}, pk="id"
@@ -909,11 +945,12 @@ class TestExtractEntities:
 class TestExtractEntitiesIntegration:
     """Integration tests for the full extraction workflow."""
 
-    def test_full_extraction_workflow(self, tmp_path, monkeypatch, cli_module):
+    def test_full_extraction_workflow(self, tmp_path, monkeypatch, cli_module, utils_module):
         """Test complete workflow: migration → extraction → status tracking"""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
         monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_path))
         monkeypatch.setenv("ENABLE_EXTRACTION", "0")  # Fast test without spaCy
         monkeypatch.setenv("CIVIC_DEV_MODE", "1")  # Skip deployment
 
@@ -955,37 +992,25 @@ class TestExtractEntitiesIntegration:
             }
         )
 
-        # Create site structure with actual data
+        # Create site structure with text files
         site_dir = tmp_path / "test.civic.band"
         site_dir.mkdir()
+
+        # Create text files for extraction
+        txt_dir = site_dir / "txt" / "CityCouncil" / "2024-01-01"
+        txt_dir.mkdir(parents=True)
+        (txt_dir / "0001.txt").write_text("Meeting called to order.")
+
+        # Create empty database (will be populated by extraction)
         site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
-
-        # Create tables with actual records
-        site_db["minutes"].create(
+        site_db["sites"].insert(
             {
-                "id": str,
-                "meeting": str,
-                "date": str,
-                "page": int,
-                "text": str,
-                "page_image": str,
-                "entities_json": str,
-                "votes_json": str,
+                "subdomain": "test.civic.band",
+                "name": "Test City",
+                "state": "CA",
+                "country": "USA",
             },
-            pk="id",
-        )
-
-        site_db["minutes"].insert(
-            {
-                "id": "test-minute-1",
-                "meeting": "2024-01-01_CityCouncil",
-                "date": "2024-01-01",
-                "page": 1,
-                "text": "Meeting called to order.",
-                "page_image": "/path/to/image.png",
-                "entities_json": "{}",
-                "votes_json": "{}",
-            }
+            pk="subdomain",
         )
 
         # Verify initial state
@@ -1010,9 +1035,17 @@ class TestExtractEntitiesIntegration:
         last_extracted_dt = datetime.datetime.fromisoformat(site_after["last_extracted"])
         assert before_extraction <= last_extracted_dt <= after_extraction
 
-        # Step 6: Verify database records updated
-        minute = list(site_db["minutes"].rows)[0]
-        assert minute["id"] == "test-minute-1"
+        # Step 6: Verify database records created from text files
+        # Re-open database to see new records
+        site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
+        minutes = list(site_db["minutes"].rows)
+        assert len(minutes) == 1  # Should have 1 record from the text file
+
+        minute = minutes[0]
+        assert minute["text"] == "Meeting called to order."
+        assert minute["meeting"] == "CityCouncil"
+        assert minute["date"] == "2024-01-01"
+        assert minute["page"] == 1
 
         # With ENABLE_EXTRACTION=0, should have empty structures
         entities = json.loads(minute["entities_json"])

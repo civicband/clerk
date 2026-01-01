@@ -409,7 +409,7 @@ class TestExtractionCaching:
         """Test complete cache workflow: extraction creates cache, subsequent runs use it."""
         import sqlite_utils
 
-        from clerk.utils import build_db_from_text_internal, extract_entities_for_site
+        from clerk.utils import build_db_from_text_internal
 
         # Set up storage directory
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
@@ -443,32 +443,31 @@ class TestExtractionCaching:
         monkeypatch.setenv("ENABLE_EXTRACTION", "1")
 
         # Build database (without extraction - no cache created)
-        build_db_from_text_internal(subdomain, skip_extraction=True)
+        build_db_from_text_internal(subdomain, extract_entities=False)
 
         # First extraction run - should create cache files
-        extract_entities_for_site(subdomain, force_extraction=False)
+        build_db_from_text_internal(subdomain, extract_entities=True, ignore_cache=False)
 
         # Verify cache files created
         assert (txt_dir / "0001.txt.extracted.json").exists()
         assert (txt_dir / "0002.txt.extracted.json").exists()
 
         # Second extraction run - should use cache
-        extract_entities_for_site(subdomain, force_extraction=False)
+        build_db_from_text_internal(subdomain, extract_entities=True, ignore_cache=False)
 
         # Verify database populated correctly
         db = sqlite_utils.Database(db_path)
         rows = list(db["minutes"].rows)
         assert len(rows) == 2
 
-    def test_force_extraction_bypasses_cache(
+    def test_ignore_cache_bypasses_cache(
         self, tmp_storage_dir, monkeypatch, cli_module, utils_module
     ):
-        """Test --force-extraction bypasses cache during extraction phase."""
+        """Test --ignore-cache bypasses cache during extraction."""
         import sqlite_utils
 
         from clerk.utils import (
             build_db_from_text_internal,
-            extract_entities_for_site,
             hash_text_content,
             save_extraction_cache,
         )
@@ -518,10 +517,10 @@ class TestExtractionCaching:
         monkeypatch.setenv("ENABLE_EXTRACTION", "1")
 
         # Build database first
-        build_db_from_text_internal(subdomain, skip_extraction=True)
+        build_db_from_text_internal(subdomain, extract_entities=False)
 
-        # Run extraction with force_extraction=True to bypass cache
-        extract_entities_for_site(subdomain, force_extraction=True)
+        # Run extraction with ignore_cache=True to bypass cache
+        build_db_from_text_internal(subdomain, extract_entities=True, ignore_cache=True)
 
         # Cache should be overwritten with fresh extraction
         import json
@@ -594,14 +593,14 @@ class TestExtractionIntegration:
         txt_dir = site_dir / "txt" / "CityCouncil" / "2024-01-15"
         txt_dir.mkdir(parents=True)
 
-        # Page 1: Roll call
-        (txt_dir / "1.txt").write_text(
+        # Page 1: Roll call (4-digit naming)
+        (txt_dir / "0001.txt").write_text(
             "City Council Meeting - January 15, 2024\n"
             "Roll Call: Members present were Smith, Jones, Lee, Brown, Garcia.\n"
         )
 
-        # Page 2: Discussion and vote
-        (txt_dir / "2.txt").write_text(
+        # Page 2: Discussion and vote (4-digit naming)
+        (txt_dir / "0002.txt").write_text(
             "Motion by Smith, seconded by Jones.\n"
             "The motion to approve the budget passed 5-0.\n"
             "Ayes: Smith, Jones, Lee, Brown, Garcia. Nays: None.\n"
@@ -620,7 +619,7 @@ class TestExtractionIntegration:
 
         from clerk.utils import build_db_from_text_internal
 
-        build_db_from_text_internal("test-site", skip_extraction=False)
+        build_db_from_text_internal("test-site", extract_entities=True)
 
         # Verify extraction results
         db = sqlite_utils.Database(site_dir / "meetings.db")
