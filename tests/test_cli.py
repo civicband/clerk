@@ -539,3 +539,140 @@ class TestExtractEntities:
 
         assert result.exit_code == 0
         assert "No sites need extraction" in result.output
+
+    def test_extract_entities_dev_mode_skips_deployment(self, tmp_path, monkeypatch, cli_module):
+        """CIVIC_DEV_MODE=1 should skip deployment hooks"""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setenv("ENABLE_EXTRACTION", "0")
+        monkeypatch.setenv("CIVIC_DEV_MODE", "1")
+
+        from clerk.utils import assert_db_exists
+
+        db = assert_db_exists()
+
+        # Run migration first
+        runner = CliRunner()
+        runner.invoke(cli, ['migrate-extraction-schema'])
+
+        # Create test site
+        db["sites"].insert({
+            "subdomain": "test.civic.band",
+            "name": "Test City",
+            "state": "CA",
+            "country": "US",
+            "kind": "city-council",
+            "scraper": "test",
+            "pages": 0,
+            "start_year": 2020,
+            "status": "new",
+            "extraction_status": "pending",
+            "last_extracted": None
+        })
+
+        # Create site structure
+        site_dir = tmp_path / "test.civic.band"
+        site_dir.mkdir()
+        site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
+        site_db["minutes"].create({"id": str, "text": str, "entities_json": str, "votes_json": str}, pk="id")
+
+        # Mock the deployment hooks to track calls
+        deploy_called = []
+        post_deploy_called = []
+
+        class MockHook:
+            def deploy_municipality(self, **kwargs):
+                deploy_called.append(kwargs)
+
+            def post_deploy(self, **kwargs):
+                post_deploy_called.append(kwargs)
+
+        class MockPM:
+            def __init__(self):
+                self.hook = MockHook()
+
+        monkeypatch.setattr(cli_module, "pm", MockPM())
+
+        # Run command
+        runner = CliRunner()
+        result = runner.invoke(cli, ["extract-entities", "--subdomain", "test.civic.band"])
+
+        assert result.exit_code == 0
+        assert "DEV MODE: Skipping deployment" in result.output
+        assert len(deploy_called) == 0, "deploy_municipality should not be called in dev mode"
+        assert len(post_deploy_called) == 0, "post_deploy should not be called in dev mode"
+
+        # Verify extraction still completed
+        site = db["sites"].get("test.civic.band")
+        assert site["extraction_status"] == "completed"
+        assert site["last_extracted"] is not None
+
+    def test_extract_entities_production_mode_calls_deployment(self, tmp_path, monkeypatch, cli_module):
+        """Without CIVIC_DEV_MODE, deployment hooks should be called"""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setenv("ENABLE_EXTRACTION", "0")
+        # DON'T set CIVIC_DEV_MODE (production mode)
+
+        from clerk.utils import assert_db_exists
+
+        db = assert_db_exists()
+
+        # Run migration first
+        runner = CliRunner()
+        runner.invoke(cli, ['migrate-extraction-schema'])
+
+        # Create test site
+        db["sites"].insert({
+            "subdomain": "test.civic.band",
+            "name": "Test City",
+            "state": "CA",
+            "country": "US",
+            "kind": "city-council",
+            "scraper": "test",
+            "pages": 0,
+            "start_year": 2020,
+            "status": "new",
+            "extraction_status": "pending",
+            "last_extracted": None
+        })
+
+        # Create site structure
+        site_dir = tmp_path / "test.civic.band"
+        site_dir.mkdir()
+        site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
+        site_db["minutes"].create({"id": str, "text": str, "entities_json": str, "votes_json": str}, pk="id")
+
+        # Mock the deployment hooks
+        deploy_called = []
+        post_deploy_called = []
+
+        class MockHook:
+            def deploy_municipality(self, **kwargs):
+                deploy_called.append(kwargs)
+
+            def post_deploy(self, **kwargs):
+                post_deploy_called.append(kwargs)
+
+        class MockPM:
+            def __init__(self):
+                self.hook = MockHook()
+
+        monkeypatch.setattr(cli_module, "pm", MockPM())
+
+        # Run command
+        runner = CliRunner()
+        result = runner.invoke(cli, ["extract-entities", "--subdomain", "test.civic.band"])
+
+        assert result.exit_code == 0
+        # Should NOT see dev mode message
+        assert "DEV MODE: Skipping deployment" not in result.output
+        assert len(deploy_called) == 1, "deploy_municipality should be called in production mode"
+        assert len(post_deploy_called) == 1, "post_deploy should be called in production mode"
+
+        # Verify correct parameters passed
+        assert deploy_called[0]["subdomain"] == "test.civic.band"
+        assert deploy_called[0]["municipality"] == "Test City"
+        assert post_deploy_called[0]["subdomain"] == "test.civic.band"
