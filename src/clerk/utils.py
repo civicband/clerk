@@ -304,6 +304,26 @@ def process_page_for_db(
     return entry
 
 
+def load_pages_from_db(subdomain: str, table_name: str) -> list[dict]:
+    """Load all page records from site's database.
+
+    Args:
+        subdomain: Site subdomain
+        table_name: "minutes" or "agendas"
+
+    Returns:
+        List of page dicts from database
+    """
+    storage_dir = os.environ.get("STORAGE_DIR", "../sites")
+    site_db_path = f"{storage_dir}/{subdomain}/meetings.db"
+    db = sqlite_utils.Database(site_db_path)
+
+    if not db[table_name].exists():
+        return []
+
+    return list(db[table_name].rows)
+
+
 # Maximum pages to process in a single spaCy batch before chunking
 # Prevents memory spikes on large datasets while maintaining efficiency
 SPACY_CHUNK_SIZE = 20_000

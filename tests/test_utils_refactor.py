@@ -2,7 +2,7 @@
 import json
 import pytest
 import sqlite_utils
-from clerk.utils import PageFile, MeetingDateGroup, group_pages_by_meeting_date, create_meetings_schema, collect_page_files, batch_parse_with_spacy, process_page_for_db
+from clerk.utils import PageFile, MeetingDateGroup, group_pages_by_meeting_date, create_meetings_schema, collect_page_files, batch_parse_with_spacy, process_page_for_db, load_pages_from_db
 from clerk.extraction import EXTRACTION_ENABLED, create_meeting_context
 
 
@@ -191,3 +191,45 @@ def test_process_page_for_db():
     votes = json.loads(entry["votes_json"])
     assert "persons" in entities
     assert "votes" in votes
+
+
+def test_load_pages_from_db(tmp_path):
+    """Test loading pages from database."""
+    # Create test database
+    db_path = tmp_path / "test.db"
+    db = sqlite_utils.Database(str(db_path))
+    create_meetings_schema(db)
+
+    # Insert test data
+    db["minutes"].insert_all([
+        {"id": "abc", "meeting": "council", "date": "2024-01-15", "page": 1,
+         "text": "test", "page_image": "/path.png", "entities_json": "{}",
+         "votes_json": "{}"},
+        {"id": "def", "meeting": "council", "date": "2024-01-15", "page": 2,
+         "text": "test2", "page_image": "/path2.png", "entities_json": "{}",
+         "votes_json": "{}"},
+    ])
+    db.close()
+
+    # Create subdomain directory structure
+    subdomain_dir = tmp_path / "test.civic.band"
+    subdomain_dir.mkdir()
+    (subdomain_dir / "meetings.db").write_bytes((tmp_path / "test.db").read_bytes())
+
+    # Test loading (need to set STORAGE_DIR)
+    import os
+    old_storage = os.environ.get("STORAGE_DIR")
+    os.environ["STORAGE_DIR"] = str(tmp_path)
+
+    try:
+        pages = load_pages_from_db("test.civic.band", "minutes")
+
+        assert len(pages) == 2
+        assert pages[0]["id"] == "abc"
+        assert pages[0]["meeting"] == "council"
+        assert pages[1]["page"] == 2
+    finally:
+        if old_storage:
+            os.environ["STORAGE_DIR"] = old_storage
+        else:
+            os.environ.pop("STORAGE_DIR", None)
