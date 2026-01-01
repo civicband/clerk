@@ -1,8 +1,9 @@
 """Tests for refactored utility functions."""
+import json
 import pytest
 import sqlite_utils
-from clerk.utils import PageFile, MeetingDateGroup, group_pages_by_meeting_date, create_meetings_schema, collect_page_files, batch_parse_with_spacy
-from clerk.extraction import EXTRACTION_ENABLED
+from clerk.utils import PageFile, MeetingDateGroup, group_pages_by_meeting_date, create_meetings_schema, collect_page_files, batch_parse_with_spacy, process_page_for_db
+from clerk.extraction import EXTRACTION_ENABLED, create_meeting_context
 
 
 def test_group_pages_by_meeting_date_single_meeting():
@@ -153,3 +154,40 @@ def test_batch_parse_with_spacy_empty():
     """Test with empty text list."""
     docs = batch_parse_with_spacy([], "test.civic.band")
     assert docs == []
+
+
+def test_process_page_for_db():
+    """Test processing a page for database insertion."""
+    page_file = PageFile(
+        meeting="council",
+        date="2024-01-15",
+        page_num=1,
+        text="Mayor Smith called the meeting to order. Motion to approve passed 5-0.",
+        page_image_path="/council/2024-01-15/0001.png"
+    )
+
+    context = create_meeting_context()
+
+    # Process without doc (extraction disabled case)
+    entry = process_page_for_db(
+        page_file=page_file,
+        doc=None,
+        context=context,
+        subdomain="test.civic.band",
+        table_name="minutes",
+        municipality=None
+    )
+
+    assert entry["meeting"] == "council"
+    assert entry["date"] == "2024-01-15"
+    assert entry["page"] == 1
+    assert entry["text"] == page_file.text
+    assert entry["page_image"] == "/council/2024-01-15/0001.png"
+    assert "id" in entry
+    assert len(entry["id"]) == 12  # Hash prefix
+
+    # Check entities/votes JSON (should be empty when extraction disabled)
+    entities = json.loads(entry["entities_json"])
+    votes = json.loads(entry["votes_json"])
+    assert "persons" in entities
+    assert "votes" in votes

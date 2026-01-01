@@ -221,6 +221,89 @@ def batch_parse_with_spacy(texts: list[str], subdomain: str) -> list:
     return all_docs
 
 
+def process_page_for_db(
+    page_file: PageFile,
+    doc,
+    context: dict,
+    subdomain: str,
+    table_name: str,
+    municipality: str | None
+) -> dict:
+    """Process a single page for database insertion.
+
+    Extracts entities/votes, updates context, formats as DB entry.
+
+    Args:
+        page_file: PageFile with page metadata and text
+        doc: spaCy Doc object (or None if extraction disabled)
+        context: Meeting context dict for accumulating entities
+        subdomain: Site subdomain
+        table_name: "minutes" or "agendas"
+        municipality: Optional municipality name
+
+    Returns:
+        Dict ready for db.insert() with all required fields
+    """
+    text = page_file.text
+
+    # Extract entities and update context
+    try:
+        entities = extract_entities(text, doc=doc)
+        update_context(context, entities=entities)
+    except Exception as e:
+        logger.warning(
+            f"Entity extraction failed for {page_file.meeting}/{page_file.date}/{page_file.page_num}: {e}"
+        )
+        entities = {"persons": [], "orgs": [], "locations": []}
+
+    # Detect roll call and update context
+    try:
+        attendees = detect_roll_call(text)
+        if attendees:
+            update_context(context, attendees=attendees)
+    except Exception as e:
+        logger.warning(
+            f"Roll call detection failed for {page_file.meeting}/{page_file.date}/{page_file.page_num}: {e}"
+        )
+
+    # Extract votes with context
+    try:
+        votes = extract_votes(text, doc=doc, meeting_context=context)
+    except Exception as e:
+        logger.warning(
+            f"Vote extraction failed for {page_file.meeting}/{page_file.date}/{page_file.page_num}: {e}"
+        )
+        votes = {"votes": []}
+
+    # Build database entry
+    key_hash = {
+        "kind": "minutes" if table_name != "agendas" else "agenda",
+        "meeting": page_file.meeting,
+        "date": page_file.date,
+        "page": page_file.page_num,
+        "text": text,
+    }
+
+    if municipality:
+        key_hash.update({"subdomain": subdomain, "municipality": municipality})
+
+    key = sha256(json.dumps(key_hash, sort_keys=True).encode("utf-8")).hexdigest()
+    key = key[:12]
+
+    entry = {
+        "id": key,
+        "meeting": page_file.meeting,
+        "date": page_file.date,
+        "page": page_file.page_num,
+        "text": text,
+        "page_image": page_file.page_image_path,
+        "entities_json": json.dumps(entities),
+        "votes_json": json.dumps(votes),
+    }
+
+    return entry
+
+
 # Maximum pages to process in a single spaCy batch before chunking
 # Prevents memory spikes on large datasets while maintaining efficiency
 SPACY_CHUNK_SIZE = 20_000
