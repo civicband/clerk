@@ -353,16 +353,22 @@ def fetch_internal(subdomain, fetcher):
     default=False,
     help="Enable entity/vote extraction (slower, ~20 min per site)",
 )
-def build_db_from_text(subdomain, with_extraction):
+@click.option(
+    "--force-extraction",
+    is_flag=True,
+    help="Ignore cache and re-extract all pages",
+)
+def build_db_from_text(subdomain, with_extraction, force_extraction=False):
     """Build database from text files
 
     By default, skips entity/vote extraction for fast database building.
     Use --with-extraction to enable extraction during build (slower).
+    Use --force-extraction to bypass cache and re-extract all pages.
     For most cases, use the separate 'extract-entities' command instead.
     """
     # skip_extraction is inverse of with_extraction
     skip_extraction = not with_extraction
-    build_db_from_text_internal(subdomain, skip_extraction=skip_extraction)
+    build_db_from_text_internal(subdomain, skip_extraction=skip_extraction, force_extraction=force_extraction)
     rebuild_site_fts_internal(subdomain)
 
 
