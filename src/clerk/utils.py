@@ -433,6 +433,71 @@ def batch_process_uncached_pages(page_data: list[PageData], subdomain: str) -> l
     return all_docs
 
 
+def save_extractions_to_db(
+    page_data: list[PageData],
+    docs: list,
+    subdomain: str,
+    table_name: str
+):
+    """Save extractions to database (extract or use cache).
+
+    For each page: use cached extraction OR extract from doc,
+    save to cache, update database.
+
+    Args:
+        page_data: List of PageData objects
+        docs: List of spaCy Docs (parallel to page_data)
+        subdomain: Site subdomain
+        table_name: "minutes" or "agendas"
+    """
+    storage_dir = os.environ.get("STORAGE_DIR", "../sites")
+    site_db_path = f"{storage_dir}/{subdomain}/meetings.db"
+    db = sqlite_utils.Database(site_db_path)
+
+    for i, pdata in enumerate(page_data):
+        doc = docs[i]
+        cached = pdata.cached_extraction
+
+        if cached:
+            entities = cached["entities"]
+            votes = cached["votes"]
+        else:
+            if not EXTRACTION_ENABLED:
+                # Skip extraction if disabled
+                continue
+
+            # Extract entities and votes using pre-parsed doc
+            try:
+                entities = extract_entities(pdata.text, doc=doc)
+                votes = extract_votes(pdata.text, doc=doc, meeting_context={})
+            except Exception as e:
+                logger.warning(f"Extraction failed for {pdata.page_file_path}: {e}")
+                entities = {"persons": [], "orgs": [], "locations": []}
+                votes = {"votes": []}
+
+            # Write cache
+            content_hash = pdata.content_hash
+            if content_hash is None:
+                content_hash = hash_text_content(pdata.text)
+            cache_file = f"{pdata.page_file_path}.extracted.json"
+            cache_data = {
+                "content_hash": content_hash,
+                "extracted_at": datetime.datetime.now().isoformat(),
+                "entities": entities,
+                "votes": votes,
+            }
+            save_extraction_cache(cache_file, cache_data)
+
+        # Update database
+        db[table_name].update(
+            pdata.page_id,
+            {
+                "entities_json": json.dumps(entities),
+                "votes_json": json.dumps(votes)
+            }
+        )
+
+
 # Maximum pages to process in a single spaCy batch before chunking
 # Prevents memory spikes on large datasets while maintaining efficiency
 SPACY_CHUNK_SIZE = 20_000
