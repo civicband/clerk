@@ -932,32 +932,7 @@ def build_db_from_text_internal(subdomain, skip_extraction=True, force_extractio
     shutil.copy(database, db_backup)
     os.remove(database)
     db = sqlite_utils.Database(database)
-    db["minutes"].create(
-        {
-            "id": str,
-            "meeting": str,
-            "date": str,
-            "page": int,
-            "text": str,
-            "page_image": str,
-            "entities_json": str,
-            "votes_json": str,
-        },
-        pk=("id"),
-    )
-    db["agendas"].create(
-        {
-            "id": str,
-            "meeting": str,
-            "date": str,
-            "page": int,
-            "text": str,
-            "page_image": str,
-            "entities_json": str,
-            "votes_json": str,
-        },
-        pk=("id"),
-    )
+    create_meetings_schema(db)
     if os.path.exists(minutes_txt_dir):
         build_table_from_text(
             subdomain,
