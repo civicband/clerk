@@ -1,5 +1,7 @@
 """Unit tests for clerk.cli module."""
 
+import datetime
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -805,3 +807,122 @@ class TestExtractEntities:
         completed_site = db["sites"].get("completed.civic.band")
         assert completed_site["extraction_status"] == "completed"
         assert completed_site["last_extracted"] == "2024-01-01T00:00:00"
+from clerk.cli import cli
+
+
+@pytest.mark.integration
+class TestExtractEntitiesIntegration:
+    """Integration tests for the full extraction workflow."""
+
+    def test_full_extraction_workflow(self, tmp_path, monkeypatch, cli_module):
+        """Test complete workflow: migration → extraction → status tracking"""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setenv("ENABLE_EXTRACTION", "0")  # Fast test without spaCy
+        monkeypatch.setenv("CIVIC_DEV_MODE", "1")  # Skip deployment
+
+        from clerk.utils import assert_db_exists
+
+        # Step 1: Create database (simulates initial setup)
+        db = assert_db_exists()
+
+        # Initially no extraction columns exist
+        site_columns_before = {col.name for col in db["sites"].columns}
+        assert "extraction_status" not in site_columns_before
+        assert "last_extracted" not in site_columns_before
+
+        # Step 2: Run migration
+        runner = CliRunner()
+        result = runner.invoke(cli, ["migrate-extraction-schema"])
+        assert result.exit_code == 0
+        assert "Migration complete" in result.output
+
+        # Verify columns added
+        site_columns_after = {col.name for col in db["sites"].columns}
+        assert "extraction_status" in site_columns_after
+        assert "last_extracted" in site_columns_after
+
+        # Step 3: Create a test site
+        db["sites"].insert({
+            "subdomain": "test.civic.band",
+            "name": "Test City",
+            "state": "CA",
+            "country": "US",
+            "kind": "city-council",
+            "scraper": "test",
+            "pages": 0,
+            "start_year": 2020,
+            "status": "new",
+            "extraction_status": "pending",
+            "last_extracted": None
+        })
+
+        # Create site structure with actual data
+        site_dir = tmp_path / "test.civic.band"
+        site_dir.mkdir()
+        site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
+
+        # Create tables with actual records
+        site_db["minutes"].create({
+            "id": str,
+            "meeting": str,
+            "date": str,
+            "page": int,
+            "text": str,
+            "page_image": str,
+            "entities_json": str,
+            "votes_json": str
+        }, pk="id")
+
+        site_db["minutes"].insert({
+            "id": "test-minute-1",
+            "meeting": "2024-01-01_CityCouncil",
+            "date": "2024-01-01",
+            "page": 1,
+            "text": "Meeting called to order.",
+            "page_image": "/path/to/image.png",
+            "entities_json": "{}",
+            "votes_json": "{}"
+        })
+
+        # Verify initial state
+        site_before = db["sites"].get("test.civic.band")
+        assert site_before["extraction_status"] == "pending"
+        assert site_before["last_extracted"] is None
+
+        # Step 4: Run extraction
+        before_extraction = datetime.datetime.now()
+        result = runner.invoke(cli, ["extract-entities", "--subdomain", "test.civic.band"])
+        after_extraction = datetime.datetime.now()
+
+        assert result.exit_code == 0
+        assert "Extraction completed successfully" in result.output
+
+        # Step 5: Verify status updated
+        site_after = db["sites"].get("test.civic.band")
+        assert site_after["extraction_status"] == "completed"
+        assert site_after["last_extracted"] is not None
+
+        # Verify timestamp is reasonable (between before and after)
+        last_extracted_dt = datetime.datetime.fromisoformat(site_after["last_extracted"])
+        assert before_extraction <= last_extracted_dt <= after_extraction
+
+        # Step 6: Verify database records updated
+        minute = list(site_db["minutes"].rows)[0]
+        assert minute["id"] == "test-minute-1"
+
+        # With ENABLE_EXTRACTION=0, should have empty structures
+        entities = json.loads(minute["entities_json"])
+        votes = json.loads(minute["votes_json"])
+
+        # When extraction is disabled, expect empty arrays
+        assert isinstance(entities, dict)
+        assert isinstance(votes, dict)
+
+        # Step 7: Verify idempotency - running again should work
+        result = runner.invoke(cli, ["extract-entities", "--subdomain", "test.civic.band"])
+        assert result.exit_code == 0
+
+        site_final = db["sites"].get("test.civic.band")
+        assert site_final["extraction_status"] == "completed"
