@@ -28,6 +28,10 @@ pm.add_hookspecs(ClerkSpec)
 
 STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
 
+# Maximum pages to process in a single spaCy batch before chunking
+# Prevents memory spikes on large datasets while maintaining efficiency
+SPACY_CHUNK_SIZE = 20_000
+
 
 def hash_text_content(text: str) -> str:
     """Hash text content for cache validation.
@@ -218,7 +222,7 @@ def build_table_from_text(
         needs_extraction=cache_misses,
     )
 
-    # Phase 2: Batch process only uncached pages
+    # Phase 2: Batch process only uncached pages with chunking for large batches
     total_pages = len(all_page_data)
     uncached_indices = [i for i, p in enumerate(all_page_data) if p["cached_extraction"] is None]
     all_docs = [None] * total_pages
@@ -233,23 +237,74 @@ def build_table_from_text(
         uncached_texts = [all_page_data[i]["text"] for i in uncached_indices]
         nlp = get_nlp()
         if nlp is not None:
-            # Parse with progress updates every 1000 pages
             # n_process > 1 enables multiprocessing for ~2-4x speedup on multi-core machines
-            n_process = int(os.environ.get("SPACY_N_PROCESS", "1"))
+            n_process = int(os.environ.get("SPACY_N_PROCESS", "2"))
             progress_interval = 1000
             pipe_kwargs = {"batch_size": 500}
             if n_process > 1:
                 pipe_kwargs["n_process"] = n_process
-                click.echo(
-                    click.style(subdomain, fg="cyan") + f": Using {n_process} processes for parsing"
-                )
-            for processed, doc in enumerate(nlp.pipe(uncached_texts, **pipe_kwargs)):
-                original_idx = uncached_indices[processed]
-                all_docs[original_idx] = doc
-                if (processed + 1) % progress_interval == 0:
+
+            # Check if we need chunking (large batch processing)
+            if len(uncached_texts) <= SPACY_CHUNK_SIZE:
+                # Small batch - process all at once (existing behavior)
+                if n_process > 1:
                     click.echo(
                         click.style(subdomain, fg="cyan")
-                        + f": Parsed {processed + 1}/{len(uncached_indices)} pages..."
+                        + f": Using {n_process} processes for parsing"
+                    )
+
+                for processed, doc in enumerate(nlp.pipe(uncached_texts, **pipe_kwargs)):
+                    original_idx = uncached_indices[processed]
+                    all_docs[original_idx] = doc
+                    if (processed + 1) % progress_interval == 0:
+                        click.echo(
+                            click.style(subdomain, fg="cyan")
+                            + f": Parsed {processed + 1}/{len(uncached_indices)} pages..."
+                        )
+            else:
+                # Large batch - process in chunks to bound memory
+                num_chunks = (len(uncached_texts) + SPACY_CHUNK_SIZE - 1) // SPACY_CHUNK_SIZE
+                click.echo(
+                    click.style(subdomain, fg="cyan")
+                    + f": Parsing {len(uncached_texts)} pages in {num_chunks} chunks..."
+                )
+                if n_process > 1:
+                    click.echo(
+                        click.style(subdomain, fg="cyan")
+                        + f": Using {n_process} processes for parsing"
+                    )
+
+                for chunk_idx in range(num_chunks):
+                    chunk_start = chunk_idx * SPACY_CHUNK_SIZE
+                    chunk_end = min(chunk_start + SPACY_CHUNK_SIZE, len(uncached_texts))
+                    chunk_texts = uncached_texts[chunk_start:chunk_end]
+                    chunk_size = len(chunk_texts)
+
+                    click.echo(
+                        click.style(subdomain, fg="cyan")
+                        + f": Processing chunk {chunk_idx + 1}/{num_chunks} ({chunk_size} pages)..."
+                    )
+
+                    for i, doc in enumerate(nlp.pipe(chunk_texts, **pipe_kwargs)):
+                        processed = chunk_start + i
+                        original_idx = uncached_indices[processed]
+                        all_docs[original_idx] = doc
+                        # Progress within chunk (every 1000 pages)
+                        if (processed + 1) % progress_interval == 0:
+                            click.echo(
+                                click.style(subdomain, fg="cyan")
+                                + f": Parsed {processed + 1}/{len(uncached_texts)} pages..."
+                            )
+
+                    # Explicit memory cleanup between chunks (not after last chunk)
+                    if chunk_idx < num_chunks - 1:
+                        import gc
+
+                        gc.collect()
+
+                    click.echo(
+                        click.style(subdomain, fg="cyan")
+                        + f": Completed chunk {chunk_idx + 1}/{num_chunks}"
                     )
 
     # Phase 3: Process pages grouped by meeting date (for context accumulation)

@@ -527,6 +527,49 @@ class TestExtractionCaching:
 
 
 @pytest.mark.integration
+class TestChunkedProcessing:
+    """Integration tests for chunked processing performance optimization."""
+
+    @pytest.mark.slow
+    def test_chunked_processing_integration(self, tmp_path, monkeypatch):
+        """Integration test for chunked processing with realistic data."""
+        # Lower chunk size for testing
+        monkeypatch.setattr("clerk.utils.SPACY_CHUNK_SIZE", 100)
+        monkeypatch.delenv("SPACY_N_PROCESS", raising=False)
+
+        # Create test site structure
+        site_dir = tmp_path / "test.civic.band"
+        site_dir.mkdir()
+
+        # Create proper directory structure: txt/Meeting/Date/
+        minutes_dir = site_dir / "txt" / "City Council" / "2024-01-01"
+        minutes_dir.mkdir(parents=True)
+
+        # Create 250 text files to trigger chunking (100 + 100 + 50)
+        for i in range(250):
+            page_file = minutes_dir / f"{i + 1}.txt"
+            page_file.write_text(f"Meeting content page {i}\nSome text here.")
+
+        db_path = site_dir / "site.db"
+        db = sqlite_utils.Database(db_path)
+
+        from clerk.utils import build_table_from_text
+
+        # Should complete without errors and process all pages
+        build_table_from_text(
+            db=db, subdomain="test.civic.band", table_name="minutes", txt_dir=str(site_dir / "txt")
+        )
+
+        # Verify all pages were processed
+        records = list(db["minutes"].rows)
+        assert len(records) == 250
+
+        # Verify database has expected structure
+        assert "text" in db["minutes"].columns_dict
+        assert "meeting" in db["minutes"].columns_dict
+
+
+@pytest.mark.integration
 class TestExtractionIntegration:
     """End-to-end tests for text extraction pipeline."""
 
