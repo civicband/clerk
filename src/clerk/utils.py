@@ -405,6 +405,34 @@ def collect_page_data_with_cache(
     return all_page_data
 
 
+def batch_process_uncached_pages(page_data: list[PageData], subdomain: str) -> list:
+    """Batch process uncached pages with spaCy.
+
+    Args:
+        page_data: List of PageData objects
+        subdomain: Site subdomain for logging
+
+    Returns:
+        List of Docs parallel to page_data (None for cached pages)
+    """
+    from .output import log
+
+    uncached_indices = [i for i, p in enumerate(page_data) if p.cached_extraction is None]
+    all_docs = [None] * len(page_data)
+
+    if uncached_indices and EXTRACTION_ENABLED:
+        uncached_texts = [page_data[i].text for i in uncached_indices]
+        nlp = get_nlp()
+        if nlp:
+            log(f"Batch processing {len(uncached_texts)} uncached pages with nlp.pipe()", subdomain=subdomain)
+            # Single batch process with nlp.pipe()
+            for processed, doc in enumerate(nlp.pipe(uncached_texts, batch_size=500)):
+                original_idx = uncached_indices[processed]
+                all_docs[original_idx] = doc
+
+    return all_docs
+
+
 # Maximum pages to process in a single spaCy batch before chunking
 # Prevents memory spikes on large datasets while maintaining efficiency
 SPACY_CHUNK_SIZE = 20_000
