@@ -511,8 +511,93 @@ def migrate_extraction_schema():
         db.close()
 
 
+@cli.command()
+@click.option("-s", "--subdomain")
+@click.option("-n", "--next-site", is_flag=True)
+def extract_entities(subdomain, next_site=False):
+    """Extract entities from site minutes using spaCy"""
+    extract_entities_internal(subdomain, next_site)
+
+
+def extract_entities_internal(subdomain, next_site=False):
+    """Internal implementation of extract-entities command"""
+    from .utils import extract_entities_for_site
+
+    db = assert_db_exists()
+
+    if next_site:
+        # Query for next site needing extraction
+        next_site_row = db.execute("""
+            SELECT subdomain FROM sites
+            WHERE extraction_status IN ('pending', 'failed')
+            ORDER BY last_extracted ASC NULLS FIRST
+            LIMIT 1
+        """).fetchone()
+
+        if not next_site_row:
+            log("No sites need extraction")
+            return
+
+        subdomain = next_site_row[0]
+        log(f"Selected next site: {subdomain}")
+
+    if not subdomain:
+        log("Must specify --subdomain or --next-site", level="error")
+        return
+
+    # CRITICAL: Validate site exists (prevents path traversal)
+    try:
+        site = db["sites"].get(subdomain)
+    except Exception:
+        log(f"Site not found: {subdomain}", level="error")
+        return
+
+    if not site:
+        log(f"Site not found: {subdomain}", level="error")
+        return
+
+    # Check if extraction already in progress
+    num_in_progress = db.execute(
+        "SELECT COUNT(*) FROM sites WHERE extraction_status = 'in_progress'"
+    ).fetchone()[0]
+
+    if num_in_progress > 0:
+        log("Extraction already in progress, exiting")
+        return
+
+    # Mark as in_progress
+    db["sites"].update(subdomain, {"extraction_status": "in_progress"})
+
+    try:
+        # Run extraction
+        extract_entities_for_site(subdomain, force_extraction=False)
+
+        # Deploy unless in dev mode
+        if not os.environ.get("CIVIC_DEV_MODE"):
+            site_db = sqlite_utils.Database(f"{STORAGE_DIR}/{subdomain}/meetings.db")
+            pm.hook.deploy_municipality(subdomain=subdomain, municipality=site["name"], db=site_db)
+            pm.hook.post_deploy(subdomain=subdomain, municipality=site["name"])
+            log("Deployed updated database", subdomain=subdomain)
+        else:
+            log("DEV MODE: Skipping deployment", subdomain=subdomain)
+
+        # Mark as completed
+        db["sites"].update(subdomain, {
+            "extraction_status": "completed",
+            "last_extracted": datetime.datetime.now().isoformat()
+        })
+
+        log("Extraction completed successfully", subdomain=subdomain)
+
+    except Exception as e:
+        db["sites"].update(subdomain, {"extraction_status": "failed"})
+        log(f"Extraction failed: {e}", subdomain=subdomain, level="error")
+        raise
+
+
 cli.add_command(new)
 cli.add_command(update)
 cli.add_command(build_full_db)
 cli.add_command(remove_all_image_dirs)
 cli.add_command(migrate_extraction_schema)
+cli.add_command(extract_entities)

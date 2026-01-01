@@ -361,10 +361,11 @@ def extract_entities_for_site(subdomain, force_extraction=False):
         pages = list(db[table_name].rows)
         log(f"Found {len(pages)} pages in {table_name}", subdomain=subdomain)
 
+        # Phase 1: Collect ALL page data and check cache
+        all_page_data = []
         cache_hits = 0
         cache_misses = 0
 
-        # For each page, check cache and extract if needed
         for page in pages:
             meeting = page["meeting"]
             date = page["date"]
@@ -391,32 +392,60 @@ def extract_entities_for_site(subdomain, force_extraction=False):
 
                 if cached_extraction:
                     cache_hits += 1
-                    entities = cached_extraction["entities"]
-                    votes = cached_extraction["votes"]
                 else:
                     cache_misses += 1
             else:
                 cache_misses += 1
 
-            # Extract if not cached
-            if not cached_extraction:
+            all_page_data.append({
+                "page_id": page["id"],
+                "text": text,
+                "page_file_path": page_file_path,
+                "content_hash": content_hash,
+                "cached_extraction": cached_extraction,
+            })
+
+        # Phase 2: Batch process only uncached pages
+        uncached_indices = [i for i, p in enumerate(all_page_data) if p["cached_extraction"] is None]
+        all_docs = [None] * len(all_page_data)
+
+        if uncached_indices and EXTRACTION_ENABLED:
+            uncached_texts = [all_page_data[i]["text"] for i in uncached_indices]
+            nlp = get_nlp()
+            if nlp:
+                log(f"Batch processing {len(uncached_texts)} uncached pages with nlp.pipe()", subdomain=subdomain)
+                # Single batch process with nlp.pipe()
+                for processed, doc in enumerate(nlp.pipe(uncached_texts, batch_size=500)):
+                    original_idx = uncached_indices[processed]
+                    all_docs[original_idx] = doc
+
+        # Phase 3: Process results and update database
+        for i, pdata in enumerate(all_page_data):
+            doc = all_docs[i]
+            cached = pdata.get("cached_extraction")
+
+            if cached:
+                entities = cached["entities"]
+                votes = cached["votes"]
+            else:
                 if not EXTRACTION_ENABLED:
                     # Skip extraction if disabled
                     continue
 
-                # Extract entities and votes (would use spaCy here)
+                # Extract entities and votes using pre-parsed doc
                 try:
-                    entities = extract_entities(text)
-                    votes = extract_votes(text, meeting_context={})
+                    entities = extract_entities(pdata["text"], doc=doc)
+                    votes = extract_votes(pdata["text"], doc=doc, meeting_context={})
                 except Exception as e:
-                    logger.warning(f"Extraction failed for {page_file_path}: {e}")
+                    logger.warning(f"Extraction failed for {pdata['page_file_path']}: {e}")
                     entities = {"persons": [], "orgs": [], "locations": []}
                     votes = {"votes": []}
 
                 # Write cache
+                content_hash = pdata["content_hash"]
                 if content_hash is None:
-                    content_hash = hash_text_content(text)
-                cache_file = f"{page_file_path}.extracted.json"
+                    content_hash = hash_text_content(pdata["text"])
+                cache_file = f"{pdata['page_file_path']}.extracted.json"
                 cache_data = {
                     "content_hash": content_hash,
                     "extracted_at": datetime.datetime.now().isoformat(),
@@ -427,7 +456,7 @@ def extract_entities_for_site(subdomain, force_extraction=False):
 
             # Update database
             db[table_name].update(
-                page["id"],
+                pdata["page_id"],
                 {
                     "entities_json": json.dumps(entities),
                     "votes_json": json.dumps(votes)

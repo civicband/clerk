@@ -439,3 +439,103 @@ class TestMigrateExtractionSchema:
         columns = {col.name for col in db["sites"].columns}
         assert "extraction_status" in columns
         assert "last_extracted" in columns
+
+
+@pytest.mark.unit
+class TestExtractEntities:
+    """Unit tests for extract-entities command."""
+
+    def test_extract_entities_next_site_selects_pending(self, tmp_path, monkeypatch):
+        """extract-entities --next-site selects next pending site"""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setenv("ENABLE_EXTRACTION", "0")
+        monkeypatch.setenv("CIVIC_DEV_MODE", "1")
+        from clerk.utils import assert_db_exists
+
+        # Create database and run migration
+        db = assert_db_exists()
+        runner = CliRunner()
+        runner.invoke(cli, ['migrate-extraction-schema'])
+
+        # Site 1: completed, old extraction
+        db["sites"].insert({
+            "subdomain": "site1.civic.band",
+            "name": "Site 1",
+            "state": "CA",
+            "country": "US",
+            "kind": "city-council",
+            "scraper": "test",
+            "pages": 0,
+            "start_year": 2020,
+            "status": "new",
+            "extraction_status": "completed",
+            "last_extracted": "2024-01-01T00:00:00"
+        })
+
+        # Site 2: pending, no extraction yet (should be selected)
+        db["sites"].insert({
+            "subdomain": "site2.civic.band",
+            "name": "Site 2",
+            "state": "CA",
+            "country": "US",
+            "kind": "city-council",
+            "scraper": "test",
+            "pages": 0,
+            "start_year": 2020,
+            "status": "new",
+            "extraction_status": "pending",
+            "last_extracted": None
+        })
+
+        # Create site structure for site2
+        site_dir = tmp_path / "site2.civic.band"
+        site_dir.mkdir()
+        (site_dir / "meetings.db").touch()
+
+        # Create empty database for site2
+        site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
+        site_db["minutes"].create({"id": str, "text": str, "entities_json": str, "votes_json": str}, pk="id")
+
+        # Run command
+        runner = CliRunner()
+        result = runner.invoke(cli, ["extract-entities", "--next-site"])
+
+        print(f"Exit code: {result.exit_code}")
+        print(f"Output: {result.output}")
+        assert result.exit_code == 0
+
+        # Verify site2 was selected and processed
+        site2 = db["sites"].get("site2.civic.band")
+        assert site2["extraction_status"] == "completed"
+        assert site2["last_extracted"] is not None
+
+    def test_extract_entities_next_site_no_pending(self, tmp_path, monkeypatch):
+        """extract-entities --next-site exits cleanly when no sites need extraction"""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("CIVIC_DEV_MODE", "1")
+        from clerk.utils import assert_db_exists
+
+        # Create database and run migration
+        db = assert_db_exists()
+        runner = CliRunner()
+        runner.invoke(cli, ['migrate-extraction-schema'])
+        db["sites"].insert({
+            "subdomain": "completed.civic.band",
+            "name": "Completed",
+            "state": "CA",
+            "country": "US",
+            "kind": "city-council",
+            "scraper": "test",
+            "pages": 0,
+            "start_year": 2020,
+            "status": "new",
+            "extraction_status": "completed",
+            "last_extracted": "2024-01-01T00:00:00"
+        })
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["extract-entities", "--next-site"])
+
+        assert result.exit_code == 0
+        assert "No sites need extraction" in result.output
