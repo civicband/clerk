@@ -99,8 +99,26 @@ clerk update --subdomain example.civic.band --all-years
 ### Build Database from Text Files
 
 ```bash
+# Fast build (skips entity/vote extraction)
 clerk build-db-from-text --subdomain example.civic.band
+
+# Include extraction during build (slower, ~20 minutes per site)
+clerk build-db-from-text --subdomain example.civic.band --with-extraction
 ```
+
+### Extract Entities and Votes
+
+Entity and vote extraction runs as a separate background job for optimal memory usage:
+
+```bash
+# Extract entities for a specific site
+clerk extract-entities --subdomain example.civic.band
+
+# Process next site needing extraction (for cron jobs)
+clerk extract-entities --next-site
+```
+
+For most workflows, run `build-db-from-text` first (fast), then `extract-entities` separately. This allows databases to be deployed immediately while extraction runs in the background.
 
 ### Build Aggregate Database
 
@@ -134,10 +152,55 @@ Clerk uses a multi-database architecture:
 - kind, scraper, pages, start_year
 - status, last_updated
 - lat, lng, extra
+- extraction_status, last_extracted (entity extraction tracking)
 
 **meetings.db - minutes/agendas tables:**
 - id, meeting, date, page
 - text, page_image
+- entities_json, votes_json (extracted entities and votes)
+
+### Sequential Extraction Workflow
+
+Entity and vote extraction is designed to run as an independent background job, separating it from database building for better performance and resource management.
+
+**Migration (one-time setup):**
+```bash
+clerk migrate-extraction-schema
+```
+
+This adds `extraction_status` and `last_extracted` columns to track extraction progress.
+
+**Workflow:**
+
+1. **Build database** (fast, seconds/minutes):
+   ```bash
+   clerk build-db-from-text --subdomain site.civic.band
+   ```
+   Creates database with text content, deploys immediately with searchable text.
+
+2. **Extract entities** (slow, ~20 minutes, runs separately):
+   ```bash
+   clerk extract-entities --subdomain site.civic.band
+   ```
+   Processes entities and votes, updates database, redeploys with extracted data.
+
+**For production (cron-based processing):**
+```bash
+# Run every 30 minutes to process sites sequentially
+*/30 * * * * clerk extract-entities --next-site
+```
+
+**Extraction Status:**
+- `pending`: Site needs extraction
+- `in_progress`: Currently being processed
+- `completed`: Extraction finished
+- `failed`: Extraction failed, will retry
+
+**Benefits:**
+- Fast database builds (deploy sites immediately)
+- Memory-efficient (~5GB per extraction vs ~10-20GB for parallel)
+- Automatic retry for failed extractions
+- Clear visibility into extraction progress
 
 ## Plugin System
 
