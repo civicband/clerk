@@ -202,5 +202,3 @@ def test_process_page_for_db():
     votes = json.loads(entry["votes_json"])
     assert "persons" in entities
     assert "votes" in votes
-
-

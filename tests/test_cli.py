@@ -515,7 +515,9 @@ class TestMigrateExtractionSchema:
 class TestExtractEntities:
     """Unit tests for extract-entities command."""
 
-    def test_extract_entities_next_site_selects_pending(self, tmp_path, monkeypatch, cli_module, utils_module):
+    def test_extract_entities_next_site_selects_pending(
+        self, tmp_path, monkeypatch, cli_module, utils_module
+    ):
         """extract-entities --next-site selects next pending site"""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
@@ -626,7 +628,9 @@ class TestExtractEntities:
         assert result.exit_code == 0
         assert "No sites need extraction" in result.output
 
-    def test_extract_entities_dev_mode_skips_deployment(self, tmp_path, monkeypatch, cli_module, utils_module):
+    def test_extract_entities_dev_mode_skips_deployment(
+        self, tmp_path, monkeypatch, cli_module, utils_module
+    ):
         """CIVIC_DEV_MODE=1 should skip deployment hooks"""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
@@ -787,7 +791,9 @@ class TestExtractEntities:
         assert deploy_called[0]["municipality"] == "Test City"
         assert post_deploy_called[0]["subdomain"] == "test.civic.band"
 
-    def test_extract_entities_failure_marks_status_failed(self, tmp_path, monkeypatch, cli_module, utils_module):
+    def test_extract_entities_failure_marks_status_failed(
+        self, tmp_path, monkeypatch, cli_module, utils_module
+    ):
         """Extraction failures should mark status as failed"""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
@@ -858,7 +864,9 @@ class TestExtractEntities:
         assert "Extraction failed" in result.output
         assert "Test extraction failure" in result.output
 
-    def test_extract_entities_failed_sites_can_retry(self, tmp_path, monkeypatch, cli_module, utils_module):
+    def test_extract_entities_failed_sites_can_retry(
+        self, tmp_path, monkeypatch, cli_module, utils_module
+    ):
         """Failed sites should be selected by --next-site for retry"""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))

@@ -516,11 +516,13 @@ def build_table_from_text(
         else:
             cache_misses += 1
 
-        page_data.append({
-            "page_file": pf,
-            "cache_file": cache_file,
-            "cached_extraction": cached_extraction,
-        })
+        page_data.append(
+            {
+                "page_file": pf,
+                "cache_file": cache_file,
+                "cached_extraction": cached_extraction,
+            }
+        )
 
     log(
         f"Cache status: {cache_hits} hits, {cache_misses} misses",
@@ -666,5 +668,3 @@ def build_db_from_text_internal(subdomain, extract_entities=False, ignore_cache=
         subdomain=subdomain,
     )
     click.echo(f"Execution time: {elapsed_time} seconds")
-
-
