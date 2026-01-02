@@ -607,7 +607,7 @@ def extract_entities_internal(subdomain, next_site=False):
                 pm.hook.deploy_municipality(
                     subdomain=subdomain, municipality=site["name"], db=site_db
                 )
-                pm.hook.post_deploy(subdomain=subdomain, municipality=site["name"])
+                pm.hook.post_deploy(site=site)
                 log("Deployed updated database", subdomain=subdomain)
             except Exception as deploy_error:
                 log(

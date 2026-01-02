@@ -789,7 +789,7 @@ class TestExtractEntities:
         # Verify correct parameters passed
         assert deploy_called[0]["subdomain"] == "test.civic.band"
         assert deploy_called[0]["municipality"] == "Test City"
-        assert post_deploy_called[0]["subdomain"] == "test.civic.band"
+        assert post_deploy_called[0]["site"]["subdomain"] == "test.civic.band"
 
     def test_extract_entities_failure_marks_status_failed(
         self, tmp_path, monkeypatch, cli_module, utils_module
