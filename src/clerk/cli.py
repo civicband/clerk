@@ -348,13 +348,26 @@ def fetch_internal(subdomain, fetcher):
     "--subdomain",
 )
 @click.option(
-    "--force-extraction",
+    "--extract-entities",
     is_flag=True,
-    help="Ignore cache and re-extract all pages",
+    default=False,
+    help="Extract entities for uncached pages (slower, ~20 min per site)",
 )
-def build_db_from_text(subdomain, force_extraction=False):
-    """Build database from text files"""
-    build_db_from_text_internal(subdomain, force_extraction=force_extraction)
+@click.option(
+    "--ignore-cache",
+    is_flag=True,
+    help="Ignore cache and extract all pages (requires --extract-entities)",
+)
+def build_db_from_text(subdomain, extract_entities, ignore_cache=False):
+    """Build database from text files
+
+    By default, rebuilds database from text files using cached entity extractions.
+    Use --extract-entities to extract entities for uncached pages.
+    Use --ignore-cache with --extract-entities to re-extract all pages.
+    """
+    build_db_from_text_internal(
+        subdomain, extract_entities=extract_entities, ignore_cache=ignore_cache
+    )
     rebuild_site_fts_internal(subdomain)
 
 
@@ -493,7 +506,128 @@ def remove_all_image_dirs():
             shutil.rmtree(agendas_image_dir)
 
 
+@cli.command()
+def migrate_extraction_schema():
+    """Add extraction tracking columns to sites table"""
+    db = assert_db_exists()
+
+    try:
+        # Add columns if they don't exist
+        existing_columns = {col.name for col in db["sites"].columns}
+
+        if "extraction_status" not in existing_columns:
+            db.execute("ALTER TABLE sites ADD COLUMN extraction_status TEXT DEFAULT 'pending'")
+
+        if "last_extracted" not in existing_columns:
+            db.execute("ALTER TABLE sites ADD COLUMN last_extracted TEXT")
+
+        # Set pending for all sites that don't have a status
+        db.execute("UPDATE sites SET extraction_status = 'pending' WHERE extraction_status IS NULL")
+
+        click.echo("Migration complete: extraction_status and last_extracted columns added")
+    finally:
+        db.close()
+
+
+@cli.command()
+@click.option("-s", "--subdomain")
+@click.option("-n", "--next-site", is_flag=True)
+def extract_entities(subdomain, next_site=False):
+    """Extract entities from site minutes using spaCy"""
+    extract_entities_internal(subdomain, next_site)
+
+
+def extract_entities_internal(subdomain, next_site=False):
+    """Internal implementation of extract-entities command"""
+    db = assert_db_exists()
+
+    if next_site:
+        # Query for next site needing extraction
+        next_site_row = db.execute("""
+            SELECT subdomain FROM sites
+            WHERE extraction_status IN ('pending', 'failed')
+            ORDER BY last_extracted ASC NULLS FIRST
+            LIMIT 1
+        """).fetchone()
+
+        if not next_site_row:
+            log("No sites need extraction")
+            return
+
+        subdomain = next_site_row[0]
+        log(f"Selected next site: {subdomain}")
+
+    if not subdomain:
+        log("Must specify --subdomain or --next-site", level="error")
+        return
+
+    # CRITICAL: Validate site exists (prevents path traversal)
+    try:
+        site = db["sites"].get(subdomain)
+    except Exception:
+        log(f"Site not found: {subdomain}", level="error")
+        return
+
+    if not site:
+        log(f"Site not found: {subdomain}", level="error")
+        return
+
+    # Check if extraction already in progress
+    num_in_progress = db.execute(
+        "SELECT COUNT(*) FROM sites WHERE extraction_status = 'in_progress'"
+    ).fetchone()[0]
+
+    if num_in_progress > 0:
+        log("Extraction already in progress, exiting")
+        return
+
+    # Mark as in_progress
+    db["sites"].update(subdomain, {"extraction_status": "in_progress"})
+
+    try:
+        # Run extraction - rebuild DB from text with entity extraction enabled
+        build_db_from_text_internal(subdomain, extract_entities=True, ignore_cache=False)
+        rebuild_site_fts_internal(subdomain)
+
+        # Mark extraction as completed BEFORE deployment
+        db["sites"].update(
+            subdomain,
+            {
+                "extraction_status": "completed",
+                "last_extracted": datetime.datetime.now().isoformat(),
+            },
+        )
+
+        log("Extraction completed successfully", subdomain=subdomain)
+
+        # Deploy unless in dev mode (separate error handling)
+        if not os.environ.get("CIVIC_DEV_MODE"):
+            try:
+                site_db = sqlite_utils.Database(f"{STORAGE_DIR}/{subdomain}/meetings.db")
+                pm.hook.deploy_municipality(
+                    subdomain=subdomain, municipality=site["name"], db=site_db
+                )
+                pm.hook.post_deploy(subdomain=subdomain, municipality=site["name"])
+                log("Deployed updated database", subdomain=subdomain)
+            except Exception as deploy_error:
+                log(
+                    f"Deployment failed but extraction completed: {deploy_error}",
+                    subdomain=subdomain,
+                    level="error",
+                )
+                # Don't raise - extraction succeeded
+        else:
+            log("DEV MODE: Skipping deployment", subdomain=subdomain)
+
+    except Exception as e:
+        db["sites"].update(subdomain, {"extraction_status": "failed"})
+        log(f"Extraction failed: {e}", subdomain=subdomain, level="error")
+        raise
+
+
 cli.add_command(new)
 cli.add_command(update)
 cli.add_command(build_full_db)
 cli.add_command(remove_all_image_dirs)
+cli.add_command(migrate_extraction_schema)
+cli.add_command(extract_entities)

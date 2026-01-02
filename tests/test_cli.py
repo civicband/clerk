@@ -1,5 +1,7 @@
 """Unit tests for clerk.cli module."""
 
+import datetime
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -343,6 +345,74 @@ class TestBuildDbFromTextInternal:
         minutes_count = db["minutes"].count
         assert minutes_count == 2
 
+    def test_build_db_from_text_skips_extraction_by_default(
+        self, tmp_path, monkeypatch, cli_module, utils_module
+    ):
+        """build-db-from-text should skip extraction by default"""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_path))
+
+        # Monkeypatch EXTRACTION_ENABLED directly (env var is read at import time)
+        import clerk.extraction
+
+        monkeypatch.setattr(clerk.extraction, "EXTRACTION_ENABLED", True)
+        # Also need to monkeypatch in utils module since it imports it
+        monkeypatch.setattr(utils_module, "EXTRACTION_ENABLED", True)
+
+        import clerk.utils
+        from clerk.utils import assert_db_exists
+
+        db = assert_db_exists()
+
+        # Create test site
+        db["sites"].insert(
+            {
+                "subdomain": "test.civic.band",
+                "name": "Test City",
+                "state": "CA",
+                "country": "US",
+                "kind": "city-council",
+                "scraper": "test",
+                "pages": 0,
+                "start_year": 2020,
+                "status": "new",
+            }
+        )
+
+        # Create text files
+        site_dir = tmp_path / "test.civic.band"
+        txt_dir = site_dir / "txt" / "CityCouncil" / "2024-01-15"
+        txt_dir.mkdir(parents=True)
+        (txt_dir / "0001.txt").write_text("Meeting text")
+
+        # Create minimal database to backup
+        db_path = site_dir / "meetings.db"
+        site_db = sqlite_utils.Database(db_path)
+        site_db["temp"].insert({"id": 1})
+
+        # Run build-db-from-text (should skip extraction by default)
+        runner = CliRunner()
+        result = runner.invoke(cli, ["build-db-from-text", "-s", "test.civic.band"])
+
+        assert result.exit_code == 0
+
+        # Verify database was created with text
+        site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
+        assert site_db["minutes"].exists()
+        rows = list(site_db["minutes"].rows)
+        assert len(rows) == 1
+        assert rows[0]["text"] == "Meeting text"
+
+        # Verify extraction was skipped (empty structures, not extracted data)
+        import json
+
+        entities = json.loads(rows[0]["entities_json"])
+        votes = json.loads(rows[0]["votes_json"])
+        assert entities == {"persons": [], "orgs": [], "locations": []}
+        assert votes == {"votes": []}
+
 
 @pytest.mark.slow
 @pytest.mark.integration
@@ -392,3 +462,609 @@ class TestBuildFullDb:
         full_db = sqlite_utils.Database(full_db_path)
         assert "minutes" in full_db.table_names()
         assert "agendas" in full_db.table_names()
+
+
+@pytest.mark.unit
+class TestMigrateExtractionSchema:
+    """Unit tests for migrate-extraction-schema command."""
+
+    def test_migrate_extraction_schema_adds_columns(self, tmp_path, monkeypatch):
+        """Migration adds extraction_status and last_extracted columns"""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        from clerk.utils import assert_db_exists
+
+        # Create database without extraction columns
+        db = assert_db_exists()
+
+        # Run migration
+        runner = CliRunner()
+        result = runner.invoke(cli, ["migrate-extraction-schema"])
+
+        assert result.exit_code == 0
+        assert "Migration complete" in result.output
+
+        # Verify columns exist
+        columns = {col.name for col in db["sites"].columns}
+        assert "extraction_status" in columns
+        assert "last_extracted" in columns
+
+    def test_migrate_extraction_schema_is_idempotent(self, tmp_path, monkeypatch):
+        """Running migration multiple times is safe"""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        from clerk.utils import assert_db_exists
+
+        runner = CliRunner()
+
+        # Run migration twice
+        result1 = runner.invoke(cli, ["migrate-extraction-schema"])
+        result2 = runner.invoke(cli, ["migrate-extraction-schema"])
+
+        assert result1.exit_code == 0
+        assert result2.exit_code == 0
+
+        # Verify no errors and columns still exist
+        db = assert_db_exists()
+        columns = {col.name for col in db["sites"].columns}
+        assert "extraction_status" in columns
+        assert "last_extracted" in columns
+
+
+@pytest.mark.unit
+class TestExtractEntities:
+    """Unit tests for extract-entities command."""
+
+    def test_extract_entities_next_site_selects_pending(
+        self, tmp_path, monkeypatch, cli_module, utils_module
+    ):
+        """extract-entities --next-site selects next pending site"""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setenv("ENABLE_EXTRACTION", "0")
+        monkeypatch.setenv("CIVIC_DEV_MODE", "1")
+        from clerk.utils import assert_db_exists
+
+        # Create database and run migration
+        db = assert_db_exists()
+        runner = CliRunner()
+        runner.invoke(cli, ["migrate-extraction-schema"])
+
+        # Site 1: completed, old extraction
+        db["sites"].insert(
+            {
+                "subdomain": "site1.civic.band",
+                "name": "Site 1",
+                "state": "CA",
+                "country": "US",
+                "kind": "city-council",
+                "scraper": "test",
+                "pages": 0,
+                "start_year": 2020,
+                "status": "new",
+                "extraction_status": "completed",
+                "last_extracted": "2024-01-01T00:00:00",
+            }
+        )
+
+        # Site 2: pending, no extraction yet (should be selected)
+        db["sites"].insert(
+            {
+                "subdomain": "site2.civic.band",
+                "name": "Site 2",
+                "state": "CA",
+                "country": "US",
+                "kind": "city-council",
+                "scraper": "test",
+                "pages": 0,
+                "start_year": 2020,
+                "status": "new",
+                "extraction_status": "pending",
+                "last_extracted": None,
+            }
+        )
+
+        # Create site structure for site2 with text files
+        site_dir = tmp_path / "site2.civic.band"
+        site_dir.mkdir()
+
+        # Create text files for extraction
+        txt_dir = site_dir / "txt" / "council" / "2024-01-01"
+        txt_dir.mkdir(parents=True)
+        (txt_dir / "0001.txt").write_text("Test meeting content")
+
+        (site_dir / "meetings.db").touch()
+
+        # Create empty database for site2
+        site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
+        site_db["minutes"].create(
+            {"id": str, "text": str, "entities_json": str, "votes_json": str}, pk="id"
+        )
+
+        # Run command
+        runner = CliRunner()
+        result = runner.invoke(cli, ["extract-entities", "--next-site"])
+
+        print(f"Exit code: {result.exit_code}")
+        print(f"Output: {result.output}")
+        assert result.exit_code == 0
+
+        # Verify site2 was selected and processed
+        site2 = db["sites"].get("site2.civic.band")
+        assert site2["extraction_status"] == "completed"
+        assert site2["last_extracted"] is not None
+
+    def test_extract_entities_next_site_no_pending(self, tmp_path, monkeypatch):
+        """extract-entities --next-site exits cleanly when no sites need extraction"""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("CIVIC_DEV_MODE", "1")
+        from clerk.utils import assert_db_exists
+
+        # Create database and run migration
+        db = assert_db_exists()
+        runner = CliRunner()
+        runner.invoke(cli, ["migrate-extraction-schema"])
+        db["sites"].insert(
+            {
+                "subdomain": "completed.civic.band",
+                "name": "Completed",
+                "state": "CA",
+                "country": "US",
+                "kind": "city-council",
+                "scraper": "test",
+                "pages": 0,
+                "start_year": 2020,
+                "status": "new",
+                "extraction_status": "completed",
+                "last_extracted": "2024-01-01T00:00:00",
+            }
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["extract-entities", "--next-site"])
+
+        assert result.exit_code == 0
+        assert "No sites need extraction" in result.output
+
+    def test_extract_entities_dev_mode_skips_deployment(
+        self, tmp_path, monkeypatch, cli_module, utils_module
+    ):
+        """CIVIC_DEV_MODE=1 should skip deployment hooks"""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setenv("ENABLE_EXTRACTION", "0")
+        monkeypatch.setenv("CIVIC_DEV_MODE", "1")
+
+        from clerk.utils import assert_db_exists
+
+        db = assert_db_exists()
+
+        # Run migration first
+        runner = CliRunner()
+        runner.invoke(cli, ["migrate-extraction-schema"])
+
+        # Create test site
+        db["sites"].insert(
+            {
+                "subdomain": "test.civic.band",
+                "name": "Test City",
+                "state": "CA",
+                "country": "US",
+                "kind": "city-council",
+                "scraper": "test",
+                "pages": 0,
+                "start_year": 2020,
+                "status": "new",
+                "extraction_status": "pending",
+                "last_extracted": None,
+            }
+        )
+
+        # Create site structure with text files
+        site_dir = tmp_path / "test.civic.band"
+        site_dir.mkdir()
+
+        # Create text files for extraction
+        txt_dir = site_dir / "txt" / "council" / "2024-01-01"
+        txt_dir.mkdir(parents=True)
+        (txt_dir / "0001.txt").write_text("Test meeting content")
+
+        site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
+        site_db["minutes"].create(
+            {"id": str, "text": str, "entities_json": str, "votes_json": str}, pk="id"
+        )
+
+        # Mock the deployment hooks to track calls
+        deploy_called = []
+        post_deploy_called = []
+
+        class MockHook:
+            def deploy_municipality(self, **kwargs):
+                deploy_called.append(kwargs)
+
+            def post_deploy(self, **kwargs):
+                post_deploy_called.append(kwargs)
+
+        class MockPM:
+            def __init__(self):
+                self.hook = MockHook()
+
+        monkeypatch.setattr(cli_module, "pm", MockPM())
+
+        # Run command
+        runner = CliRunner()
+        result = runner.invoke(cli, ["extract-entities", "--subdomain", "test.civic.band"])
+
+        assert result.exit_code == 0
+        assert "DEV MODE: Skipping deployment" in result.output
+        assert len(deploy_called) == 0, "deploy_municipality should not be called in dev mode"
+        assert len(post_deploy_called) == 0, "post_deploy should not be called in dev mode"
+
+        # Verify extraction still completed
+        site = db["sites"].get("test.civic.band")
+        assert site["extraction_status"] == "completed"
+        assert site["last_extracted"] is not None
+
+    def test_extract_entities_production_mode_calls_deployment(
+        self, tmp_path, monkeypatch, cli_module, utils_module
+    ):
+        """Without CIVIC_DEV_MODE, deployment hooks should be called"""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setenv("ENABLE_EXTRACTION", "0")
+        # DON'T set CIVIC_DEV_MODE (production mode)
+
+        from clerk.utils import assert_db_exists
+
+        db = assert_db_exists()
+
+        # Run migration first
+        runner = CliRunner()
+        runner.invoke(cli, ["migrate-extraction-schema"])
+
+        # Create test site
+        db["sites"].insert(
+            {
+                "subdomain": "test.civic.band",
+                "name": "Test City",
+                "state": "CA",
+                "country": "US",
+                "kind": "city-council",
+                "scraper": "test",
+                "pages": 0,
+                "start_year": 2020,
+                "status": "new",
+                "extraction_status": "pending",
+                "last_extracted": None,
+            }
+        )
+
+        # Create site structure with text files
+        site_dir = tmp_path / "test.civic.band"
+        site_dir.mkdir()
+
+        # Create text files for extraction
+        txt_dir = site_dir / "txt" / "council" / "2024-01-01"
+        txt_dir.mkdir(parents=True)
+        (txt_dir / "0001.txt").write_text("Test meeting content")
+
+        site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
+        site_db["minutes"].create(
+            {"id": str, "text": str, "entities_json": str, "votes_json": str}, pk="id"
+        )
+
+        # Mock the deployment hooks
+        deploy_called = []
+        post_deploy_called = []
+
+        class MockHook:
+            def deploy_municipality(self, **kwargs):
+                deploy_called.append(kwargs)
+
+            def post_deploy(self, **kwargs):
+                post_deploy_called.append(kwargs)
+
+        class MockPM:
+            def __init__(self):
+                self.hook = MockHook()
+
+        monkeypatch.setattr(cli_module, "pm", MockPM())
+
+        # Run command
+        runner = CliRunner()
+        result = runner.invoke(cli, ["extract-entities", "--subdomain", "test.civic.band"])
+
+        assert result.exit_code == 0
+        # Should NOT see dev mode message
+        assert "DEV MODE: Skipping deployment" not in result.output
+        assert len(deploy_called) == 1, "deploy_municipality should be called in production mode"
+        assert len(post_deploy_called) == 1, "post_deploy should be called in production mode"
+
+        # Verify correct parameters passed
+        assert deploy_called[0]["subdomain"] == "test.civic.band"
+        assert deploy_called[0]["municipality"] == "Test City"
+        assert post_deploy_called[0]["subdomain"] == "test.civic.band"
+
+    def test_extract_entities_failure_marks_status_failed(
+        self, tmp_path, monkeypatch, cli_module, utils_module
+    ):
+        """Extraction failures should mark status as failed"""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setenv("CIVIC_DEV_MODE", "1")
+
+        from clerk.utils import assert_db_exists
+
+        db = assert_db_exists()
+
+        # Run migration first
+        runner = CliRunner()
+        runner.invoke(cli, ["migrate-extraction-schema"])
+
+        # Create test site
+        db["sites"].insert(
+            {
+                "subdomain": "test.civic.band",
+                "name": "Test City",
+                "state": "CA",
+                "country": "US",
+                "kind": "city-council",
+                "scraper": "test",
+                "pages": 0,
+                "start_year": 2020,
+                "status": "new",
+                "extraction_status": "pending",
+                "last_extracted": None,
+            }
+        )
+
+        # Create site structure with text files
+        site_dir = tmp_path / "test.civic.band"
+        site_dir.mkdir()
+
+        # Create text files for extraction
+        txt_dir = site_dir / "txt" / "council" / "2024-01-01"
+        txt_dir.mkdir(parents=True)
+        (txt_dir / "0001.txt").write_text("Test meeting content")
+
+        site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
+        site_db["minutes"].create(
+            {"id": str, "text": str, "entities_json": str, "votes_json": str}, pk="id"
+        )
+
+        # Mock build_db_from_text_internal to raise exception
+        def failing_build(subdomain, extract_entities=False, ignore_cache=False):
+            raise RuntimeError("Test extraction failure")
+
+        monkeypatch.setattr(cli_module, "build_db_from_text_internal", failing_build)
+
+        # Run command - should fail but update status
+        runner = CliRunner()
+        result = runner.invoke(cli, ["extract-entities", "--subdomain", "test.civic.band"])
+
+        # Command should fail (non-zero exit code)
+        assert result.exit_code != 0
+
+        # Status should be marked as failed
+        site = db["sites"].get("test.civic.band")
+        assert site["extraction_status"] == "failed"
+
+        # last_extracted should NOT be updated (still None)
+        assert site["last_extracted"] is None
+
+        # Error should be logged
+        assert "Extraction failed" in result.output
+        assert "Test extraction failure" in result.output
+
+    def test_extract_entities_failed_sites_can_retry(
+        self, tmp_path, monkeypatch, cli_module, utils_module
+    ):
+        """Failed sites should be selected by --next-site for retry"""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setenv("ENABLE_EXTRACTION", "0")
+        monkeypatch.setenv("CIVIC_DEV_MODE", "1")
+
+        from clerk.utils import assert_db_exists
+
+        db = assert_db_exists()
+
+        # Run migration first
+        runner = CliRunner()
+        runner.invoke(cli, ["migrate-extraction-schema"])
+
+        # Site 1: completed (should skip)
+        db["sites"].insert(
+            {
+                "subdomain": "completed.civic.band",
+                "name": "Completed",
+                "state": "CA",
+                "country": "US",
+                "kind": "city-council",
+                "scraper": "test",
+                "pages": 0,
+                "start_year": 2020,
+                "status": "new",
+                "extraction_status": "completed",
+                "last_extracted": "2024-01-01T00:00:00",
+            }
+        )
+
+        # Site 2: failed (should retry - selected by --next-site)
+        db["sites"].insert(
+            {
+                "subdomain": "failed.civic.band",
+                "name": "Failed",
+                "state": "CA",
+                "country": "US",
+                "kind": "city-council",
+                "scraper": "test",
+                "pages": 0,
+                "start_year": 2020,
+                "status": "new",
+                "extraction_status": "failed",
+                "last_extracted": None,
+            }
+        )
+
+        # Create site structure for failed site with text files
+        site_dir = tmp_path / "failed.civic.band"
+        site_dir.mkdir()
+
+        # Create text files for extraction
+        txt_dir = site_dir / "txt" / "council" / "2024-01-01"
+        txt_dir.mkdir(parents=True)
+        (txt_dir / "0001.txt").write_text("Test meeting content")
+
+        site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
+        site_db["minutes"].create(
+            {"id": str, "text": str, "entities_json": str, "votes_json": str}, pk="id"
+        )
+
+        # Run --next-site
+        runner = CliRunner()
+        result = runner.invoke(cli, ["extract-entities", "--next-site"])
+
+        assert result.exit_code == 0
+
+        # Verify failed site was selected and processed
+        site = db["sites"].get("failed.civic.band")
+        assert site["extraction_status"] == "completed"
+        assert site["last_extracted"] is not None
+
+        # Completed site should remain unchanged
+        completed_site = db["sites"].get("completed.civic.band")
+        assert completed_site["extraction_status"] == "completed"
+        assert completed_site["last_extracted"] == "2024-01-01T00:00:00"
+
+
+@pytest.mark.integration
+class TestExtractEntitiesIntegration:
+    """Integration tests for the full extraction workflow."""
+
+    def test_full_extraction_workflow(self, tmp_path, monkeypatch, cli_module, utils_module):
+        """Test complete workflow: migration → extraction → status tracking"""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setenv("ENABLE_EXTRACTION", "0")  # Fast test without spaCy
+        monkeypatch.setenv("CIVIC_DEV_MODE", "1")  # Skip deployment
+
+        from clerk.utils import assert_db_exists
+
+        # Step 1: Create database (simulates initial setup)
+        db = assert_db_exists()
+
+        # Initially no extraction columns exist
+        site_columns_before = {col.name for col in db["sites"].columns}
+        assert "extraction_status" not in site_columns_before
+        assert "last_extracted" not in site_columns_before
+
+        # Step 2: Run migration
+        runner = CliRunner()
+        result = runner.invoke(cli, ["migrate-extraction-schema"])
+        assert result.exit_code == 0
+        assert "Migration complete" in result.output
+
+        # Verify columns added
+        site_columns_after = {col.name for col in db["sites"].columns}
+        assert "extraction_status" in site_columns_after
+        assert "last_extracted" in site_columns_after
+
+        # Step 3: Create a test site
+        db["sites"].insert(
+            {
+                "subdomain": "test.civic.band",
+                "name": "Test City",
+                "state": "CA",
+                "country": "US",
+                "kind": "city-council",
+                "scraper": "test",
+                "pages": 0,
+                "start_year": 2020,
+                "status": "new",
+                "extraction_status": "pending",
+                "last_extracted": None,
+            }
+        )
+
+        # Create site structure with text files
+        site_dir = tmp_path / "test.civic.band"
+        site_dir.mkdir()
+
+        # Create text files for extraction
+        txt_dir = site_dir / "txt" / "CityCouncil" / "2024-01-01"
+        txt_dir.mkdir(parents=True)
+        (txt_dir / "0001.txt").write_text("Meeting called to order.")
+
+        # Create empty database (will be populated by extraction)
+        site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
+        site_db["sites"].insert(
+            {
+                "subdomain": "test.civic.band",
+                "name": "Test City",
+                "state": "CA",
+                "country": "USA",
+            },
+            pk="subdomain",
+        )
+
+        # Verify initial state
+        site_before = db["sites"].get("test.civic.band")
+        assert site_before["extraction_status"] == "pending"
+        assert site_before["last_extracted"] is None
+
+        # Step 4: Run extraction
+        before_extraction = datetime.datetime.now()
+        result = runner.invoke(cli, ["extract-entities", "--subdomain", "test.civic.band"])
+        after_extraction = datetime.datetime.now()
+
+        assert result.exit_code == 0
+        assert "Extraction completed successfully" in result.output
+
+        # Step 5: Verify status updated
+        site_after = db["sites"].get("test.civic.band")
+        assert site_after["extraction_status"] == "completed"
+        assert site_after["last_extracted"] is not None
+
+        # Verify timestamp is reasonable (between before and after)
+        last_extracted_dt = datetime.datetime.fromisoformat(site_after["last_extracted"])
+        assert before_extraction <= last_extracted_dt <= after_extraction
+
+        # Step 6: Verify database records created from text files
+        # Re-open database to see new records
+        site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
+        minutes = list(site_db["minutes"].rows)
+        assert len(minutes) == 1  # Should have 1 record from the text file
+
+        minute = minutes[0]
+        assert minute["text"] == "Meeting called to order."
+        assert minute["meeting"] == "CityCouncil"
+        assert minute["date"] == "2024-01-01"
+        assert minute["page"] == 1
+
+        # With ENABLE_EXTRACTION=0, should have empty structures
+        entities = json.loads(minute["entities_json"])
+        votes = json.loads(minute["votes_json"])
+
+        # When extraction is disabled, expect empty arrays
+        assert isinstance(entities, dict)
+        assert isinstance(votes, dict)
+
+        # Step 7: Verify idempotency - running again should work
+        result = runner.invoke(cli, ["extract-entities", "--subdomain", "test.civic.band"])
+        assert result.exit_code == 0
+
+        site_final = db["sites"].get("test.civic.band")
+        assert site_final["extraction_status"] == "completed"

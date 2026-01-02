@@ -406,7 +406,7 @@ class TestExtractionCaching:
     def test_cache_workflow_end_to_end(
         self, tmp_storage_dir, monkeypatch, cli_module, utils_module
     ):
-        """Test complete cache workflow: first run creates cache, second run uses it."""
+        """Test complete cache workflow: extraction creates cache, subsequent runs use it."""
         import sqlite_utils
 
         from clerk.utils import build_db_from_text_internal
@@ -421,9 +421,9 @@ class TestExtractionCaching:
         txt_dir = site_dir / "txt" / "city-council" / "2024-01-15"
         txt_dir.mkdir(parents=True)
 
-        # Create test text files
-        (txt_dir / "001.txt").write_text("Meeting called to order")
-        (txt_dir / "002.txt").write_text("Roll call taken")
+        # Create test text files (4-digit naming like real pages)
+        (txt_dir / "0001.txt").write_text("Meeting called to order")
+        (txt_dir / "0002.txt").write_text("Roll call taken")
 
         # Create initial database for backup
         db_path = site_dir / "meetings.db"
@@ -442,25 +442,28 @@ class TestExtractionCaching:
         # Enable extraction
         monkeypatch.setenv("ENABLE_EXTRACTION", "1")
 
-        # First run - should create cache files
-        build_db_from_text_internal(subdomain)
+        # Build database (without extraction - no cache created)
+        build_db_from_text_internal(subdomain, extract_entities=False)
+
+        # First extraction run - should create cache files
+        build_db_from_text_internal(subdomain, extract_entities=True, ignore_cache=False)
 
         # Verify cache files created
-        assert (txt_dir / "001.txt.extracted.json").exists()
-        assert (txt_dir / "002.txt.extracted.json").exists()
+        assert (txt_dir / "0001.txt.extracted.json").exists()
+        assert (txt_dir / "0002.txt.extracted.json").exists()
 
-        # Second run - should use cache
-        build_db_from_text_internal(subdomain)
+        # Second extraction run - should use cache
+        build_db_from_text_internal(subdomain, extract_entities=True, ignore_cache=False)
 
-        # Verify database populated correctly both times
+        # Verify database populated correctly
         db = sqlite_utils.Database(db_path)
         rows = list(db["minutes"].rows)
         assert len(rows) == 2
 
-    def test_force_extraction_bypasses_cache(
+    def test_ignore_cache_bypasses_cache(
         self, tmp_storage_dir, monkeypatch, cli_module, utils_module
     ):
-        """Test --force-extraction bypasses cache."""
+        """Test --ignore-cache bypasses cache during extraction."""
         import sqlite_utils
 
         from clerk.utils import (
@@ -479,8 +482,8 @@ class TestExtractionCaching:
         txt_dir = site_dir / "txt" / "city-council" / "2024-01-15"
         txt_dir.mkdir(parents=True)
 
-        # Create test file
-        text_file = txt_dir / "001.txt"
+        # Create test file (4-digit naming like real pages)
+        text_file = txt_dir / "0001.txt"
         text_content = "Original meeting text"
         text_file.write_text(text_content)
 
@@ -513,8 +516,11 @@ class TestExtractionCaching:
         # Enable extraction
         monkeypatch.setenv("ENABLE_EXTRACTION", "1")
 
-        # Run with force_extraction=True
-        build_db_from_text_internal(subdomain, force_extraction=True)
+        # Build database first
+        build_db_from_text_internal(subdomain, extract_entities=False)
+
+        # Run extraction with ignore_cache=True to bypass cache
+        build_db_from_text_internal(subdomain, extract_entities=True, ignore_cache=True)
 
         # Cache should be overwritten with fresh extraction
         import json
@@ -587,14 +593,14 @@ class TestExtractionIntegration:
         txt_dir = site_dir / "txt" / "CityCouncil" / "2024-01-15"
         txt_dir.mkdir(parents=True)
 
-        # Page 1: Roll call
-        (txt_dir / "1.txt").write_text(
+        # Page 1: Roll call (4-digit naming)
+        (txt_dir / "0001.txt").write_text(
             "City Council Meeting - January 15, 2024\n"
             "Roll Call: Members present were Smith, Jones, Lee, Brown, Garcia.\n"
         )
 
-        # Page 2: Discussion and vote
-        (txt_dir / "2.txt").write_text(
+        # Page 2: Discussion and vote (4-digit naming)
+        (txt_dir / "0002.txt").write_text(
             "Motion by Smith, seconded by Jones.\n"
             "The motion to approve the budget passed 5-0.\n"
             "Ayes: Smith, Jones, Lee, Brown, Garcia. Nays: None.\n"
@@ -613,7 +619,7 @@ class TestExtractionIntegration:
 
         from clerk.utils import build_db_from_text_internal
 
-        build_db_from_text_internal("test-site")
+        build_db_from_text_internal("test-site", extract_entities=True)
 
         # Verify extraction results
         db = sqlite_utils.Database(site_dir / "meetings.db")
