@@ -135,7 +135,7 @@ def collect_page_files(txt_dir: str) -> list[PageFile]:
     Returns:
         List of PageFile objects sorted by meeting, date, page
     """
-    page_files = []
+    page_files: list[PageFile] = []
 
     if not os.path.exists(txt_dir):
         return page_files
