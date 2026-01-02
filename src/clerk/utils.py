@@ -13,7 +13,6 @@ import sqlite_utils
 
 from .extraction import (
     EXTRACTION_ENABLED,
-    create_meeting_context,
     detect_roll_call,
     extract_entities,
     extract_votes,
@@ -557,9 +556,6 @@ def build_table_from_text(
                 + f"Processing {meeting_date_group.meeting}"
             )
             build_table_from_text._last_meeting = meeting_date_group.meeting
-
-        # Create fresh context for each meeting date
-        meeting_context = create_meeting_context()
 
         # Process pages for this meeting date
         for idx in meeting_date_group.page_indices:

@@ -795,7 +795,6 @@ class TestExtractEntities:
         monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_path))
         monkeypatch.setenv("CIVIC_DEV_MODE", "1")
 
-        import clerk.utils
         from clerk.utils import assert_db_exists
 
         db = assert_db_exists()

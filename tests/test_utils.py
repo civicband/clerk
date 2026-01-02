@@ -185,7 +185,6 @@ class TestBuildTableFromTextExtraction:
     def test_extraction_populates_json_columns(self, tmp_path, monkeypatch):
         """Extraction produces valid JSON in new columns."""
         import importlib
-        import json
 
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
 
@@ -252,8 +251,7 @@ def test_spacy_n_process_default_is_one(mocker, monkeypatch, tmp_path):
     mocker.patch("clerk.utils.get_nlp", return_value=mock_nlp)
     mocker.patch("clerk.utils.EXTRACTION_ENABLED", True)
 
-    # Mock extraction and context functions to avoid dependencies
-    mocker.patch("clerk.utils.create_meeting_context", return_value={})
+    # Mock extraction functions to avoid dependencies
     mocker.patch(
         "clerk.utils.extract_entities", return_value={"persons": [], "orgs": [], "locations": []}
     )
@@ -306,8 +304,6 @@ def test_hash_text_content():
 
 def test_load_extraction_cache_valid(tmp_path):
     """Test loading valid cache file with matching hash."""
-    import json
-
     from clerk.utils import load_extraction_cache
 
     cache_file = tmp_path / "test.txt.extracted.json"
@@ -331,8 +327,6 @@ def test_load_extraction_cache_valid(tmp_path):
 
 def test_load_extraction_cache_hash_mismatch(tmp_path):
     """Test cache rejected when hash doesn't match."""
-    import json
-
     from clerk.utils import load_extraction_cache
 
     cache_file = tmp_path / "test.txt.extracted.json"
@@ -372,8 +366,6 @@ def test_load_extraction_cache_corrupted_json(tmp_path):
 
 def test_save_extraction_cache(tmp_path):
     """Test saving extraction cache to file."""
-    import json
-
     from clerk.utils import save_extraction_cache
 
     cache_file = tmp_path / "test.txt.extracted.json"
@@ -403,8 +395,6 @@ def test_build_table_from_text_is_fresh_processing(tmp_path, monkeypatch):
     Cache is only used during the extraction phase (extract_entities_for_site).
     Build phase is always fresh processing to populate the database.
     """
-    import json
-
     import sqlite_utils
 
     from clerk.utils import build_table_from_text, hash_text_content, save_extraction_cache
