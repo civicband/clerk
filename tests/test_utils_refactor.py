@@ -9,11 +9,9 @@ from clerk.extraction import EXTRACTION_ENABLED, create_meeting_context
 from clerk.utils import (
     PageFile,
     batch_parse_with_spacy,
-    collect_page_data_with_cache,
     collect_page_files,
     create_meetings_schema,
     group_pages_by_meeting_date,
-    load_pages_from_db,
     process_page_for_db,
 )
 
@@ -206,111 +204,3 @@ def test_process_page_for_db():
     assert "votes" in votes
 
 
-def test_load_pages_from_db(tmp_path):
-    """Test loading pages from database."""
-    # Create test database
-    db_path = tmp_path / "test.db"
-    db = sqlite_utils.Database(str(db_path))
-    create_meetings_schema(db)
-
-    # Insert test data
-    db["minutes"].insert_all(
-        [
-            {
-                "id": "abc",
-                "meeting": "council",
-                "date": "2024-01-15",
-                "page": 1,
-                "text": "test",
-                "page_image": "/path.png",
-                "entities_json": "{}",
-                "votes_json": "{}",
-            },
-            {
-                "id": "def",
-                "meeting": "council",
-                "date": "2024-01-15",
-                "page": 2,
-                "text": "test2",
-                "page_image": "/path2.png",
-                "entities_json": "{}",
-                "votes_json": "{}",
-            },
-        ]
-    )
-    db.close()
-
-    # Create subdomain directory structure
-    subdomain_dir = tmp_path / "test.civic.band"
-    subdomain_dir.mkdir()
-    (subdomain_dir / "meetings.db").write_bytes((tmp_path / "test.db").read_bytes())
-
-    # Test loading (need to set STORAGE_DIR)
-    import os
-
-    old_storage = os.environ.get("STORAGE_DIR")
-    os.environ["STORAGE_DIR"] = str(tmp_path)
-
-    try:
-        pages = load_pages_from_db("test.civic.band", "minutes")
-
-        assert len(pages) == 2
-        assert pages[0]["id"] == "abc"
-        assert pages[0]["meeting"] == "council"
-        assert pages[1]["page"] == 2
-    finally:
-        if old_storage:
-            os.environ["STORAGE_DIR"] = old_storage
-        else:
-            os.environ.pop("STORAGE_DIR", None)
-
-
-def test_collect_page_data_with_cache(tmp_path):
-    """Test collecting page data with cache checking."""
-    from clerk.utils import hash_text_content
-
-    # Create text files
-    txt_dir = tmp_path / "txt"
-    meeting_dir = txt_dir / "council" / "2024-01-15"
-    meeting_dir.mkdir(parents=True)
-
-    page1 = meeting_dir / "0001.txt"
-    test_content = "Test content"
-    page1.write_text(test_content)
-
-    # Create cache file with correct hash
-    cache_file = meeting_dir / "0001.txt.extracted.json"
-    cache_data = {
-        "content_hash": hash_text_content(test_content),
-        "extracted_at": "2024-01-01T00:00:00",
-        "entities": {"persons": [], "orgs": [], "locations": []},
-        "votes": {"votes": []},
-    }
-    cache_file.write_text(json.dumps(cache_data))
-
-    pages = [{"id": "test1", "meeting": "council", "date": "2024-01-15", "page": 1}]
-
-    # Mock STORAGE_DIR
-    import os
-
-    old_storage = os.environ.get("STORAGE_DIR")
-    os.environ["STORAGE_DIR"] = str(tmp_path)
-    subdomain_dir = tmp_path / "test.civic.band"
-    subdomain_dir.mkdir()
-    txt_final = subdomain_dir / "txt"
-    txt_final.symlink_to(txt_dir)
-
-    try:
-        page_data = collect_page_data_with_cache(
-            pages, "test.civic.band", "minutes", ignore_cache=False
-        )
-
-        assert len(page_data) == 1
-        assert page_data[0].page_id == "test1"
-        assert page_data[0].text == "Test content"
-        assert page_data[0].cached_extraction is not None
-    finally:
-        if old_storage:
-            os.environ["STORAGE_DIR"] = old_storage
-        else:
-            os.environ.pop("STORAGE_DIR", None)

@@ -21,6 +21,7 @@ from .extraction import (
     update_context,
 )
 from .hookspecs import ClerkSpec
+from .output import log
 
 
 @dataclass
@@ -256,8 +257,10 @@ def process_page_for_db(
         entities = extract_entities(text, doc=doc)
         update_context(context, entities=entities)
     except Exception as e:
-        logger.warning(
-            f"Entity extraction failed for {page_file.meeting}/{page_file.date}/{page_file.page_num}: {e}"
+        log(
+            f"Entity extraction failed for {page_file.meeting}/{page_file.date}/{page_file.page_num}: {e}",
+            subdomain=subdomain,
+            level="warning",
         )
         entities = {"persons": [], "orgs": [], "locations": []}
 
@@ -267,16 +270,20 @@ def process_page_for_db(
         if attendees:
             update_context(context, attendees=attendees)
     except Exception as e:
-        logger.warning(
-            f"Roll call detection failed for {page_file.meeting}/{page_file.date}/{page_file.page_num}: {e}"
+        log(
+            f"Roll call detection failed for {page_file.meeting}/{page_file.date}/{page_file.page_num}: {e}",
+            subdomain=subdomain,
+            level="warning",
         )
 
     # Extract votes with context
     try:
         votes = extract_votes(text, doc=doc, meeting_context=context)
     except Exception as e:
-        logger.warning(
-            f"Vote extraction failed for {page_file.meeting}/{page_file.date}/{page_file.page_num}: {e}"
+        log(
+            f"Vote extraction failed for {page_file.meeting}/{page_file.date}/{page_file.page_num}: {e}",
+            subdomain=subdomain,
+            level="warning",
         )
         votes = {"votes": []}
 
@@ -312,194 +319,6 @@ def process_page_for_db(
         entry["municipality"] = municipality
 
     return entry
-
-
-def load_pages_from_db(subdomain: str, table_name: str) -> list[dict]:
-    """Load all page records from site's database.
-
-    Args:
-        subdomain: Site subdomain
-        table_name: "minutes" or "agendas"
-
-    Returns:
-        List of page dicts from database
-    """
-    storage_dir = os.environ.get("STORAGE_DIR", "../sites")
-    site_db_path = f"{storage_dir}/{subdomain}/meetings.db"
-    db = sqlite_utils.Database(site_db_path)
-
-    if not db[table_name].exists():
-        return []
-
-    return list(db[table_name].rows)
-
-
-def collect_page_data_with_cache(
-    pages: list[dict], subdomain: str, table_name: str, ignore_cache: bool
-) -> list[PageData]:
-    """Collect page data with cache checking.
-
-    Reads text files and checks extraction cache for each page.
-
-    Args:
-        pages: List of page dicts from database
-        subdomain: Site subdomain
-        table_name: "minutes" or "agendas"
-        ignore_cache: If True, ignore cache
-
-    Returns:
-        List of PageData objects with cache information
-    """
-    from .output import log
-
-    storage_dir = os.environ.get("STORAGE_DIR", "../sites")
-    txt_subdir = "txt" if table_name == "minutes" else "_agendas/txt"
-    txt_dir = f"{storage_dir}/{subdomain}/{txt_subdir}"
-
-    if not os.path.exists(txt_dir):
-        return []
-
-    all_page_data = []
-    cache_hits = 0
-    cache_misses = 0
-
-    for page in pages:
-        meeting = page["meeting"]
-        date = page["date"]
-        page_num = page["page"]
-
-        # Find corresponding text file
-        page_file_path = f"{txt_dir}/{meeting}/{date}/{page_num:04d}.txt"
-
-        if not os.path.exists(page_file_path):
-            logger.warning(f"Text file not found: {page_file_path}")
-            continue
-
-        with open(page_file_path) as f:
-            text = f.read()
-
-        # Check cache
-        cached_extraction = None
-        content_hash = None
-
-        if not ignore_cache:
-            content_hash = hash_text_content(text)
-            cache_file = f"{page_file_path}.extracted.json"
-            cached_extraction = load_extraction_cache(cache_file, content_hash)
-
-            if cached_extraction:
-                cache_hits += 1
-            else:
-                cache_misses += 1
-        else:
-            cache_misses += 1
-
-        all_page_data.append(
-            PageData(
-                page_id=page["id"],
-                text=text,
-                page_file_path=page_file_path,
-                content_hash=content_hash,
-                cached_extraction=cached_extraction,
-            )
-        )
-
-    log(
-        f"Cache status: {cache_hits} hits, {cache_misses} misses",
-        subdomain=subdomain,
-        cache_hits=cache_hits,
-        cache_misses=cache_misses,
-    )
-
-    return all_page_data
-
-
-def batch_process_uncached_pages(page_data: list[PageData], subdomain: str) -> list:
-    """Batch process uncached pages with spaCy.
-
-    Args:
-        page_data: List of PageData objects
-        subdomain: Site subdomain for logging
-
-    Returns:
-        List of Docs parallel to page_data (None for cached pages)
-    """
-    from .output import log
-
-    uncached_indices = [i for i, p in enumerate(page_data) if p.cached_extraction is None]
-    all_docs = [None] * len(page_data)
-
-    if uncached_indices and EXTRACTION_ENABLED:
-        uncached_texts = [page_data[i].text for i in uncached_indices]
-        nlp = get_nlp()
-        if nlp:
-            log(
-                f"Batch processing {len(uncached_texts)} uncached pages with nlp.pipe()",
-                subdomain=subdomain,
-            )
-            # Single batch process with nlp.pipe()
-            for processed, doc in enumerate(nlp.pipe(uncached_texts, batch_size=500)):
-                original_idx = uncached_indices[processed]
-                all_docs[original_idx] = doc
-
-    return all_docs
-
-
-def save_extractions_to_db(page_data: list[PageData], docs: list, subdomain: str, table_name: str):
-    """Save extractions to database (extract or use cache).
-
-    For each page: use cached extraction OR extract from doc,
-    save to cache, update database.
-
-    Args:
-        page_data: List of PageData objects
-        docs: List of spaCy Docs (parallel to page_data)
-        subdomain: Site subdomain
-        table_name: "minutes" or "agendas"
-    """
-    storage_dir = os.environ.get("STORAGE_DIR", "../sites")
-    site_db_path = f"{storage_dir}/{subdomain}/meetings.db"
-    db = sqlite_utils.Database(site_db_path)
-
-    for i, pdata in enumerate(page_data):
-        doc = docs[i]
-        cached = pdata.cached_extraction
-
-        if cached:
-            entities = cached["entities"]
-            votes = cached["votes"]
-        else:
-            if not EXTRACTION_ENABLED:
-                # Set empty structures when extraction is disabled
-                entities = {"persons": [], "orgs": [], "locations": []}
-                votes = {"votes": []}
-            else:
-                # Extract entities and votes using pre-parsed doc
-                try:
-                    entities = extract_entities(pdata.text, doc=doc)
-                    votes = extract_votes(pdata.text, doc=doc, meeting_context={})
-                except Exception as e:
-                    logger.warning(f"Extraction failed for {pdata.page_file_path}: {e}")
-                    entities = {"persons": [], "orgs": [], "locations": []}
-                    votes = {"votes": []}
-
-            # Write cache
-            content_hash = pdata.content_hash
-            if content_hash is None:
-                content_hash = hash_text_content(pdata.text)
-            cache_file = f"{pdata.page_file_path}.extracted.json"
-            cache_data = {
-                "content_hash": content_hash,
-                "extracted_at": datetime.datetime.now().isoformat(),
-                "entities": entities,
-                "votes": votes,
-            }
-            save_extraction_cache(cache_file, cache_data)
-
-        # Update database
-        db[table_name].update(
-            pdata.page_id, {"entities_json": json.dumps(entities), "votes_json": json.dumps(votes)}
-        )
 
 
 # Maximum pages to process in a single spaCy batch before chunking
@@ -561,7 +380,7 @@ def save_extraction_cache(cache_file: str, data: dict) -> None:
         with open(cache_file, "w") as f:
             json.dump(data, f, indent=2)
     except Exception as e:
-        logger.warning(f"Failed to save cache {cache_file}: {e}")
+        log(f"Failed to save cache {cache_file}: {e}", level="warning")
 
 
 def assert_db_exists():
@@ -617,7 +436,7 @@ def extract_and_cache(text: str, doc, cache_file: str) -> tuple[dict, dict]:
         entities = extract_entities(text, doc=doc)
         votes = extract_votes(text, doc=doc, meeting_context={})
     except Exception as e:
-        logger.warning(f"Extraction failed for {cache_file}: {e}")
+        log(f"Extraction failed for {cache_file}: {e}", level="warning")
         entities = {"persons": [], "orgs": [], "locations": []}
         votes = {"votes": []}
 
@@ -655,13 +474,9 @@ def build_table_from_text(
         ignore_cache: If True, ignore cache and extract all (only valid with extract_entities=True)
     """
     st = time.time()
-    logger.info(
-        "Building table from text subdomain=%s table_name=%s municipality=%s extract_entities=%s ignore_cache=%s",
-        subdomain,
-        table_name,
-        municipality,
-        extract_entities,
-        ignore_cache,
+    log(
+        f"Building table from text table_name={table_name} municipality={municipality} extract_entities={extract_entities} ignore_cache={ignore_cache}",
+        subdomain=subdomain,
     )
 
     # Phase 1: Collect page files and check cache
@@ -707,8 +522,6 @@ def build_table_from_text(
             "cache_file": cache_file,
             "cached_extraction": cached_extraction,
         })
-
-    from .output import log
 
     log(
         f"Cache status: {cache_hits} hits, {cache_misses} misses",
@@ -816,11 +629,9 @@ def build_table_from_text(
 
 def build_db_from_text_internal(subdomain, extract_entities=False, ignore_cache=False):
     st = time.time()
-    logger.info(
-        "Building database from text subdomain=%s extract_entities=%s ignore_cache=%s",
-        subdomain,
-        extract_entities,
-        ignore_cache,
+    log(
+        f"Building database from text extract_entities={extract_entities} ignore_cache={ignore_cache}",
+        subdomain=subdomain,
     )
     minutes_txt_dir = f"{STORAGE_DIR}/{subdomain}/txt"
     agendas_txt_dir = f"{STORAGE_DIR}/{subdomain}/_agendas/txt"
@@ -854,65 +665,10 @@ def build_db_from_text_internal(subdomain, extract_entities=False, ignore_cache=
 
     et = time.time()
     elapsed_time = et - st
-    logger.info(
-        "Database build completed subdomain=%s elapsed_time=%.2f extract_entities=%s ignore_cache=%s",
-        subdomain,
-        elapsed_time,
-        extract_entities,
-        ignore_cache,
+    log(
+        f"Database build completed elapsed_time={elapsed_time:.2f} extract_entities={extract_entities} ignore_cache={ignore_cache}",
+        subdomain=subdomain,
     )
     click.echo(f"Execution time: {elapsed_time} seconds")
 
 
-def extract_table_entities(subdomain: str, table_name: str, ignore_cache: bool):
-    """Extract entities for one table (minutes or agendas).
-
-    Uses existing helper functions to load pages, check cache, batch process,
-    and save extractions.
-
-    Args:
-        subdomain: Site subdomain (e.g., "alameda.ca.civic.band")
-        table_name: Table to process ("minutes" or "agendas")
-        ignore_cache: If True, bypass cache and re-extract all pages
-    """
-    # Load pages from database
-    pages = load_pages_from_db(subdomain, table_name)
-    if not pages:
-        return
-
-    # Collect page data with cache checking
-    page_data = collect_page_data_with_cache(pages, subdomain, table_name, ignore_cache)
-    if not page_data:
-        return
-
-    # Batch process uncached pages
-    docs = batch_process_uncached_pages(page_data, subdomain)
-
-    # Save extractions to database
-    save_extractions_to_db(page_data, docs, subdomain, table_name)
-
-
-def extract_entities_for_site(subdomain, ignore_cache=False):
-    """Extract entities for all pages in a site's database
-
-    Reads existing database records, processes uncached pages with spaCy,
-    and updates entities_json/votes_json columns.
-
-    Args:
-        subdomain: Site subdomain (e.g., "alameda.ca.civic.band")
-        ignore_cache: If True, bypass cache and re-extract all pages
-    """
-    from .output import log
-
-    st = time.time()
-    logger.info("Extracting entities subdomain=%s ignore_cache=%s", subdomain, ignore_cache)
-
-    # Process both minutes and agendas
-    for table_name in ["minutes", "agendas"]:
-        extract_table_entities(subdomain, table_name, ignore_cache)
-
-    et = time.time()
-    elapsed = et - st
-    log(
-        f"Total extraction time: {elapsed:.2f}s", subdomain=subdomain, elapsed_time=f"{elapsed:.2f}"
-    )
