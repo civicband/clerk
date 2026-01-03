@@ -216,7 +216,10 @@ def update_site_internal(
     all_agendas=False,
     backfill=False,
 ):
-    db = assert_db_exists()
+    from .db import civic_db_connection, get_site_by_subdomain
+    from sqlalchemy import text
+
+    engine = assert_db_exists()
     logger.info(
         "Starting site update subdomain=%s all_years=%s all_agendas=%s",
         subdomain,
@@ -235,22 +238,25 @@ def update_site_internal(
 
     # Get site to operate on
     if next_site:
-        num_sites_in_ocr = db.execute(
-            "select count(*) from sites where status = 'needs_ocr'"
-        ).fetchone()[0]
-        num_sites_in_extraction = db.execute(
-            "select count(*) from sites where status = 'needs_extraction'"
-        ).fetchone()[0]
-        total_processing = num_sites_in_ocr + num_sites_in_extraction
-        if total_processing >= 5:
-            log("Too many sites in progress. Going to sleep.")
-            return
-        subdomain_query = db.execute(query).fetchone()
-        if not subdomain_query:
-            log("No more sites to update today")
-            return
-        subdomain = subdomain_query[0]
-    site = db["sites"].get(subdomain)  # type: ignore
+        with engine.connect() as conn:
+            num_sites_in_ocr = conn.execute(
+                text("select count(*) from sites where status = 'needs_ocr'")
+            ).fetchone()[0]
+            num_sites_in_extraction = conn.execute(
+                text("select count(*) from sites where status = 'needs_extraction'")
+            ).fetchone()[0]
+            total_processing = num_sites_in_ocr + num_sites_in_extraction
+            if total_processing >= 5:
+                log("Too many sites in progress. Going to sleep.")
+                return
+            subdomain_query = conn.execute(text(query)).fetchone()
+            if not subdomain_query:
+                log("No more sites to update today")
+                return
+            subdomain = subdomain_query[0]
+
+    with civic_db_connection() as conn:
+        site = get_site_by_subdomain(conn, subdomain)
     if not site:
         log("No site found matching criteria", level="warning")
         return
@@ -281,7 +287,8 @@ def update_site_internal(
             "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
         },
     )
-    site = db["sites"].get(subdomain)  # type: ignore
+    with civic_db_connection() as conn:
+        site = get_site_by_subdomain(conn, subdomain)
     rebuild_site_fts_internal(subdomain)
     pm.hook.deploy_municipality(subdomain=subdomain)
     pm.hook.update_site(
@@ -513,25 +520,33 @@ def remove_all_image_dirs():
 
 @cli.command()
 def migrate_extraction_schema():
-    """Add extraction tracking columns to sites table"""
-    db = assert_db_exists()
+    """Add extraction tracking columns to sites table (legacy command, use Alembic for new migrations)"""
+    from sqlalchemy import inspect, text
 
-    try:
-        # Add columns if they don't exist
-        existing_columns = {col.name for col in db["sites"].columns}
+    engine = assert_db_exists()
+
+    with engine.connect() as conn:
+        # Check existing columns
+        inspector = inspect(engine)
+        existing_columns = {col["name"] for col in inspector.get_columns("sites")}
 
         if "extraction_status" not in existing_columns:
-            db.execute("ALTER TABLE sites ADD COLUMN extraction_status TEXT DEFAULT 'pending'")
+            conn.execute(
+                text("ALTER TABLE sites ADD COLUMN extraction_status TEXT DEFAULT 'pending'")
+            )
+            conn.commit()
 
         if "last_extracted" not in existing_columns:
-            db.execute("ALTER TABLE sites ADD COLUMN last_extracted TEXT")
+            conn.execute(text("ALTER TABLE sites ADD COLUMN last_extracted TEXT"))
+            conn.commit()
 
         # Set pending for all sites that don't have a status
-        db.execute("UPDATE sites SET extraction_status = 'pending' WHERE extraction_status IS NULL")
+        conn.execute(
+            text("UPDATE sites SET extraction_status = 'pending' WHERE extraction_status IS NULL")
+        )
+        conn.commit()
 
-        click.echo("Migration complete: extraction_status and last_extracted columns added")
-    finally:
-        db.close()
+    click.echo("Migration complete: extraction_status and last_extracted columns added")
 
 
 @cli.command()
@@ -544,23 +559,29 @@ def extract_entities(subdomain, next_site=False):
 
 def extract_entities_internal(subdomain, next_site=False):
     """Internal implementation of extract-entities command"""
-    db = assert_db_exists()
+    from .db import civic_db_connection, get_site_by_subdomain
+    from sqlalchemy import text
+
+    engine = assert_db_exists()
 
     if next_site:
         # Query for next site needing extraction
-        next_site_row = db.execute("""
-            SELECT subdomain FROM sites
-            WHERE extraction_status IN ('pending', 'failed')
-            ORDER BY last_extracted ASC NULLS FIRST
-            LIMIT 1
-        """).fetchone()
+        with engine.connect() as conn:
+            next_site_row = conn.execute(
+                text("""
+                SELECT subdomain FROM sites
+                WHERE extraction_status IN ('pending', 'failed')
+                ORDER BY last_extracted ASC NULLS FIRST
+                LIMIT 1
+            """)
+            ).fetchone()
 
-        if not next_site_row:
-            log("No sites need extraction")
-            return
+            if not next_site_row:
+                log("No sites need extraction")
+                return
 
-        subdomain = next_site_row[0]
-        log(f"Selected next site: {subdomain}")
+            subdomain = next_site_row[0]
+            log(f"Selected next site: {subdomain}")
 
     if not subdomain:
         log("Must specify --subdomain or --next-site", level="error")
@@ -568,7 +589,8 @@ def extract_entities_internal(subdomain, next_site=False):
 
     # CRITICAL: Validate site exists (prevents path traversal)
     try:
-        site = db["sites"].get(subdomain)
+        with civic_db_connection() as conn:
+            site = get_site_by_subdomain(conn, subdomain)
     except Exception:
         log(f"Site not found: {subdomain}", level="error")
         return
@@ -578,9 +600,10 @@ def extract_entities_internal(subdomain, next_site=False):
         return
 
     # Check if extraction already in progress
-    num_in_progress = db.execute(
-        "SELECT COUNT(*) FROM sites WHERE extraction_status = 'in_progress'"
-    ).fetchone()[0]
+    with engine.connect() as conn:
+        num_in_progress = conn.execute(
+            text("SELECT COUNT(*) FROM sites WHERE extraction_status = 'in_progress'")
+        ).fetchone()[0]
 
     if num_in_progress > 0:
         log("Extraction already in progress, exiting")

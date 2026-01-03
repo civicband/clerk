@@ -32,16 +32,20 @@ class DefaultDBPlugin:
 
     @hookimpl
     def update_site(self, subdomain, updates):
-        """Default implementation: write to SQLite."""
+        """Default implementation: write to database (SQLite or PostgreSQL)."""
         from .utils import assert_db_exists
+        from .db import civic_db_connection, update_site
 
-        db = assert_db_exists()
-        db["sites"].update(subdomain, updates)
+        assert_db_exists()  # Ensure schema exists
+        with civic_db_connection() as conn:
+            update_site(conn, subdomain, updates)
 
     @hookimpl
     def create_site(self, subdomain, site_data):
-        """Default implementation: insert into SQLite."""
+        """Default implementation: insert into database (SQLite or PostgreSQL)."""
         from .utils import assert_db_exists
+        from .db import civic_db_connection, upsert_site
 
-        db = assert_db_exists()
-        db["sites"].insert(site_data, pk="subdomain", replace=True)
+        assert_db_exists()  # Ensure schema exists
+        with civic_db_connection() as conn:
+            upsert_site(conn, site_data)
