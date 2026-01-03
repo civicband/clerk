@@ -23,6 +23,12 @@ class TestEndToEndWorkflow:
 
         runner = CliRunner()
 
+        # Run migration to add extraction columns
+        from clerk.utils import assert_db_exists
+
+        assert_db_exists()
+        runner.invoke(cli, ["migrate-extraction-schema"])
+
         # Create a new site interactively
         result = runner.invoke(
             cli,
