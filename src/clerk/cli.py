@@ -1,4 +1,5 @@
 import datetime
+import json
 import logging
 import os
 import shutil
@@ -152,20 +153,25 @@ def new():
     if len(extra):
         extra = extra[0]
 
-    db["sites"].insert(  # pyright: ignore[reportAttributeAccessIssue]
-        {
+    pm.hook.create_site(
+        subdomain=subdomain,
+        site_data={
             "subdomain": subdomain,
             "name": name,
             "state": state,
             "country": country,
             "kind": kind,
             "scraper": scraper,
+            "pages": 0,
             "start_year": start_year,
-            "extra": extra,
             "status": "new",
+            "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
             "lat": lat_lng.split(",")[0].strip(),
             "lng": lat_lng.split(",")[1].strip(),
-        }
+            "extra": json.dumps(extra) if extra else "{}",
+            "extraction_status": "pending",
+            "last_extracted": None,
+        },
     )
 
     click.echo(f"Site {subdomain} created")
