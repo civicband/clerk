@@ -1,18 +1,17 @@
 """Tests for database abstraction layer (clerk/db.py)."""
 import os
+
 import pytest
-import tempfile
-from pathlib import Path
 
 from clerk.db import (
-    get_civic_db,
     civic_db_connection,
-    insert_site,
-    get_site_by_subdomain,
     get_all_sites,
+    get_civic_db,
+    get_site_by_subdomain,
+    get_sites_where,
+    insert_site,
     update_site,
     upsert_site,
-    get_sites_where,
 )
 from clerk.models import metadata
 
@@ -249,6 +248,4 @@ class TestErrorHandling:
         monkeypatch.setenv("DATABASE_URL", "postgresql://badhost:5432/baddb")
 
         with pytest.raises(SystemExit):
-            engine = get_civic_db()
-            with engine.connect() as conn:
-                pass
+            get_civic_db()

@@ -5,9 +5,10 @@ Supports both SQLite (dev) and PostgreSQL (production) based on DATABASE_URL.
 import os
 import sys
 from contextlib import contextmanager
-from sqlalchemy import create_engine, insert, select, update, delete
-from sqlalchemy.pool import QueuePool
+
+from sqlalchemy import create_engine, delete, insert, select, update
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.pool import QueuePool
 from sqlalchemy.sql import text
 
 
@@ -98,9 +99,10 @@ def upsert_site(conn, site_data):
         conn: SQLAlchemy connection
         site_data: Dictionary with site fields (must include subdomain)
     """
-    from .models import sites_table
     from sqlalchemy.dialects.postgresql import insert as pg_insert
     from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+    from .models import sites_table
 
     # Detect which dialect we're using
     dialect_name = conn.dialect.name

@@ -220,8 +220,9 @@ def update_site_internal(
     all_agendas=False,
     backfill=False,
 ):
-    from .db import civic_db_connection, get_site_by_subdomain, update_site
     from sqlalchemy import text
+
+    from .db import civic_db_connection, get_site_by_subdomain, update_site
 
     engine = assert_db_exists()
     logger.info(
@@ -579,8 +580,9 @@ def extract_entities(subdomain, next_site=False):
 
 def extract_entities_internal(subdomain, next_site=False):
     """Internal implementation of extract-entities command"""
-    from .db import civic_db_connection, get_site_by_subdomain, update_site
     from sqlalchemy import text
+
+    from .db import civic_db_connection, get_site_by_subdomain, update_site
 
     engine = assert_db_exists()
 

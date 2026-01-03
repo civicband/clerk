@@ -388,9 +388,9 @@ def assert_db_exists():
     Returns:
         SQLAlchemy engine instance
     """
+
     from .db import get_civic_db
     from .models import metadata
-    from sqlalchemy import inspect
 
     engine = get_civic_db()
 
