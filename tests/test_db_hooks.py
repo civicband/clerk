@@ -1,6 +1,5 @@
 """Tests for database plugin hooks."""
 
-import sqlite_utils
 from clerk.hookspecs import ClerkSpec
 
 

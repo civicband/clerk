@@ -36,6 +36,9 @@ class ClerkSpec:
         Args:
             subdomain: The site subdomain (e.g., 'berkeleyca.civic.band')
             updates: Dictionary of fields to update (e.g., {'status': 'deployed'})
+
+        Returns:
+            None. Return values are ignored.
         """
 
     @hookspec
@@ -45,4 +48,7 @@ class ClerkSpec:
         Args:
             subdomain: The site subdomain
             site_data: Dictionary of all site fields
+
+        Returns:
+            None. Return values are ignored.
         """
