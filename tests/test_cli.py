@@ -363,23 +363,26 @@ class TestBuildDbFromTextInternal:
 
         import clerk.utils
         from clerk.utils import assert_db_exists
+        from clerk.db import civic_db_connection, insert_site
 
-        db = assert_db_exists()
+        assert_db_exists()
 
         # Create test site
-        db["sites"].insert(
-            {
-                "subdomain": "test.civic.band",
-                "name": "Test City",
-                "state": "CA",
-                "country": "US",
-                "kind": "city-council",
-                "scraper": "test",
-                "pages": 0,
-                "start_year": 2020,
-                "status": "new",
-            }
-        )
+        with civic_db_connection() as conn:
+            insert_site(
+                conn,
+                {
+                    "subdomain": "test.civic.band",
+                    "name": "Test City",
+                    "state": "CA",
+                    "country": "US",
+                    "kind": "city-council",
+                    "scraper": "test",
+                    "pages": 0,
+                    "start_year": 2020,
+                    "status": "new",
+                },
+            )
 
         # Create text files
         site_dir = tmp_path / "test.civic.band"
@@ -470,12 +473,14 @@ class TestMigrateExtractionSchema:
 
     def test_migrate_extraction_schema_adds_columns(self, tmp_path, monkeypatch):
         """Migration adds extraction_status and last_extracted columns"""
+        from sqlalchemy import inspect
+
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
         from clerk.utils import assert_db_exists
 
         # Create database without extraction columns
-        db = assert_db_exists()
+        engine = assert_db_exists()
 
         # Run migration
         runner = CliRunner()
@@ -485,12 +490,15 @@ class TestMigrateExtractionSchema:
         assert "Migration complete" in result.output
 
         # Verify columns exist
-        columns = {col.name for col in db["sites"].columns}
+        inspector = inspect(engine)
+        columns = {col["name"] for col in inspector.get_columns("sites")}
         assert "extraction_status" in columns
         assert "last_extracted" in columns
 
     def test_migrate_extraction_schema_is_idempotent(self, tmp_path, monkeypatch):
         """Running migration multiple times is safe"""
+        from sqlalchemy import inspect
+
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
         from clerk.utils import assert_db_exists
@@ -505,8 +513,9 @@ class TestMigrateExtractionSchema:
         assert result2.exit_code == 0
 
         # Verify no errors and columns still exist
-        db = assert_db_exists()
-        columns = {col.name for col in db["sites"].columns}
+        engine = assert_db_exists()
+        inspector = inspect(engine)
+        columns = {col["name"] for col in inspector.get_columns("sites")}
         assert "extraction_status" in columns
         assert "last_extracted" in columns
 
@@ -526,45 +535,49 @@ class TestExtractEntities:
         monkeypatch.setenv("ENABLE_EXTRACTION", "0")
         monkeypatch.setenv("CIVIC_DEV_MODE", "1")
         from clerk.utils import assert_db_exists
+        from clerk.db import civic_db_connection, insert_site
 
         # Create database and run migration
-        db = assert_db_exists()
+        assert_db_exists()
         runner = CliRunner()
         runner.invoke(cli, ["migrate-extraction-schema"])
 
         # Site 1: completed, old extraction
-        db["sites"].insert(
-            {
-                "subdomain": "site1.civic.band",
-                "name": "Site 1",
-                "state": "CA",
-                "country": "US",
-                "kind": "city-council",
-                "scraper": "test",
-                "pages": 0,
-                "start_year": 2020,
-                "status": "new",
-                "extraction_status": "completed",
-                "last_extracted": "2024-01-01T00:00:00",
-            }
-        )
+        with civic_db_connection() as conn:
+            insert_site(
+                conn,
+                {
+                    "subdomain": "site1.civic.band",
+                    "name": "Site 1",
+                    "state": "CA",
+                    "country": "US",
+                    "kind": "city-council",
+                    "scraper": "test",
+                    "pages": 0,
+                    "start_year": 2020,
+                    "status": "new",
+                    "extraction_status": "completed",
+                    "last_extracted": "2024-01-01T00:00:00",
+                },
+            )
 
-        # Site 2: pending, no extraction yet (should be selected)
-        db["sites"].insert(
-            {
-                "subdomain": "site2.civic.band",
-                "name": "Site 2",
-                "state": "CA",
-                "country": "US",
-                "kind": "city-council",
-                "scraper": "test",
-                "pages": 0,
-                "start_year": 2020,
-                "status": "new",
-                "extraction_status": "pending",
-                "last_extracted": None,
-            }
-        )
+            # Site 2: pending, no extraction yet (should be selected)
+            insert_site(
+                conn,
+                {
+                    "subdomain": "site2.civic.band",
+                    "name": "Site 2",
+                    "state": "CA",
+                    "country": "US",
+                    "kind": "city-council",
+                    "scraper": "test",
+                    "pages": 0,
+                    "start_year": 2020,
+                    "status": "new",
+                    "extraction_status": "pending",
+                    "last_extracted": None,
+                },
+            )
 
         # Create site structure for site2 with text files
         site_dir = tmp_path / "site2.civic.band"
