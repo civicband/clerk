@@ -52,6 +52,53 @@ class TestPlugin:
         self.post_create_calls = getattr(self, "post_create_calls", [])
         self.post_create_calls.append(subdomain)
 
+    @hookimpl
+    def create_site(self, subdomain: str, site_data: dict[str, Any]):
+        """Mock site creation in datastore."""
+        # Record create_site calls
+        self.create_site_calls = getattr(self, "create_site_calls", [])
+        self.create_site_calls.append(
+            {
+                "subdomain": subdomain,
+                "site_data": site_data,
+            }
+        )
+
+        # Actually create the database and site record
+        import sqlite_utils
+
+        db = sqlite_utils.Database("civic.db")
+
+        # If the table doesn't exist, create it with all columns
+        if not db["sites"].exists():
+            db["sites"].insert({"subdomain": subdomain, **site_data}, pk="subdomain")
+        else:
+            # Table exists - only insert columns that exist
+            existing_columns = {col.name for col in db["sites"].columns}
+            filtered_data = {
+                k: v for k, v in site_data.items() if k in existing_columns or k == "subdomain"
+            }
+            db["sites"].insert(filtered_data, pk="subdomain", replace=True)
+
+    @hookimpl
+    def update_site(self, subdomain: str, updates: dict[str, Any]):
+        """Mock site update in datastore."""
+        # Record update_site calls
+        self.update_site_calls = getattr(self, "update_site_calls", [])
+        self.update_site_calls.append(
+            {
+                "subdomain": subdomain,
+                "updates": updates,
+            }
+        )
+
+        # Actually update the database
+        import sqlite_utils
+
+        db = sqlite_utils.Database("civic.db")
+        if db["sites"].exists():
+            db["sites"].update(subdomain, updates)
+
 
 class NoOpPlugin:
     """Plugin that does nothing - useful for testing missing hooks."""
@@ -91,3 +138,13 @@ class FailingPlugin:
     def post_create(self, subdomain: str):
         """Raise an error."""
         raise RuntimeError("post_create failed")
+
+    @hookimpl
+    def create_site(self, subdomain: str, site_data: dict[str, Any]):
+        """Raise an error."""
+        raise RuntimeError("create_site failed")
+
+    @hookimpl
+    def update_site(self, subdomain: str, updates: dict[str, Any]):
+        """Raise an error."""
+        raise RuntimeError("update_site failed")

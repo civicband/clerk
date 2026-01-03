@@ -34,6 +34,7 @@ class DefaultDBPlugin:
     def update_site(self, subdomain, updates):
         """Default implementation: write to SQLite."""
         from .utils import assert_db_exists
+
         db = assert_db_exists()
         db["sites"].update(subdomain, updates)
 
@@ -41,5 +42,6 @@ class DefaultDBPlugin:
     def create_site(self, subdomain, site_data):
         """Default implementation: insert into SQLite."""
         from .utils import assert_db_exists
+
         db = assert_db_exists()
-        db["sites"].insert(site_data)
+        db["sites"].insert(site_data, pk="subdomain", replace=True)

@@ -51,6 +51,8 @@ class TestAssertDbExists:
             "last_updated",
             "lat",
             "lng",
+            "extraction_status",
+            "last_extracted",
         }
         actual_columns = {col.name for col in db["sites"].columns}
         assert actual_columns == expected_columns

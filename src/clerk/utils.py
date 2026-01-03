@@ -405,6 +405,8 @@ def assert_db_exists():
                 "last_updated": str,
                 "lat": str,
                 "lng": str,
+                "extraction_status": str,
+                "last_extracted": str,
             },
             pk="subdomain",
         )

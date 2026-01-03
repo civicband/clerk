@@ -475,7 +475,7 @@ def build_full_db():
 
 
 def update_page_count(subdomain):
-    db = assert_db_exists()
+    assert_db_exists()
     site_db = sqlite_utils.Database(f"{STORAGE_DIR}/{subdomain}/meetings.db")
     agendas_count = site_db["agendas"].count
     minutes_count = site_db["minutes"].count

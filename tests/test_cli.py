@@ -681,6 +681,7 @@ class TestExtractEntities:
         # Mock the deployment hooks to track calls
         deploy_called = []
         post_deploy_called = []
+        update_site_called = []
 
         class MockHook:
             def deploy_municipality(self, **kwargs):
@@ -688,6 +689,12 @@ class TestExtractEntities:
 
             def post_deploy(self, **kwargs):
                 post_deploy_called.append(kwargs)
+
+            def update_site(self, subdomain, updates):
+                update_site_called.append({"subdomain": subdomain, "updates": updates})
+                # Actually update the database
+                db["sites"].update(subdomain, updates)
+                return [None]  # Return list to match hook behavior
 
         class MockPM:
             def __init__(self):
@@ -762,6 +769,7 @@ class TestExtractEntities:
         # Mock the deployment hooks
         deploy_called = []
         post_deploy_called = []
+        update_site_called = []
 
         class MockHook:
             def deploy_municipality(self, **kwargs):
@@ -769,6 +777,12 @@ class TestExtractEntities:
 
             def post_deploy(self, **kwargs):
                 post_deploy_called.append(kwargs)
+
+            def update_site(self, subdomain, updates):
+                update_site_called.append({"subdomain": subdomain, "updates": updates})
+                # Actually update the database
+                db["sites"].update(subdomain, updates)
+                return [None]  # Return list to match hook behavior
 
         class MockPM:
             def __init__(self):
@@ -961,10 +975,28 @@ class TestExtractEntitiesIntegration:
         monkeypatch.setenv("ENABLE_EXTRACTION", "0")  # Fast test without spaCy
         monkeypatch.setenv("CIVIC_DEV_MODE", "1")  # Skip deployment
 
-        from clerk.utils import assert_db_exists
+        # Step 1: Create database WITHOUT extraction columns (simulates old database)
+        import sqlite_utils
 
-        # Step 1: Create database (simulates initial setup)
-        db = assert_db_exists()
+        db = sqlite_utils.Database("civic.db")
+        db["sites"].create(
+            {
+                "subdomain": str,
+                "name": str,
+                "state": str,
+                "country": str,
+                "kind": str,
+                "scraper": str,
+                "pages": int,
+                "start_year": int,
+                "extra": str,
+                "status": str,
+                "last_updated": str,
+                "lat": str,
+                "lng": str,
+            },
+            pk="subdomain",
+        )
 
         # Initially no extraction columns exist
         site_columns_before = {col.name for col in db["sites"].columns}
