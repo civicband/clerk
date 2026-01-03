@@ -362,8 +362,8 @@ class TestBuildDbFromTextInternal:
         monkeypatch.setattr(utils_module, "EXTRACTION_ENABLED", True)
 
         import clerk.utils
-        from clerk.utils import assert_db_exists
         from clerk.db import civic_db_connection, insert_site
+        from clerk.utils import assert_db_exists
 
         assert_db_exists()
 
@@ -537,8 +537,8 @@ class TestExtractEntities:
         monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_path))
         monkeypatch.setenv("ENABLE_EXTRACTION", "0")
         monkeypatch.setenv("CIVIC_DEV_MODE", "1")
-        from clerk.utils import assert_db_exists
         from clerk.db import civic_db_connection, insert_site
+        from clerk.utils import assert_db_exists
 
         # Create database and run migration
         assert_db_exists()
@@ -619,8 +619,8 @@ class TestExtractEntities:
         """extract-entities --next-site exits cleanly when no sites need extraction"""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("CIVIC_DEV_MODE", "1")
-        from clerk.utils import assert_db_exists
         from clerk.db import civic_db_connection, insert_site
+        from clerk.utils import assert_db_exists
 
         # Create database and run migration
         assert_db_exists()
@@ -661,8 +661,8 @@ class TestExtractEntities:
         monkeypatch.setenv("ENABLE_EXTRACTION", "0")
         monkeypatch.setenv("CIVIC_DEV_MODE", "1")
 
-        from clerk.utils import assert_db_exists
         from clerk.db import civic_db_connection, insert_site
+        from clerk.utils import assert_db_exists
 
         assert_db_exists()
 
@@ -718,7 +718,10 @@ class TestExtractEntities:
             def update_site(self, subdomain, updates):
                 update_site_called.append({"subdomain": subdomain, "updates": updates})
                 # Actually update the database
-                db["sites"].update(subdomain, updates)
+                from clerk.db import update_site as db_update_site
+
+                with civic_db_connection() as conn:
+                    db_update_site(conn, subdomain, updates)
                 return [None]  # Return list to match hook behavior
 
         class MockPM:
@@ -755,8 +758,8 @@ class TestExtractEntities:
         monkeypatch.setenv("ENABLE_EXTRACTION", "0")
         # DON'T set CIVIC_DEV_MODE (production mode)
 
-        from clerk.utils import assert_db_exists
         from clerk.db import civic_db_connection, insert_site
+        from clerk.utils import assert_db_exists
 
         assert_db_exists()
 
@@ -812,7 +815,10 @@ class TestExtractEntities:
             def update_site(self, subdomain, updates):
                 update_site_called.append({"subdomain": subdomain, "updates": updates})
                 # Actually update the database
-                db["sites"].update(subdomain, updates)
+                from clerk.db import update_site as db_update_site
+
+                with civic_db_connection() as conn:
+                    db_update_site(conn, subdomain, updates)
                 return [None]  # Return list to match hook behavior
 
         class MockPM:
@@ -846,8 +852,8 @@ class TestExtractEntities:
         monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_path))
         monkeypatch.setenv("CIVIC_DEV_MODE", "1")
 
-        from clerk.utils import assert_db_exists
         from clerk.db import civic_db_connection, insert_site
+        from clerk.utils import assert_db_exists
 
         assert_db_exists()
 
@@ -926,8 +932,8 @@ class TestExtractEntities:
         monkeypatch.setenv("ENABLE_EXTRACTION", "0")
         monkeypatch.setenv("CIVIC_DEV_MODE", "1")
 
-        from clerk.utils import assert_db_exists
         from clerk.db import civic_db_connection, insert_site
+        from clerk.utils import assert_db_exists
 
         assert_db_exists()
 
