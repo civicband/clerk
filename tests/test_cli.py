@@ -993,14 +993,17 @@ class TestExtractEntities:
         assert result.exit_code == 0
 
         # Verify failed site was selected and processed
-        site = db["sites"].get("failed.civic.band")
-        assert site["extraction_status"] == "completed"
-        assert site["last_extracted"] is not None
+        from clerk.db import get_site_by_subdomain
 
-        # Completed site should remain unchanged
-        completed_site = db["sites"].get("completed.civic.band")
-        assert completed_site["extraction_status"] == "completed"
-        assert completed_site["last_extracted"] == "2024-01-01T00:00:00"
+        with civic_db_connection() as conn:
+            site = get_site_by_subdomain(conn, "failed.civic.band")
+            assert site["extraction_status"] == "completed"
+            assert site["last_extracted"] is not None
+
+            # Completed site should remain unchanged
+            completed_site = get_site_by_subdomain(conn, "completed.civic.band")
+            assert completed_site["extraction_status"] == "completed"
+            assert completed_site["last_extracted"] == "2024-01-01T00:00:00"
 
 
 @pytest.mark.integration
@@ -1018,6 +1021,7 @@ class TestExtractEntitiesIntegration:
 
         # Step 1: Create database WITHOUT extraction columns (simulates old database)
         import sqlite_utils
+        from sqlalchemy import inspect
 
         db = sqlite_utils.Database("civic.db")
         db["sites"].create(
@@ -1033,6 +1037,7 @@ class TestExtractEntitiesIntegration:
                 "extra": str,
                 "status": str,
                 "last_updated": str,
+                "last_deployed": str,
                 "lat": str,
                 "lng": str,
             },
@@ -1050,27 +1055,35 @@ class TestExtractEntitiesIntegration:
         assert result.exit_code == 0
         assert "Migration complete" in result.output
 
-        # Verify columns added
-        site_columns_after = {col.name for col in db["sites"].columns}
+        # Verify columns added using SQLAlchemy inspector
+        from clerk.utils import assert_db_exists
+
+        engine = assert_db_exists()
+        inspector = inspect(engine)
+        site_columns_after = {col["name"] for col in inspector.get_columns("sites")}
         assert "extraction_status" in site_columns_after
         assert "last_extracted" in site_columns_after
 
-        # Step 3: Create a test site
-        db["sites"].insert(
-            {
-                "subdomain": "test.civic.band",
-                "name": "Test City",
-                "state": "CA",
-                "country": "US",
-                "kind": "city-council",
-                "scraper": "test",
-                "pages": 0,
-                "start_year": 2020,
-                "status": "new",
-                "extraction_status": "pending",
-                "last_extracted": None,
-            }
-        )
+        # Step 3: Create a test site using new API
+        from clerk.db import civic_db_connection, insert_site
+
+        with civic_db_connection() as conn:
+            insert_site(
+                conn,
+                {
+                    "subdomain": "test.civic.band",
+                    "name": "Test City",
+                    "state": "CA",
+                    "country": "US",
+                    "kind": "city-council",
+                    "scraper": "test",
+                    "pages": 0,
+                    "start_year": 2020,
+                    "status": "new",
+                    "extraction_status": "pending",
+                    "last_extracted": None,
+                },
+            )
 
         # Create site structure with text files
         site_dir = tmp_path / "test.civic.band"
@@ -1094,9 +1107,12 @@ class TestExtractEntitiesIntegration:
         )
 
         # Verify initial state
-        site_before = db["sites"].get("test.civic.band")
-        assert site_before["extraction_status"] == "pending"
-        assert site_before["last_extracted"] is None
+        from clerk.db import get_site_by_subdomain
+
+        with civic_db_connection() as conn:
+            site_before = get_site_by_subdomain(conn, "test.civic.band")
+            assert site_before["extraction_status"] == "pending"
+            assert site_before["last_extracted"] is None
 
         # Step 4: Run extraction
         before_extraction = datetime.datetime.now()
@@ -1107,9 +1123,10 @@ class TestExtractEntitiesIntegration:
         assert "Extraction completed successfully" in result.output
 
         # Step 5: Verify status updated
-        site_after = db["sites"].get("test.civic.band")
-        assert site_after["extraction_status"] == "completed"
-        assert site_after["last_extracted"] is not None
+        with civic_db_connection() as conn:
+            site_after = get_site_by_subdomain(conn, "test.civic.band")
+            assert site_after["extraction_status"] == "completed"
+            assert site_after["last_extracted"] is not None
 
         # Verify timestamp is reasonable (between before and after)
         last_extracted_dt = datetime.datetime.fromisoformat(site_after["last_extracted"])

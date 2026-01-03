@@ -54,6 +54,7 @@ class TestAssertDbExists:
             "extra",
             "status",
             "last_updated",
+            "last_deployed",
             "lat",
             "lng",
             "extraction_status",
