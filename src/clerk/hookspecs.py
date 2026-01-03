@@ -28,3 +28,21 @@ class ClerkSpec:
     @hookspec
     def post_create(self, subdomain):
         """Runs actions actions after the creation of a site"""
+
+    @hookspec
+    def update_site(self, subdomain, updates):
+        """Update a site record in civic.db
+
+        Args:
+            subdomain: The site subdomain (e.g., 'berkeleyca.civic.band')
+            updates: Dictionary of fields to update (e.g., {'status': 'deployed'})
+        """
+
+    @hookspec
+    def create_site(self, subdomain, site_data):
+        """Create a new site record in civic.db
+
+        Args:
+            subdomain: The site subdomain
+            site_data: Dictionary of all site fields
+        """
