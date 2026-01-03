@@ -659,29 +659,32 @@ class TestExtractEntities:
         monkeypatch.setenv("CIVIC_DEV_MODE", "1")
 
         from clerk.utils import assert_db_exists
+        from clerk.db import civic_db_connection, insert_site
 
-        db = assert_db_exists()
+        assert_db_exists()
 
         # Run migration first
         runner = CliRunner()
         runner.invoke(cli, ["migrate-extraction-schema"])
 
         # Create test site
-        db["sites"].insert(
-            {
-                "subdomain": "test.civic.band",
-                "name": "Test City",
-                "state": "CA",
-                "country": "US",
-                "kind": "city-council",
-                "scraper": "test",
-                "pages": 0,
-                "start_year": 2020,
-                "status": "new",
-                "extraction_status": "pending",
-                "last_extracted": None,
-            }
-        )
+        with civic_db_connection() as conn:
+            insert_site(
+                conn,
+                {
+                    "subdomain": "test.civic.band",
+                    "name": "Test City",
+                    "state": "CA",
+                    "country": "US",
+                    "kind": "city-council",
+                    "scraper": "test",
+                    "pages": 0,
+                    "start_year": 2020,
+                    "status": "new",
+                    "extraction_status": "pending",
+                    "last_extracted": None,
+                },
+            )
 
         # Create site structure with text files
         site_dir = tmp_path / "test.civic.band"
@@ -731,7 +734,10 @@ class TestExtractEntities:
         assert len(post_deploy_called) == 0, "post_deploy should not be called in dev mode"
 
         # Verify extraction still completed
-        site = db["sites"].get("test.civic.band")
+        from clerk.db import get_site_by_subdomain
+
+        with civic_db_connection() as conn:
+            site = get_site_by_subdomain(conn, "test.civic.band")
         assert site["extraction_status"] == "completed"
         assert site["last_extracted"] is not None
 
@@ -747,29 +753,32 @@ class TestExtractEntities:
         # DON'T set CIVIC_DEV_MODE (production mode)
 
         from clerk.utils import assert_db_exists
+        from clerk.db import civic_db_connection, insert_site
 
-        db = assert_db_exists()
+        assert_db_exists()
 
         # Run migration first
         runner = CliRunner()
         runner.invoke(cli, ["migrate-extraction-schema"])
 
         # Create test site
-        db["sites"].insert(
-            {
-                "subdomain": "test.civic.band",
-                "name": "Test City",
-                "state": "CA",
-                "country": "US",
-                "kind": "city-council",
-                "scraper": "test",
-                "pages": 0,
-                "start_year": 2020,
-                "status": "new",
-                "extraction_status": "pending",
-                "last_extracted": None,
-            }
-        )
+        with civic_db_connection() as conn:
+            insert_site(
+                conn,
+                {
+                    "subdomain": "test.civic.band",
+                    "name": "Test City",
+                    "state": "CA",
+                    "country": "US",
+                    "kind": "city-council",
+                    "scraper": "test",
+                    "pages": 0,
+                    "start_year": 2020,
+                    "status": "new",
+                    "extraction_status": "pending",
+                    "last_extracted": None,
+                },
+            )
 
         # Create site structure with text files
         site_dir = tmp_path / "test.civic.band"
@@ -835,29 +844,32 @@ class TestExtractEntities:
         monkeypatch.setenv("CIVIC_DEV_MODE", "1")
 
         from clerk.utils import assert_db_exists
+        from clerk.db import civic_db_connection, insert_site
 
-        db = assert_db_exists()
+        assert_db_exists()
 
         # Run migration first
         runner = CliRunner()
         runner.invoke(cli, ["migrate-extraction-schema"])
 
         # Create test site
-        db["sites"].insert(
-            {
-                "subdomain": "test.civic.band",
-                "name": "Test City",
-                "state": "CA",
-                "country": "US",
-                "kind": "city-council",
-                "scraper": "test",
-                "pages": 0,
-                "start_year": 2020,
-                "status": "new",
-                "extraction_status": "pending",
-                "last_extracted": None,
-            }
-        )
+        with civic_db_connection() as conn:
+            insert_site(
+                conn,
+                {
+                    "subdomain": "test.civic.band",
+                    "name": "Test City",
+                    "state": "CA",
+                    "country": "US",
+                    "kind": "city-council",
+                    "scraper": "test",
+                    "pages": 0,
+                    "start_year": 2020,
+                    "status": "new",
+                    "extraction_status": "pending",
+                    "last_extracted": None,
+                },
+            )
 
         # Create site structure with text files
         site_dir = tmp_path / "test.civic.band"
@@ -887,7 +899,10 @@ class TestExtractEntities:
         assert result.exit_code != 0
 
         # Status should be marked as failed
-        site = db["sites"].get("test.civic.band")
+        from clerk.db import get_site_by_subdomain
+
+        with civic_db_connection() as conn:
+            site = get_site_by_subdomain(conn, "test.civic.band")
         assert site["extraction_status"] == "failed"
 
         # last_extracted should NOT be updated (still None)
@@ -909,46 +924,50 @@ class TestExtractEntities:
         monkeypatch.setenv("CIVIC_DEV_MODE", "1")
 
         from clerk.utils import assert_db_exists
+        from clerk.db import civic_db_connection, insert_site
 
-        db = assert_db_exists()
+        assert_db_exists()
 
         # Run migration first
         runner = CliRunner()
         runner.invoke(cli, ["migrate-extraction-schema"])
 
         # Site 1: completed (should skip)
-        db["sites"].insert(
-            {
-                "subdomain": "completed.civic.band",
-                "name": "Completed",
-                "state": "CA",
-                "country": "US",
-                "kind": "city-council",
-                "scraper": "test",
-                "pages": 0,
-                "start_year": 2020,
-                "status": "new",
-                "extraction_status": "completed",
-                "last_extracted": "2024-01-01T00:00:00",
-            }
-        )
+        with civic_db_connection() as conn:
+            insert_site(
+                conn,
+                {
+                    "subdomain": "completed.civic.band",
+                    "name": "Completed",
+                    "state": "CA",
+                    "country": "US",
+                    "kind": "city-council",
+                    "scraper": "test",
+                    "pages": 0,
+                    "start_year": 2020,
+                    "status": "new",
+                    "extraction_status": "completed",
+                    "last_extracted": "2024-01-01T00:00:00",
+                },
+            )
 
-        # Site 2: failed (should retry - selected by --next-site)
-        db["sites"].insert(
-            {
-                "subdomain": "failed.civic.band",
-                "name": "Failed",
-                "state": "CA",
-                "country": "US",
-                "kind": "city-council",
-                "scraper": "test",
-                "pages": 0,
-                "start_year": 2020,
-                "status": "new",
-                "extraction_status": "failed",
-                "last_extracted": None,
-            }
-        )
+            # Site 2: failed (should retry - selected by --next-site)
+            insert_site(
+                conn,
+                {
+                    "subdomain": "failed.civic.band",
+                    "name": "Failed",
+                    "state": "CA",
+                    "country": "US",
+                    "kind": "city-council",
+                    "scraper": "test",
+                    "pages": 0,
+                    "start_year": 2020,
+                    "status": "new",
+                    "extraction_status": "failed",
+                    "last_extracted": None,
+                },
+            )
 
         # Create site structure for failed site with text files
         site_dir = tmp_path / "failed.civic.band"
