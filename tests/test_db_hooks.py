@@ -70,3 +70,58 @@ def test_default_db_plugin_registered():
 
     assert len(update_impls) > 0
     assert len(create_impls) > 0
+
+
+def test_multiple_plugins_execute_sequentially(tmp_path, monkeypatch):
+    """Test that multiple plugins implementing hooks all execute."""
+    from clerk.hookspecs import hookimpl
+    from clerk.utils import pm
+
+    # Setup test database with existing site
+    db_path = tmp_path / "civic.db"
+    db = sqlite_utils.Database(db_path)
+    db["sites"].insert({"subdomain": "test.civic.band", "status": "deployed"}, pk="subdomain")
+
+    # Use monkeypatch to point to test database
+    monkeypatch.setattr("clerk.utils.assert_db_exists", lambda: db)
+
+    call_log = []
+
+    class TestPlugin1:
+        @hookimpl
+        def update_site(self, subdomain, updates):
+            call_log.append(('plugin1', subdomain, updates))
+
+    class TestPlugin2:
+        @hookimpl
+        def update_site(self, subdomain, updates):
+            call_log.append(('plugin2', subdomain, updates))
+
+    # Register test plugins
+    plugin1 = TestPlugin1()
+    plugin2 = TestPlugin2()
+    pm.register(plugin1)
+    pm.register(plugin2)
+
+    try:
+        # Clear call log
+        call_log.clear()
+
+        # Call hook
+        pm.hook.update_site(subdomain="test.civic.band", updates={"status": "deployed"})
+
+        # Verify all plugins were called
+        assert len(call_log) >= 2  # At least our 2 test plugins
+
+        # Verify our plugins got the right args
+        plugin1_calls = [c for c in call_log if c[0] == 'plugin1']
+        plugin2_calls = [c for c in call_log if c[0] == 'plugin2']
+
+        assert len(plugin1_calls) == 1
+        assert len(plugin2_calls) == 1
+        assert plugin1_calls[0][1] == "test.civic.band"
+        assert plugin2_calls[0][1] == "test.civic.band"
+    finally:
+        # Cleanup
+        pm.unregister(plugin1)
+        pm.unregister(plugin2)
