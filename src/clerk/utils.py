@@ -59,7 +59,8 @@ logger = logging.getLogger(__name__)
 pm = pluggy.PluginManager("civicband.clerk")
 pm.add_hookspecs(ClerkSpec)
 
-from .plugins import DefaultDBPlugin
+# Import DefaultDBPlugin after PM initialization to avoid circular imports
+from .plugins import DefaultDBPlugin  # noqa: E402
 
 pm.register(DefaultDBPlugin())
 
