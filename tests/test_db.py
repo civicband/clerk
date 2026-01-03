@@ -1,4 +1,5 @@
 """Tests for database abstraction layer (clerk/db.py)."""
+
 import os
 
 import pytest

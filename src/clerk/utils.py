@@ -406,9 +406,7 @@ def assert_db_exists():
 
         # Check for feed_entries table (legacy, create if needed)
         if not db["feed_entries"].exists():
-            db["feed_entries"].create(
-                {"subdomain": str, "date": str, "kind": str, "name": str}
-            )
+            db["feed_entries"].create({"subdomain": str, "date": str, "kind": str, "name": str})
 
         # Only drop deprecated columns if they still exist
         existing_columns = {col.name for col in db["sites"].columns}

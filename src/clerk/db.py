@@ -2,6 +2,7 @@
 
 Supports both SQLite (dev) and PostgreSQL (production) based on DATABASE_URL.
 """
+
 import os
 import sys
 from contextlib import contextmanager
@@ -109,14 +110,10 @@ def upsert_site(conn, site_data):
 
     if dialect_name == "postgresql":
         stmt = pg_insert(sites_table).values(**site_data)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=["subdomain"], set_=site_data
-        )
+        stmt = stmt.on_conflict_do_update(index_elements=["subdomain"], set_=site_data)
     elif dialect_name == "sqlite":
         stmt = sqlite_insert(sites_table).values(**site_data)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=["subdomain"], set_=site_data
-        )
+        stmt = stmt.on_conflict_do_update(index_elements=["subdomain"], set_=site_data)
     else:
         # Fallback: delete then insert
         delete_site(conn, site_data["subdomain"])
@@ -170,11 +167,7 @@ def update_site(conn, subdomain, updates):
     """
     from .models import sites_table
 
-    stmt = (
-        update(sites_table)
-        .where(sites_table.c.subdomain == subdomain)
-        .values(**updates)
-    )
+    stmt = update(sites_table).where(sites_table.c.subdomain == subdomain).values(**updates)
     conn.execute(stmt)
 
 
