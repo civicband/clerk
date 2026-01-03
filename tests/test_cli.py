@@ -605,7 +605,10 @@ class TestExtractEntities:
         assert result.exit_code == 0
 
         # Verify site2 was selected and processed
-        site2 = db["sites"].get("site2.civic.band")
+        from clerk.db import get_site_by_subdomain
+
+        with civic_db_connection() as conn:
+            site2 = get_site_by_subdomain(conn, "site2.civic.band")
         assert site2["extraction_status"] == "completed"
         assert site2["last_extracted"] is not None
 
@@ -614,26 +617,29 @@ class TestExtractEntities:
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("CIVIC_DEV_MODE", "1")
         from clerk.utils import assert_db_exists
+        from clerk.db import civic_db_connection, insert_site
 
         # Create database and run migration
-        db = assert_db_exists()
+        assert_db_exists()
         runner = CliRunner()
         runner.invoke(cli, ["migrate-extraction-schema"])
-        db["sites"].insert(
-            {
-                "subdomain": "completed.civic.band",
-                "name": "Completed",
-                "state": "CA",
-                "country": "US",
-                "kind": "city-council",
-                "scraper": "test",
-                "pages": 0,
-                "start_year": 2020,
-                "status": "new",
-                "extraction_status": "completed",
-                "last_extracted": "2024-01-01T00:00:00",
-            }
-        )
+        with civic_db_connection() as conn:
+            insert_site(
+                conn,
+                {
+                    "subdomain": "completed.civic.band",
+                    "name": "Completed",
+                    "state": "CA",
+                    "country": "US",
+                    "kind": "city-council",
+                    "scraper": "test",
+                    "pages": 0,
+                    "start_year": 2020,
+                    "status": "new",
+                    "extraction_status": "completed",
+                    "last_extracted": "2024-01-01T00:00:00",
+                },
+            )
 
         runner = CliRunner()
         result = runner.invoke(cli, ["extract-entities", "--next-site"])
