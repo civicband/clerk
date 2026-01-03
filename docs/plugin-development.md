@@ -240,6 +240,88 @@ def post_create(self, subdomain: str):
     notify_admin(f"New site created: {subdomain}")
 ```
 
+### update_site
+
+React to or extend site updates in civic.db.
+
+```python
+@hookimpl
+def update_site(self, subdomain: str, updates: dict):
+    """Called when a site is updated in civic.db.
+
+    Args:
+        subdomain: The site subdomain (e.g., 'berkeleyca.civic.band')
+        updates: Dictionary of fields being updated (e.g., {'status': 'deployed'})
+    """
+    # Your plugin logic here
+    import logfire
+    logfire.info("Site updated", subdomain=subdomain, updates=updates)
+```
+
+**Use cases:**
+- Log all database changes for auditing
+- Send webhooks on status changes
+- Invalidate caches when data changes
+- Update external systems when sites are modified
+
+**Example: Status Change Webhook**
+
+```python
+@hookimpl
+def update_site(self, subdomain: str, updates: dict):
+    """Send webhook when site status changes."""
+    if 'status' in updates:
+        import requests
+        requests.post(
+            "https://example.com/webhook",
+            json={
+                "event": "status_change",
+                "subdomain": subdomain,
+                "new_status": updates['status'],
+            }
+        )
+```
+
+### create_site
+
+React to new site creation.
+
+```python
+@hookimpl
+def create_site(self, subdomain: str, site_data: dict):
+    """Called when a new site is created in civic.db.
+
+    Args:
+        subdomain: The new site subdomain
+        site_data: Complete site record being created
+    """
+    # Your plugin logic here
+    import logfire
+    logfire.info("Site created", subdomain=subdomain, site_data=site_data)
+```
+
+**Use cases:**
+- Log new site creation for auditing
+- Initialize external resources (DNS, hosting, etc.)
+- Send notifications to admins
+- Set up monitoring for new sites
+
+**Example: Setup External Resources**
+
+```python
+@hookimpl
+def create_site(self, subdomain: str, site_data: dict):
+    """Initialize hosting and DNS for new site."""
+    # Create DNS record
+    create_dns_record(subdomain)
+
+    # Initialize hosting directory
+    setup_hosting_directory(subdomain)
+
+    # Send notification
+    notify_admin(f"New site created: {subdomain}")
+```
+
 ## Complete Example: Legistar Plugin
 
 Here's a complete plugin for Legistar-based municipalities:
