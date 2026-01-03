@@ -587,7 +587,7 @@ def extract_entities_internal(subdomain, next_site=False):
         return
 
     # Mark as in_progress
-    db["sites"].update(subdomain, {"extraction_status": "in_progress"})
+    pm.hook.update_site(subdomain=subdomain, updates={"extraction_status": "in_progress"})
 
     try:
         # Run extraction - rebuild DB from text with entity extraction enabled
@@ -595,9 +595,9 @@ def extract_entities_internal(subdomain, next_site=False):
         rebuild_site_fts_internal(subdomain)
 
         # Mark extraction as completed BEFORE deployment
-        db["sites"].update(
-            subdomain,
-            {
+        pm.hook.update_site(
+            subdomain=subdomain,
+            updates={
                 "extraction_status": "completed",
                 "last_extracted": datetime.datetime.now().isoformat(),
             },
@@ -625,7 +625,7 @@ def extract_entities_internal(subdomain, next_site=False):
             log("DEV MODE: Skipping deployment", subdomain=subdomain)
 
     except Exception as e:
-        db["sites"].update(subdomain, {"extraction_status": "failed"})
+        pm.hook.update_site(subdomain=subdomain, updates={"extraction_status": "failed"})
         log(f"Extraction failed: {e}", subdomain=subdomain, level="error")
         raise
 
