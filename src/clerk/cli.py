@@ -263,9 +263,9 @@ def update_site_internal(
     fetcher.ocr()  # type: ignore
 
     # Update status after OCR, before extraction
-    db["sites"].update(  # type: ignore
-        subdomain,
-        {
+    pm.hook.update_site(
+        subdomain=subdomain,
+        updates={
             "status": "needs_extraction",
             "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
         },
@@ -274,9 +274,9 @@ def update_site_internal(
     fetcher.transform()  # type: ignore
 
     update_page_count(subdomain)
-    db["sites"].update(  # type: ignore
-        subdomain,
-        {
+    pm.hook.update_site(
+        subdomain=subdomain,
+        updates={
             "status": "needs_deploy",
             "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
         },
@@ -284,9 +284,9 @@ def update_site_internal(
     site = db["sites"].get(subdomain)  # type: ignore
     rebuild_site_fts_internal(subdomain)
     pm.hook.deploy_municipality(subdomain=subdomain)
-    db["sites"].update(  # type: ignore
-        subdomain,
-        {
+    pm.hook.update_site(
+        subdomain=subdomain,
+        updates={
             "status": "deployed",
             "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
         },
@@ -487,9 +487,9 @@ def update_page_count(subdomain):
         minutes_count,
         page_count,
     )
-    db["sites"].update(  # type: ignore
-        subdomain,
-        {
+    pm.hook.update_site(
+        subdomain=subdomain,
+        updates={
             "pages": page_count,
             "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
         },
