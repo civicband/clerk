@@ -59,6 +59,10 @@ logger = logging.getLogger(__name__)
 pm = pluggy.PluginManager("civicband.clerk")
 pm.add_hookspecs(ClerkSpec)
 
+from .plugins import DefaultDBPlugin
+
+pm.register(DefaultDBPlugin())
+
 STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
 
 

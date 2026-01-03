@@ -54,3 +54,19 @@ def test_default_plugin_create_site(tmp_path, monkeypatch):
     site = db["sites"].get("new.civic.band")
     assert site["subdomain"] == "new.civic.band"
     assert site["status"] == "new"
+
+
+def test_default_db_plugin_registered():
+    """Test that DefaultDBPlugin is auto-registered."""
+    from clerk.utils import pm
+
+    # Check that update_site hook is available
+    assert pm.hook.update_site
+    assert pm.hook.create_site
+
+    # Check that at least one plugin implements these hooks
+    update_impls = pm.hook.update_site.get_hookimpls()
+    create_impls = pm.hook.create_site.get_hookimpls()
+
+    assert len(update_impls) > 0
+    assert len(create_impls) > 0
