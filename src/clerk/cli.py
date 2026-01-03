@@ -320,11 +320,10 @@ def get_fetcher(site, all_years=False, all_agendas=False):
 
 
 def fetch_internal(subdomain, fetcher):
-    db = assert_db_exists()
     logger.info("Starting fetch subdomain=%s", subdomain)
-    db["sites"].update(  # pyright: ignore[reportAttributeAccessIssue]
-        subdomain,
-        {
+    pm.hook.update_site(
+        subdomain=subdomain,
+        updates={
             "status": "fetching",
             "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
         },
@@ -339,9 +338,9 @@ def fetch_internal(subdomain, fetcher):
         elapsed_time=f"{elapsed_time:.2f}",
     )
     status = "needs_ocr"
-    db["sites"].update(  # pyright: ignore[reportAttributeAccessIssue]
-        subdomain,
-        {
+    pm.hook.update_site(
+        subdomain=subdomain,
+        updates={
             "status": status,
             "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
         },
