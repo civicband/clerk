@@ -131,10 +131,13 @@ def cli(ctx, plugins_dir, quiet):
 @cli.command()
 def new():
     """Create a new site"""
-    db = assert_db_exists()
+    from .db import civic_db_connection, get_site_by_subdomain
+
+    assert_db_exists()
 
     subdomain = click.prompt("Subdomain")
-    exists = db.execute("select * from sites where subdomain =?", (subdomain,)).fetchone()
+    with civic_db_connection() as conn:
+        exists = get_site_by_subdomain(conn, subdomain)
     if exists:
         click.secho(f"Site {subdomain} already exists", fg="red")
         return
@@ -418,8 +421,10 @@ def rebuild_site_fts_internal(subdomain):
 
 @cli.command()
 def build_full_db():
+    from .db import civic_db_connection, get_all_sites
+
     st = time.time()
-    sites_db = assert_db_exists()
+    assert_db_exists()
     database = database = f"{STORAGE_DIR}/meetings.db"
     db_backup = f"{STORAGE_DIR}/meetings.db.bk"
     try:
@@ -458,7 +463,9 @@ def build_full_db():
         },
         pk=("id"),
     )
-    for site in sites_db.query("select subdomain, name from sites order by subdomain"):
+    with civic_db_connection() as conn:
+        sites = get_all_sites(conn)
+    for site in sites:
         subdomain = site["subdomain"]
         municipality = site["name"]
         minutes_txt_dir = f"{STORAGE_DIR}/{subdomain}/txt"
