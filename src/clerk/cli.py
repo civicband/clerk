@@ -153,26 +153,30 @@ def new():
     if len(extra):
         extra = extra[0]
 
-    pm.hook.create_site(
-        subdomain=subdomain,
-        site_data={
-            "subdomain": subdomain,
-            "name": name,
-            "state": state,
-            "country": country,
-            "kind": kind,
-            "scraper": scraper,
-            "pages": 0,
-            "start_year": start_year,
-            "status": "new",
-            "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-            "lat": lat_lng.split(",")[0].strip(),
-            "lng": lat_lng.split(",")[1].strip(),
-            "extra": json.dumps(extra) if extra else "{}",
-            "extraction_status": "pending",
-            "last_extracted": None,
-        },
-    )
+    # Create site in database
+    from .db import civic_db_connection, upsert_site
+
+    with civic_db_connection() as conn:
+        upsert_site(
+            conn,
+            {
+                "subdomain": subdomain,
+                "name": name,
+                "state": state,
+                "country": country,
+                "kind": kind,
+                "scraper": scraper,
+                "pages": 0,
+                "start_year": start_year,
+                "status": "new",
+                "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                "lat": lat_lng.split(",")[0].strip(),
+                "lng": lat_lng.split(",")[1].strip(),
+                "extra": json.dumps(extra) if extra else "{}",
+                "extraction_status": "pending",
+                "last_extracted": None,
+            },
+        )
 
     click.echo(f"Site {subdomain} created")
     update_site_internal(subdomain, all_years=True, all_agendas=all_agendas)
@@ -216,7 +220,7 @@ def update_site_internal(
     all_agendas=False,
     backfill=False,
 ):
-    from .db import civic_db_connection, get_site_by_subdomain
+    from .db import civic_db_connection, get_site_by_subdomain, update_site
     from sqlalchemy import text
 
     engine = assert_db_exists()
@@ -269,35 +273,41 @@ def update_site_internal(
     fetcher.ocr()  # type: ignore
 
     # Update status after OCR, before extraction
-    pm.hook.update_site(
-        subdomain=subdomain,
-        updates={
-            "status": "needs_extraction",
-            "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-        },
-    )
+    with civic_db_connection() as conn:
+        update_site(
+            conn,
+            subdomain,
+            {
+                "status": "needs_extraction",
+                "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            },
+        )
 
     fetcher.transform()  # type: ignore
 
     update_page_count(subdomain)
-    pm.hook.update_site(
-        subdomain=subdomain,
-        updates={
-            "status": "needs_deploy",
-            "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-        },
-    )
+    with civic_db_connection() as conn:
+        update_site(
+            conn,
+            subdomain,
+            {
+                "status": "needs_deploy",
+                "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            },
+        )
     with civic_db_connection() as conn:
         site = get_site_by_subdomain(conn, subdomain)
     rebuild_site_fts_internal(subdomain)
     pm.hook.deploy_municipality(subdomain=subdomain)
-    pm.hook.update_site(
-        subdomain=subdomain,
-        updates={
-            "status": "deployed",
-            "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-        },
-    )
+    with civic_db_connection() as conn:
+        update_site(
+            conn,
+            subdomain,
+            {
+                "status": "deployed",
+                "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            },
+        )
     pm.hook.post_deploy(site=site)
 
 
@@ -327,14 +337,18 @@ def get_fetcher(site, all_years=False, all_agendas=False):
 
 
 def fetch_internal(subdomain, fetcher):
+    from .db import civic_db_connection, update_site
+
     logger.info("Starting fetch subdomain=%s", subdomain)
-    pm.hook.update_site(
-        subdomain=subdomain,
-        updates={
-            "status": "fetching",
-            "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-        },
-    )
+    with civic_db_connection() as conn:
+        update_site(
+            conn,
+            subdomain,
+            {
+                "status": "fetching",
+                "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            },
+        )
     st = time.time()
     fetcher.fetch_events()
     et = time.time()
@@ -345,13 +359,15 @@ def fetch_internal(subdomain, fetcher):
         elapsed_time=f"{elapsed_time:.2f}",
     )
     status = "needs_ocr"
-    pm.hook.update_site(
-        subdomain=subdomain,
-        updates={
-            "status": status,
-            "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-        },
-    )
+    with civic_db_connection() as conn:
+        update_site(
+            conn,
+            subdomain,
+            {
+                "status": status,
+                "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            },
+        )
 
 
 @cli.command()
@@ -482,6 +498,8 @@ def build_full_db():
 
 
 def update_page_count(subdomain):
+    from .db import civic_db_connection, update_site
+
     assert_db_exists()
     site_db = sqlite_utils.Database(f"{STORAGE_DIR}/{subdomain}/meetings.db")
     agendas_count = site_db["agendas"].count
@@ -494,13 +512,15 @@ def update_page_count(subdomain):
         minutes_count,
         page_count,
     )
-    pm.hook.update_site(
-        subdomain=subdomain,
-        updates={
-            "pages": page_count,
-            "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-        },
-    )
+    with civic_db_connection() as conn:
+        update_site(
+            conn,
+            subdomain,
+            {
+                "pages": page_count,
+                "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            },
+        )
 
 
 @cli.command()
@@ -559,7 +579,7 @@ def extract_entities(subdomain, next_site=False):
 
 def extract_entities_internal(subdomain, next_site=False):
     """Internal implementation of extract-entities command"""
-    from .db import civic_db_connection, get_site_by_subdomain
+    from .db import civic_db_connection, get_site_by_subdomain, update_site
     from sqlalchemy import text
 
     engine = assert_db_exists()
@@ -610,7 +630,8 @@ def extract_entities_internal(subdomain, next_site=False):
         return
 
     # Mark as in_progress
-    pm.hook.update_site(subdomain=subdomain, updates={"extraction_status": "in_progress"})
+    with civic_db_connection() as conn:
+        update_site(conn, subdomain, {"extraction_status": "in_progress"})
 
     try:
         # Run extraction - rebuild DB from text with entity extraction enabled
@@ -618,13 +639,15 @@ def extract_entities_internal(subdomain, next_site=False):
         rebuild_site_fts_internal(subdomain)
 
         # Mark extraction as completed BEFORE deployment
-        pm.hook.update_site(
-            subdomain=subdomain,
-            updates={
-                "extraction_status": "completed",
-                "last_extracted": datetime.datetime.now().isoformat(),
-            },
-        )
+        with civic_db_connection() as conn:
+            update_site(
+                conn,
+                subdomain,
+                {
+                    "extraction_status": "completed",
+                    "last_extracted": datetime.datetime.now().isoformat(),
+                },
+            )
 
         log("Extraction completed successfully", subdomain=subdomain)
 
@@ -648,7 +671,8 @@ def extract_entities_internal(subdomain, next_site=False):
             log("DEV MODE: Skipping deployment", subdomain=subdomain)
 
     except Exception as e:
-        pm.hook.update_site(subdomain=subdomain, updates={"extraction_status": "failed"})
+        with civic_db_connection() as conn:
+            update_site(conn, subdomain, {"extraction_status": "failed"})
         log(f"Extraction failed: {e}", subdomain=subdomain, level="error")
         raise
 

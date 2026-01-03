@@ -59,11 +59,6 @@ logger = logging.getLogger(__name__)
 pm = pluggy.PluginManager("civicband.clerk")
 pm.add_hookspecs(ClerkSpec)
 
-# Import DefaultDBPlugin after PM initialization to avoid circular imports
-from .plugins import DefaultDBPlugin  # noqa: E402
-
-pm.register(DefaultDBPlugin())
-
 STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
 
 
