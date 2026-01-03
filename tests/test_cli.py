@@ -445,8 +445,11 @@ class TestBuildFullDb:
                 "extra": None,
                 "status": "deployed",
                 "last_updated": "2024-01-01T00:00:00",
+                "last_deployed": None,
                 "lat": "0",
                 "lng": "0",
+                "extraction_status": "pending",
+                "last_extracted": None,
             },
             pk="subdomain",
         )
