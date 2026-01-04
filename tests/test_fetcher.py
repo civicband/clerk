@@ -457,7 +457,7 @@ class TestDoOCRJobEnhanced:
 
             try:
                 fetcher.do_ocr_job(job, manifest, job_id)
-                assert False, "Should have raised FileNotFoundError"
+                raise AssertionError("Should have raised FileNotFoundError")
             except FileNotFoundError:
                 pass  # Expected
 
