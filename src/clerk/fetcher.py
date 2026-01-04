@@ -15,6 +15,7 @@ from xml.etree.ElementTree import ParseError
 import httpx
 import sqlite_utils
 from bs4 import BeautifulSoup
+import click
 
 from clerk.output import log
 from clerk.utils import STORAGE_DIR, build_db_from_text_internal, pm
@@ -22,6 +23,7 @@ from clerk.ocr_utils import (
     retry_on_transient,
     FailureManifest,
     JobState,
+    print_progress,
     PERMANENT_ERRORS,
     CRITICAL_ERRORS,
 )
@@ -381,9 +383,6 @@ class Fetcher:
         Args:
             prefix: Directory prefix (e.g., "" for minutes, "/_agendas" for agendas)
         """
-        from clerk.ocr_utils import JobState, FailureManifest, print_progress, PERMANENT_ERRORS, CRITICAL_ERRORS
-        import click
-
         # Generate unique job ID
         job_id = f"ocr_{int(time.time())}"
 
