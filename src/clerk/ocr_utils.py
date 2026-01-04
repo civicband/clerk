@@ -197,19 +197,22 @@ def retry_on_transient(max_attempts: int = 3, delay_seconds: float = 2):
     return decorator
 
 
-def print_progress(state: JobState) -> None:
-    """Print human-readable progress to stderr.
+def print_progress(state: JobState, subdomain: str) -> None:
+    """Print human-readable progress using unified logging interface.
 
     Args:
         state: JobState with current progress
+        subdomain: Subdomain for logging context
     """
+    from clerk.output import log
+
     pct = state.progress_pct()
     processed = state.completed + state.failed + state.skipped
     eta = state.eta_seconds()
     eta_str = f"ETA: {int(eta)}s" if eta else "calculating..."
 
-    click.echo(
+    log(
         f"OCR Progress: [{processed}/{state.total_documents}] "
         f"{pct:.1f}% complete, {state.failed} failed | {eta_str}",
-        err=True
+        subdomain=subdomain
     )

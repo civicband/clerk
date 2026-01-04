@@ -297,15 +297,20 @@ def test_print_progress_with_no_eta():
     """print_progress should show 'calculating...' when no progress yet."""
     state = JobState(job_id="test", total_documents=100)
 
-    with patch('sys.stderr', new_callable=io.StringIO) as mock_stderr:
-        print_progress(state)
-        output = mock_stderr.getvalue()
+    with patch('clerk.output.log') as mock_log:
+        print_progress(state, subdomain="test.civic.band")
 
-    assert "OCR Progress:" in output
-    assert "[0/100]" in output
-    assert "0.0% complete" in output
-    assert "0 failed" in output
-    assert "calculating..." in output
+    # Verify log was called with correct message
+    mock_log.assert_called_once()
+    call_args = mock_log.call_args
+    message = call_args[0][0]
+
+    assert "OCR Progress:" in message
+    assert "[0/100]" in message
+    assert "0.0% complete" in message
+    assert "0 failed" in message
+    assert "calculating..." in message
+    assert call_args[1]["subdomain"] == "test.civic.band"
 
 
 def test_print_progress_with_progress():
@@ -314,16 +319,21 @@ def test_print_progress_with_progress():
     state.start_time = time.time() - 10  # Started 10 seconds ago
     state.completed = 50
 
-    with patch('sys.stderr', new_callable=io.StringIO) as mock_stderr:
-        print_progress(state)
-        output = mock_stderr.getvalue()
+    with patch('clerk.output.log') as mock_log:
+        print_progress(state, subdomain="test.civic.band")
 
-    assert "OCR Progress:" in output
-    assert "[50/100]" in output
-    assert "50.0% complete" in output
-    assert "0 failed" in output
-    assert "ETA:" in output
-    assert "s" in output  # Should show seconds
+    # Verify log was called with correct message
+    mock_log.assert_called_once()
+    call_args = mock_log.call_args
+    message = call_args[0][0]
+
+    assert "OCR Progress:" in message
+    assert "[50/100]" in message
+    assert "50.0% complete" in message
+    assert "0 failed" in message
+    assert "ETA:" in message
+    assert "s" in message  # Should show seconds
+    assert call_args[1]["subdomain"] == "test.civic.band"
 
 
 def test_print_progress_with_failures():
@@ -333,10 +343,15 @@ def test_print_progress_with_failures():
     state.completed = 40
     state.failed = 10
 
-    with patch('sys.stderr', new_callable=io.StringIO) as mock_stderr:
-        print_progress(state)
-        output = mock_stderr.getvalue()
+    with patch('clerk.output.log') as mock_log:
+        print_progress(state, subdomain="test.civic.band")
 
-    assert "[50/100]" in output
-    assert "50.0% complete" in output
-    assert "10 failed" in output
+    # Verify log was called with correct message
+    mock_log.assert_called_once()
+    call_args = mock_log.call_args
+    message = call_args[0][0]
+
+    assert "[50/100]" in message
+    assert "50.0% complete" in message
+    assert "10 failed" in message
+    assert call_args[1]["subdomain"] == "test.civic.band"

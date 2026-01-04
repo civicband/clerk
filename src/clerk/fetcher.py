@@ -469,7 +469,7 @@ class Fetcher:
                 # Print progress every 5 documents
                 processed = state.completed + state.failed + state.skipped
                 if processed % 5 == 0 or processed == state.total_documents:
-                    print_progress(state)
+                    print_progress(state, self.subdomain)
 
         manifest.close()
 
@@ -479,18 +479,18 @@ class Fetcher:
             completed=state.completed, failed=state.failed, skipped=state.skipped,
             duration_seconds=int(elapsed))
 
-        # Print final summary to stderr
-        click.echo(
-            f"\nOCR job {job_id} completed: {state.completed} succeeded, "
+        # Print final summary
+        log(
+            f"OCR job {job_id} completed: {state.completed} succeeded, "
             f"{state.failed} failed, {state.skipped} skipped "
             f"(total: {state.total_documents} documents in {elapsed:.1f}s)",
-            err=True
+            subdomain=self.subdomain
         )
 
         if state.failed > 0:
-            click.echo(
+            log(
                 f"Failure manifest written to: {manifest_path}",
-                err=True
+                subdomain=self.subdomain
             )
 
     @retry_on_transient(max_attempts=3, delay_seconds=2)
