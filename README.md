@@ -128,6 +128,29 @@ Combine all sites into a single searchable database:
 clerk build-full-db
 ```
 
+## OCR Processing
+
+### Progress Tracking
+
+OCR jobs display real-time progress and timing:
+
+```bash
+uv run clerk ocr --subdomain=example.ca.civic.band
+```
+
+Output:
+```
+OCR Progress: [25/100] 25.0% complete, 1 failed | ETA: 180s
+OCR Progress: [50/100] 50.0% complete, 2 failed | ETA: 90s
+...
+OCR job ocr_1234567890 completed: 98 succeeded, 2 failed, 0 skipped (total: 100 documents in 120.5s)
+Failure manifest written to: ../sites/example.ca.civic.band/ocr_failures_1234567890.jsonl
+```
+
+### Error Handling
+
+Failed documents are logged with full context and recorded in a failure manifest for later retry. See [OCR Logging Documentation](docs/ocr-logging.md) for details.
+
 ## Architecture
 
 Clerk uses a multi-database architecture:
