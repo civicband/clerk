@@ -132,3 +132,12 @@ class FailureManifest:
     def close(self) -> None:
         """Close the manifest file."""
         self.file.close()
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - ensures file is closed."""
+        self.close()
+        return False

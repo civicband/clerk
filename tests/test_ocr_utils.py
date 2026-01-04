@@ -105,8 +105,8 @@ def test_failure_manifest_creates_file():
     """FailureManifest should create file in append mode."""
     with tempfile.TemporaryDirectory() as tmpdir:
         manifest_path = Path(tmpdir) / "failures.jsonl"
-        manifest = FailureManifest(str(manifest_path))
-        manifest.close()
+        with FailureManifest(str(manifest_path)) as manifest:
+            pass
 
         assert manifest_path.exists()
 
@@ -115,19 +115,17 @@ def test_failure_manifest_record_failure():
     """FailureManifest should write JSONL entries."""
     with tempfile.TemporaryDirectory() as tmpdir:
         manifest_path = Path(tmpdir) / "failures.jsonl"
-        manifest = FailureManifest(str(manifest_path))
-
-        manifest.record_failure(
-            job_id="test_123",
-            document_path="pdfs/Meeting/2024-01-01.pdf",
-            meeting="Meeting",
-            date="2024-01-01",
-            error_type="permanent",
-            error_class="PdfReadError",
-            error_message="Corrupted PDF",
-            retry_count=3
-        )
-        manifest.close()
+        with FailureManifest(str(manifest_path)) as manifest:
+            manifest.record_failure(
+                job_id="test_123",
+                document_path="pdfs/Meeting/2024-01-01.pdf",
+                meeting="Meeting",
+                date="2024-01-01",
+                error_type="permanent",
+                error_class="PdfReadError",
+                error_message="Corrupted PDF",
+                retry_count=3
+            )
 
         # Read and verify
         with open(manifest_path) as f:
@@ -149,29 +147,27 @@ def test_failure_manifest_multiple_entries():
     """FailureManifest should write multiple JSONL entries."""
     with tempfile.TemporaryDirectory() as tmpdir:
         manifest_path = Path(tmpdir) / "failures.jsonl"
-        manifest = FailureManifest(str(manifest_path))
-
-        manifest.record_failure(
-            job_id="test",
-            document_path="doc1.pdf",
-            meeting="M1",
-            date="2024-01-01",
-            error_type="permanent",
-            error_class="Error1",
-            error_message="Error 1",
-            retry_count=0
-        )
-        manifest.record_failure(
-            job_id="test",
-            document_path="doc2.pdf",
-            meeting="M2",
-            date="2024-01-02",
-            error_type="transient",
-            error_class="Error2",
-            error_message="Error 2",
-            retry_count=3
-        )
-        manifest.close()
+        with FailureManifest(str(manifest_path)) as manifest:
+            manifest.record_failure(
+                job_id="test",
+                document_path="doc1.pdf",
+                meeting="M1",
+                date="2024-01-01",
+                error_type="permanent",
+                error_class="Error1",
+                error_message="Error 1",
+                retry_count=0
+            )
+            manifest.record_failure(
+                job_id="test",
+                document_path="doc2.pdf",
+                meeting="M2",
+                date="2024-01-02",
+                error_type="transient",
+                error_class="Error2",
+                error_message="Error 2",
+                retry_count=3
+            )
 
         # Read and verify
         with open(manifest_path) as f:
@@ -190,32 +186,30 @@ def test_failure_manifest_append_mode():
         manifest_path = Path(tmpdir) / "failures.jsonl"
 
         # First manifest writes one entry
-        manifest1 = FailureManifest(str(manifest_path))
-        manifest1.record_failure(
-            job_id="test",
-            document_path="doc1.pdf",
-            meeting="M",
-            date="2024-01-01",
-            error_type="permanent",
-            error_class="E",
-            error_message="E",
-            retry_count=0
-        )
-        manifest1.close()
+        with FailureManifest(str(manifest_path)) as manifest1:
+            manifest1.record_failure(
+                job_id="test",
+                document_path="doc1.pdf",
+                meeting="M",
+                date="2024-01-01",
+                error_type="permanent",
+                error_class="E",
+                error_message="E",
+                retry_count=0
+            )
 
         # Second manifest appends another entry
-        manifest2 = FailureManifest(str(manifest_path))
-        manifest2.record_failure(
-            job_id="test",
-            document_path="doc2.pdf",
-            meeting="M",
-            date="2024-01-02",
-            error_type="permanent",
-            error_class="E",
-            error_message="E",
-            retry_count=0
-        )
-        manifest2.close()
+        with FailureManifest(str(manifest_path)) as manifest2:
+            manifest2.record_failure(
+                job_id="test",
+                document_path="doc2.pdf",
+                meeting="M",
+                date="2024-01-02",
+                error_type="permanent",
+                error_class="E",
+                error_message="E",
+                retry_count=0
+            )
 
         # Verify both entries exist
         with open(manifest_path) as f:
