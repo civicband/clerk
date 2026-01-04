@@ -1,5 +1,3 @@
-import httpx
-import io
 import json
 import subprocess
 import tempfile
@@ -8,7 +6,17 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 from xml.etree.ElementTree import ParseError
 
-from clerk.ocr_utils import TRANSIENT_ERRORS, PERMANENT_ERRORS, CRITICAL_ERRORS, JobState, FailureManifest, retry_on_transient, print_progress
+import httpx
+
+from clerk.ocr_utils import (
+    CRITICAL_ERRORS,
+    PERMANENT_ERRORS,
+    TRANSIENT_ERRORS,
+    FailureManifest,
+    JobState,
+    print_progress,
+    retry_on_transient,
+)
 
 # Import PdfReadError from the module we're testing to ensure we test the same class
 try:
@@ -109,7 +117,7 @@ def test_failure_manifest_creates_file():
     """FailureManifest should create file in append mode."""
     with tempfile.TemporaryDirectory() as tmpdir:
         manifest_path = Path(tmpdir) / "failures.jsonl"
-        with FailureManifest(str(manifest_path)) as manifest:
+        with FailureManifest(str(manifest_path)):
             pass
 
         assert manifest_path.exists()
@@ -256,7 +264,7 @@ def test_retry_on_transient_exhausts_retries():
     with patch('time.sleep'):
         try:
             decorated()
-            assert False, "Should have raised"
+            raise AssertionError("Should have raised")
         except httpx.ConnectTimeout:
             pass
 
@@ -270,7 +278,7 @@ def test_retry_on_transient_fails_fast_on_critical():
 
     try:
         decorated()
-        assert False, "Should have raised"
+        raise AssertionError("Should have raised")
     except FileNotFoundError:
         pass
 
@@ -285,7 +293,7 @@ def test_retry_on_transient_passes_through_permanent():
 
     try:
         decorated()
-        assert False, "Should have raised"
+        raise AssertionError("Should have raised")
     except PdfReadError:
         pass
 

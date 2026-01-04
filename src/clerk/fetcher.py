@@ -15,18 +15,17 @@ from xml.etree.ElementTree import ParseError
 import httpx
 import sqlite_utils
 from bs4 import BeautifulSoup
-import click
 
-from clerk.output import log
-from clerk.utils import STORAGE_DIR, build_db_from_text_internal, pm
 from clerk.ocr_utils import (
-    retry_on_transient,
+    CRITICAL_ERRORS,
+    PERMANENT_ERRORS,
     FailureManifest,
     JobState,
     print_progress,
-    PERMANENT_ERRORS,
-    CRITICAL_ERRORS,
+    retry_on_transient,
 )
+from clerk.output import log
+from clerk.utils import STORAGE_DIR, build_db_from_text_internal, pm
 
 logger = logging.getLogger(__name__)
 

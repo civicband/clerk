@@ -1,14 +1,14 @@
 """OCR processing utilities for logging, progress tracking, and error handling."""
 
-import click
 import functools
-import httpx
 import json
 import subprocess
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from xml.etree.ElementTree import ParseError
+
+import httpx
 
 from clerk.output import log
 

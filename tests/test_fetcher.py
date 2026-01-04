@@ -325,10 +325,8 @@ class TestDoOCRJobEnhanced:
 
     def test_do_ocr_job_logs_operations(self, mock_site, tmp_path, monkeypatch):
         """do_ocr_job should log each operation with timing."""
-        import tempfile
         from pathlib import Path
-        from unittest.mock import Mock, patch, MagicMock, mock_open
-        import json
+        from unittest.mock import Mock, mock_open, patch
 
         from clerk.fetcher import Fetcher
         from clerk.ocr_utils import FailureManifest
@@ -385,10 +383,9 @@ class TestDoOCRJobEnhanced:
 
     def test_do_ocr_job_handles_permanent_error(self, mock_site, tmp_path, monkeypatch):
         """do_ocr_job should record permanent errors in manifest and continue."""
-        import tempfile
-        from pathlib import Path
-        from unittest.mock import Mock, patch, MagicMock
         import json
+        from pathlib import Path
+        from unittest.mock import patch
 
         from clerk.fetcher import Fetcher
         from clerk.ocr_utils import FailureManifest
@@ -436,9 +433,8 @@ class TestDoOCRJobEnhanced:
 
     def test_do_ocr_job_raises_on_critical_error(self, mock_site, tmp_path, monkeypatch):
         """do_ocr_job should raise critical errors immediately."""
-        import tempfile
         from pathlib import Path
-        from unittest.mock import Mock, patch, MagicMock
+        from unittest.mock import patch
 
         from clerk.fetcher import Fetcher
         from clerk.ocr_utils import FailureManifest
@@ -474,6 +470,7 @@ class TestDoOCRIntegration:
     def test_do_ocr_creates_failure_manifest(self, mock_site, tmp_path, monkeypatch):
         """do_ocr should create failure manifest file."""
         from unittest.mock import patch
+
         from clerk.fetcher import Fetcher
 
         mock_site["subdomain"] = "test"
@@ -494,7 +491,8 @@ class TestDoOCRIntegration:
 
     def test_do_ocr_logs_job_start_and_end(self, mock_site, tmp_path, monkeypatch):
         """do_ocr should log job start and completion."""
-        from unittest.mock import patch, Mock
+        from unittest.mock import patch
+
         from clerk.fetcher import Fetcher
 
         mock_site["subdomain"] = "test"
