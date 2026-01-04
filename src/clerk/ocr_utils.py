@@ -1,5 +1,6 @@
 """OCR processing utilities for logging, progress tracking, and error handling."""
 
+import functools
 import httpx
 import json
 import subprocess
@@ -141,3 +142,52 @@ class FailureManifest:
         """Context manager exit - ensures file is closed."""
         self.close()
         return False
+
+
+def retry_on_transient(max_attempts: int = 3, delay_seconds: float = 2):
+    """Decorator to retry transient errors with fixed delay.
+
+    Retries functions that raise transient errors (network timeouts, temporary
+    file issues). Critical errors fail fast without retry.
+
+    Args:
+        max_attempts: Maximum number of attempts (default 3)
+        delay_seconds: Delay between retries in seconds (default 2)
+
+    Returns:
+        Decorated function that retries on transient errors
+
+    Example:
+        @retry_on_transient(max_attempts=3, delay_seconds=2)
+        def fetch_pdf(url):
+            return httpx.get(url)
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    return func(*args, **kwargs)
+                except CRITICAL_ERRORS:
+                    raise  # Fail fast on critical errors
+                except TRANSIENT_ERRORS as e:
+                    if attempt == max_attempts:
+                        raise  # Exhausted retries
+
+                    # Extract subdomain from kwargs if available for logging
+                    subdomain = kwargs.get('subdomain', 'unknown')
+
+                    from clerk.output import log
+                    log(
+                        f"Transient error, retrying in {delay_seconds}s",
+                        subdomain=subdomain,
+                        level="warning",
+                        error_class=e.__class__.__name__,
+                        error_message=str(e),
+                        retry_attempt=attempt,
+                        max_retries=max_attempts,
+                    )
+                    time.sleep(delay_seconds)
+                # All other errors pass through (permanent errors)
+        return wrapper
+    return decorator

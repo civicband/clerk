@@ -4,9 +4,10 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
+from unittest.mock import Mock, patch
 from xml.etree.ElementTree import ParseError
 
-from clerk.ocr_utils import TRANSIENT_ERRORS, PERMANENT_ERRORS, CRITICAL_ERRORS, JobState, FailureManifest
+from clerk.ocr_utils import TRANSIENT_ERRORS, PERMANENT_ERRORS, CRITICAL_ERRORS, JobState, FailureManifest, retry_on_transient
 
 # Import PdfReadError from the module we're testing to ensure we test the same class
 try:
@@ -215,3 +216,75 @@ def test_failure_manifest_append_mode():
         with open(manifest_path) as f:
             lines = f.readlines()
         assert len(lines) == 2
+
+
+def test_retry_on_transient_success_first_attempt():
+    """Decorator should return immediately on success."""
+    mock_func = Mock(return_value="success")
+    decorated = retry_on_transient(max_attempts=3, delay_seconds=0.1)(mock_func)
+
+    result = decorated()
+
+    assert result == "success"
+    assert mock_func.call_count == 1
+
+
+def test_retry_on_transient_retries_transient_error():
+    """Decorator should retry transient errors."""
+    mock_func = Mock(side_effect=[
+        httpx.ConnectTimeout("timeout"),
+        httpx.ConnectTimeout("timeout"),
+        "success"
+    ])
+    decorated = retry_on_transient(max_attempts=3, delay_seconds=0.1)(mock_func)
+
+    with patch('time.sleep'):  # Don't actually sleep in tests
+        result = decorated()
+
+    assert result == "success"
+    assert mock_func.call_count == 3
+
+
+def test_retry_on_transient_exhausts_retries():
+    """Decorator should raise after max_attempts."""
+    mock_func = Mock(side_effect=httpx.ConnectTimeout("timeout"))
+    decorated = retry_on_transient(max_attempts=3, delay_seconds=0.1)(mock_func)
+
+    with patch('time.sleep'):
+        try:
+            decorated()
+            assert False, "Should have raised"
+        except httpx.ConnectTimeout:
+            pass
+
+    assert mock_func.call_count == 3
+
+
+def test_retry_on_transient_fails_fast_on_critical():
+    """Decorator should not retry critical errors."""
+    mock_func = Mock(side_effect=FileNotFoundError("missing"))
+    decorated = retry_on_transient(max_attempts=3, delay_seconds=0.1)(mock_func)
+
+    try:
+        decorated()
+        assert False, "Should have raised"
+    except FileNotFoundError:
+        pass
+
+    assert mock_func.call_count == 1  # No retries
+
+
+def test_retry_on_transient_passes_through_permanent():
+    """Decorator should not retry permanent errors (not in TRANSIENT or CRITICAL)."""
+    # Use PdfReadError from ocr_utils (works even if pypdf is not installed)
+    mock_func = Mock(side_effect=PdfReadError("corrupted"))
+    decorated = retry_on_transient(max_attempts=3, delay_seconds=0.1)(mock_func)
+
+    try:
+        decorated()
+        assert False, "Should have raised"
+    except PdfReadError:
+        pass
+
+    # Permanent errors pass through (not caught by decorator)
+    assert mock_func.call_count == 1
