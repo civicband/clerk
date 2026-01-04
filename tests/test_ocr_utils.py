@@ -1,4 +1,5 @@
 import httpx
+import io
 import json
 import subprocess
 import tempfile
@@ -7,7 +8,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 from xml.etree.ElementTree import ParseError
 
-from clerk.ocr_utils import TRANSIENT_ERRORS, PERMANENT_ERRORS, CRITICAL_ERRORS, JobState, FailureManifest, retry_on_transient
+from clerk.ocr_utils import TRANSIENT_ERRORS, PERMANENT_ERRORS, CRITICAL_ERRORS, JobState, FailureManifest, retry_on_transient, print_progress
 
 # Import PdfReadError from the module we're testing to ensure we test the same class
 try:
@@ -290,3 +291,52 @@ def test_retry_on_transient_passes_through_permanent():
 
     # Permanent errors pass through (not caught by decorator)
     assert mock_func.call_count == 1
+
+
+def test_print_progress_with_no_eta():
+    """print_progress should show 'calculating...' when no progress yet."""
+    state = JobState(job_id="test", total_documents=100)
+
+    with patch('sys.stderr', new_callable=io.StringIO) as mock_stderr:
+        print_progress(state)
+        output = mock_stderr.getvalue()
+
+    assert "OCR Progress:" in output
+    assert "[0/100]" in output
+    assert "0.0% complete" in output
+    assert "0 failed" in output
+    assert "calculating..." in output
+
+
+def test_print_progress_with_progress():
+    """print_progress should show percentage and ETA."""
+    state = JobState(job_id="test", total_documents=100)
+    state.start_time = time.time() - 10  # Started 10 seconds ago
+    state.completed = 50
+
+    with patch('sys.stderr', new_callable=io.StringIO) as mock_stderr:
+        print_progress(state)
+        output = mock_stderr.getvalue()
+
+    assert "OCR Progress:" in output
+    assert "[50/100]" in output
+    assert "50.0% complete" in output
+    assert "0 failed" in output
+    assert "ETA:" in output
+    assert "s" in output  # Should show seconds
+
+
+def test_print_progress_with_failures():
+    """print_progress should show failed count."""
+    state = JobState(job_id="test", total_documents=100)
+    state.start_time = time.time() - 10
+    state.completed = 40
+    state.failed = 10
+
+    with patch('sys.stderr', new_callable=io.StringIO) as mock_stderr:
+        print_progress(state)
+        output = mock_stderr.getvalue()
+
+    assert "[50/100]" in output
+    assert "50.0% complete" in output
+    assert "10 failed" in output

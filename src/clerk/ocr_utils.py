@@ -1,5 +1,6 @@
 """OCR processing utilities for logging, progress tracking, and error handling."""
 
+import click
 import functools
 import httpx
 import json
@@ -194,3 +195,21 @@ def retry_on_transient(max_attempts: int = 3, delay_seconds: float = 2):
                 # All other errors pass through (permanent errors)
         return wrapper
     return decorator
+
+
+def print_progress(state: JobState) -> None:
+    """Print human-readable progress to stderr.
+
+    Args:
+        state: JobState with current progress
+    """
+    pct = state.progress_pct()
+    processed = state.completed + state.failed + state.skipped
+    eta = state.eta_seconds()
+    eta_str = f"ETA: {int(eta)}s" if eta else "calculating..."
+
+    click.echo(
+        f"OCR Progress: [{processed}/{state.total_documents}] "
+        f"{pct:.1f}% complete, {state.failed} failed | {eta_str}",
+        err=True
+    )
