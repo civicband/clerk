@@ -250,3 +250,24 @@ class TestErrorHandling:
 
         with pytest.raises(SystemExit):
             get_civic_db()
+
+    def test_postgres_url_normalized_to_postgresql(self, monkeypatch, mocker):
+        """Test that postgres:// URLs are normalized to postgresql://."""
+        # Mock create_engine to avoid actual connection
+        mock_engine = mocker.MagicMock()
+        mock_connection = mocker.MagicMock()
+        mock_engine.connect.return_value.__enter__ = mocker.MagicMock(return_value=mock_connection)
+        mock_engine.connect.return_value.__exit__ = mocker.MagicMock(return_value=None)
+        mock_connection.execute.return_value = None
+
+        mock_create_engine = mocker.patch("clerk.db.create_engine", return_value=mock_engine)
+
+        # Set DATABASE_URL with postgres:// scheme
+        monkeypatch.setenv("DATABASE_URL", "postgres://user:pass@host:5432/db")
+
+        get_civic_db()
+
+        # Verify create_engine was called with postgresql:// (normalized)
+        call_args = mock_create_engine.call_args[0][0]
+        assert call_args.startswith("postgresql://")
+        assert not call_args.startswith("postgres://")
