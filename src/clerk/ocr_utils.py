@@ -2,6 +2,8 @@
 
 import httpx
 import subprocess
+import time
+from dataclasses import dataclass, field
 from xml.etree.ElementTree import ParseError
 
 # Optional PDF dependencies
@@ -35,3 +37,32 @@ CRITICAL_ERRORS = (
     PermissionError,    # Can't write to storage
     ImportError,        # Missing dependencies
 )
+
+
+@dataclass
+class JobState:
+    """Tracks OCR job progress and timing."""
+
+    job_id: str
+    total_documents: int
+    completed: int = 0
+    failed: int = 0
+    skipped: int = 0
+    start_time: float = field(default_factory=time.time)
+    current_document: str | None = None
+
+    def progress_pct(self) -> float:
+        """Calculate progress percentage."""
+        processed = self.completed + self.failed + self.skipped
+        return (processed / self.total_documents * 100) if self.total_documents > 0 else 0.0
+
+    def eta_seconds(self) -> float | None:
+        """Estimate time remaining in seconds."""
+        processed = self.completed + self.failed + self.skipped
+        if processed == 0:
+            return None
+
+        elapsed = time.time() - self.start_time
+        rate = elapsed / processed
+        remaining = self.total_documents - processed
+        return rate * remaining
