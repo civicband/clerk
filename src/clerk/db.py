@@ -25,6 +25,10 @@ def get_civic_db():
     database_url = os.getenv("DATABASE_URL")
 
     if database_url:
+        # Normalize postgres:// to postgresql:// for SQLAlchemy 1.4+
+        if database_url.startswith("postgres://"):
+            database_url = database_url.replace("postgres://", "postgresql://", 1)
+
         # Production: PostgreSQL
         try:
             engine = create_engine(
