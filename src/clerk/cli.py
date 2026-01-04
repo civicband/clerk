@@ -85,7 +85,8 @@ def configure_logging(command_name: str = "unknown"):
     if loki_url:
         import logging_loki
 
-        loki_handler = logging_loki.LokiHandler(
+        # Use LokiQueueHandler for async batched sending (much faster than synchronous LokiHandler)
+        loki_handler = logging_loki.LokiQueueHandler(
             url=f"{loki_url}/loki/api/v1/push",
             tags={"job": "clerk", "host": os.uname().nodename, "command": command_name},
             version="1",
