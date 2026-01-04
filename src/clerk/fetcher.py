@@ -431,15 +431,15 @@ class Fetcher:
     def do_ocr_job(
         self,
         job: tuple[str, str, str],
-        manifest: FailureManifest | None = None,
-        job_id: str | None = None
+        manifest: FailureManifest,
+        job_id: str
     ) -> None:
         """Process a single PDF document through OCR pipeline.
 
         Args:
             job: Tuple of (prefix, meeting, date)
-            manifest: FailureManifest for recording failures (optional for backward compatibility)
-            job_id: Unique job identifier for logging (optional for backward compatibility)
+            manifest: FailureManifest for recording failures
+            job_id: Unique job identifier for logging
         """
         if not PDF_SUPPORT:
             raise ImportError(
@@ -450,10 +450,6 @@ class Fetcher:
         prefix = job[0]
         meeting = job[1]
         date = job[2]
-
-        # Generate job_id if not provided (backward compatibility)
-        if job_id is None:
-            job_id = f"{meeting}_{date}"
 
         log("Processing document", subdomain=self.subdomain, job_id=job_id,
             meeting=meeting, date=date)
@@ -563,17 +559,16 @@ class Fetcher:
                 total_duration_ms=int((time.time() - st) * 1000))
 
         except PERMANENT_ERRORS as e:
-            if manifest is not None:
-                manifest.record_failure(
-                    job_id=job_id,
-                    document_path=doc_path,
-                    meeting=meeting,
-                    date=date,
-                    error_type="permanent",
-                    error_class=e.__class__.__name__,
-                    error_message=str(e),
-                    retry_count=0  # Already retried by decorator if transient
-                )
+            manifest.record_failure(
+                job_id=job_id,
+                document_path=doc_path,
+                meeting=meeting,
+                date=date,
+                error_type="permanent",
+                error_class=e.__class__.__name__,
+                error_message=str(e),
+                retry_count=0  # Already retried by decorator if transient
+            )
             log("Document failed", subdomain=self.subdomain, job_id=job_id,
                 meeting=meeting, date=date, error_class=e.__class__.__name__,
                 error_message=str(e), level="error")
