@@ -14,6 +14,8 @@ class TestAssertDbExists:
 
     def test_creates_database_if_not_exists(self, tmp_path, monkeypatch):
         """Test that assert_db_exists creates a new database if it doesn't exist."""
+        from sqlalchemy import Engine
+
         db_path = tmp_path / "test_civic.db"
         monkeypatch.chdir(tmp_path)
 
@@ -21,20 +23,23 @@ class TestAssertDbExists:
         assert not db_path.exists()
 
         # Call assert_db_exists
-        db = assert_db_exists()
+        engine = assert_db_exists()
 
         # Database should now exist
         assert Path("civic.db").exists()
-        assert isinstance(db, sqlite_utils.Database)
+        assert isinstance(engine, Engine)
 
     def test_creates_sites_table(self, tmp_path, monkeypatch):
         """Test that the sites table is created with correct schema."""
+        from sqlalchemy import inspect
+
         monkeypatch.chdir(tmp_path)
 
-        db = assert_db_exists()
+        engine = assert_db_exists()
 
         # Check sites table exists
-        assert db["sites"].exists()
+        inspector = inspect(engine)
+        assert "sites" in inspector.get_table_names()
 
         # Check column names
         expected_columns = {
@@ -49,33 +54,40 @@ class TestAssertDbExists:
             "extra",
             "status",
             "last_updated",
+            "last_deployed",
             "lat",
             "lng",
             "extraction_status",
             "last_extracted",
         }
-        actual_columns = {col.name for col in db["sites"].columns}
+        actual_columns = {col["name"] for col in inspector.get_columns("sites")}
         assert actual_columns == expected_columns
 
         # Check primary key
-        assert db["sites"].pks == ["subdomain"]
+        pk_constraint = inspector.get_pk_constraint("sites")
+        assert pk_constraint["constrained_columns"] == ["subdomain"]
 
     def test_creates_feed_entries_table(self, tmp_path, monkeypatch):
         """Test that the feed_entries table is created."""
+        from sqlalchemy import inspect
+
         monkeypatch.chdir(tmp_path)
 
-        db = assert_db_exists()
+        engine = assert_db_exists()
 
         # Check feed_entries table exists
-        assert db["feed_entries"].exists()
+        inspector = inspect(engine)
+        assert "feed_entries" in inspector.get_table_names()
 
         # Check column names
         expected_columns = {"subdomain", "date", "kind", "name"}
-        actual_columns = {col.name for col in db["feed_entries"].columns}
+        actual_columns = {col["name"] for col in inspector.get_columns("feed_entries")}
         assert actual_columns == expected_columns
 
     def test_transforms_deprecated_columns(self, tmp_path, monkeypatch):
         """Test that deprecated columns are removed via transform."""
+        from sqlalchemy import inspect
+
         monkeypatch.chdir(tmp_path)
 
         # Create a database with deprecated columns
@@ -102,10 +114,11 @@ class TestAssertDbExists:
         )
 
         # Call assert_db_exists which should remove deprecated columns
-        db = assert_db_exists()
+        engine = assert_db_exists()
 
         # Check that deprecated columns are removed
-        column_names = {col.name for col in db["sites"].columns}
+        inspector = inspect(engine)
+        column_names = {col["name"] for col in inspector.get_columns("sites")}
         assert "ocr_class" not in column_names
         assert "docker_port" not in column_names
         assert "save_agendas" not in column_names
@@ -113,17 +126,22 @@ class TestAssertDbExists:
 
     def test_idempotent(self, tmp_path, monkeypatch):
         """Test that calling assert_db_exists multiple times is safe."""
+        from sqlalchemy import inspect
+
         monkeypatch.chdir(tmp_path)
 
         # Call multiple times
-        db1 = assert_db_exists()
-        db2 = assert_db_exists()
-        db3 = assert_db_exists()
+        engine1 = assert_db_exists()
+        engine2 = assert_db_exists()
+        engine3 = assert_db_exists()
 
         # Should all reference the same database
-        assert db1["sites"].exists()
-        assert db2["sites"].exists()
-        assert db3["sites"].exists()
+        inspector1 = inspect(engine1)
+        inspector2 = inspect(engine2)
+        inspector3 = inspect(engine3)
+        assert "sites" in inspector1.get_table_names()
+        assert "sites" in inspector2.get_table_names()
+        assert "sites" in inspector3.get_table_names()
 
     def test_no_orphan_tables_on_repeated_calls(self, tmp_path, monkeypatch):
         """Test that repeated calls don't create orphan sites_new_* tables."""
@@ -142,17 +160,21 @@ class TestAssertDbExists:
 
     def test_skips_transform_when_no_deprecated_columns(self, tmp_path, monkeypatch):
         """Test that transform is skipped when deprecated columns don't exist."""
+        from sqlalchemy import inspect
+
         monkeypatch.chdir(tmp_path)
 
         # Create clean database
-        db = assert_db_exists()
+        engine = assert_db_exists()
 
         # Get initial table count
-        initial_tables = set(db.table_names())
+        inspector = inspect(engine)
+        initial_tables = set(inspector.get_table_names())
 
         # Call again - should not create any new tables
-        db = assert_db_exists()
-        final_tables = set(db.table_names())
+        engine = assert_db_exists()
+        inspector = inspect(engine)
+        final_tables = set(inspector.get_table_names())
 
         # No new tables should have been created
         new_tables = final_tables - initial_tables

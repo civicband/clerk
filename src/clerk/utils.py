@@ -59,11 +59,6 @@ logger = logging.getLogger(__name__)
 pm = pluggy.PluginManager("civicband.clerk")
 pm.add_hookspecs(ClerkSpec)
 
-# Import DefaultDBPlugin after PM initialization to avoid circular imports
-from .plugins import DefaultDBPlugin  # noqa: E402
-
-pm.register(DefaultDBPlugin())
-
 STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
 
 
@@ -388,43 +383,40 @@ def save_extraction_cache(cache_file: str, data: dict) -> None:
 
 
 def assert_db_exists():
-    db = sqlite_utils.Database("civic.db")
-    if not db["sites"].exists():
-        db["sites"].create(  # pyright: ignore[reportAttributeAccessIssue]
-            {
-                "subdomain": str,
-                "name": str,
-                "state": str,
-                "country": str,
-                "kind": str,
-                "scraper": str,
-                "pages": int,
-                "start_year": int,
-                "extra": str,
-                "status": str,
-                "last_updated": str,
-                "lat": str,
-                "lng": str,
-                "extraction_status": str,
-                "last_extracted": str,
-            },
-            pk="subdomain",
-        )
-    if not db["feed_entries"].exists():
-        db["feed_entries"].create(  # pyright: ignore[reportAttributeAccessIssue]
-            {"subdomain": str, "date": str, "kind": str, "name": str},
-        )
+    """Ensure civic.db schema exists using SQLAlchemy abstraction.
 
-    # Only drop deprecated columns if they still exist
-    # Running transform unconditionally creates orphan tables on failure
-    existing_columns = {col.name for col in db["sites"].columns}
-    deprecated_columns = {"ocr_class", "docker_port", "save_agendas", "site_db"}
-    columns_to_drop = existing_columns & deprecated_columns
+    Returns:
+        SQLAlchemy engine instance
+    """
 
-    if columns_to_drop:
-        db["sites"].transform(drop=columns_to_drop)  # pyright: ignore[reportAttributeAccessIssue]
+    from .db import get_civic_db
+    from .models import metadata
 
-    return db
+    engine = get_civic_db()
+
+    # Create tables if they don't exist
+    # This works for both SQLite and PostgreSQL
+    metadata.create_all(engine, checkfirst=True)
+
+    # Handle deprecated columns for SQLite only
+    # PostgreSQL migrations are managed via Alembic
+    if "sqlite" in str(engine.url):
+        # Use sqlite_utils for backward compatibility with column dropping
+        db = sqlite_utils.Database(str(engine.url).replace("sqlite:///", ""))
+
+        # Check for feed_entries table (legacy, create if needed)
+        if not db["feed_entries"].exists():
+            db["feed_entries"].create({"subdomain": str, "date": str, "kind": str, "name": str})
+
+        # Only drop deprecated columns if they still exist
+        existing_columns = {col.name for col in db["sites"].columns}
+        deprecated_columns = {"ocr_class", "docker_port", "save_agendas", "site_db"}
+        columns_to_drop = existing_columns & deprecated_columns
+
+        if columns_to_drop:
+            db["sites"].transform(drop=columns_to_drop)
+
+    return engine
 
 
 def extract_and_cache(text: str, doc, cache_file: str) -> tuple[dict, dict]:

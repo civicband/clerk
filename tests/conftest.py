@@ -235,11 +235,8 @@ def mock_fetcher(sample_site_data):
 @pytest.fixture
 def mock_plugin_manager():
     """Create a plugin manager with test plugins registered."""
-    from clerk.plugins import DefaultDBPlugin
-
     pm = pluggy.PluginManager("civicband.clerk")
     pm.add_hookspecs(ClerkSpec)
-    pm.register(DefaultDBPlugin())  # Register first so TestPlugin can override
     pm.register(TestPlugin())
     return pm
 

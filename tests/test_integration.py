@@ -238,8 +238,11 @@ class TestDatabaseOperations:
                 "extra": None,
                 "status": "deployed",
                 "last_updated": "2024-01-01T00:00:00",
+                "last_deployed": None,
                 "lat": "0",
                 "lng": "0",
+                "extraction_status": "pending",
+                "last_extracted": None,
             },
             {
                 "subdomain": "site2.civic.band",
@@ -253,8 +256,11 @@ class TestDatabaseOperations:
                 "extra": None,
                 "status": "deployed",
                 "last_updated": "2024-01-01T00:00:00",
+                "last_deployed": None,
                 "lat": "0",
                 "lng": "0",
+                "extraction_status": "pending",
+                "last_extracted": None,
             },
         ]
         civic_db["sites"].insert_all(sites, pk="subdomain")
