@@ -252,3 +252,13 @@ def monkeypatch_storage_dir(tmp_storage_dir, monkeypatch):
     monkeypatch.setattr(clerk.cli, "STORAGE_DIR", str(tmp_storage_dir))
     monkeypatch.setattr(clerk.utils, "STORAGE_DIR", str(tmp_storage_dir))
     return tmp_storage_dir
+
+
+@pytest.fixture
+def mock_site():
+    """Return a minimal site configuration for testing."""
+    return {
+        "subdomain": "test",
+        "start_year": 2020,
+        "pages": 0,
+    }

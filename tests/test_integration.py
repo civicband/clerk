@@ -695,3 +695,76 @@ class TestExtractionIntegration:
         # When disabled, should have empty structures
         assert entities == {"persons": [], "orgs": [], "locations": []}
         assert votes == {"votes": []}
+
+
+@pytest.mark.integration
+class TestOCRFailureManifest:
+    """Integration tests for OCR failure manifest creation."""
+
+    def test_ocr_pipeline_with_failure_manifest(self, tmp_path, monkeypatch, mock_site):
+        """Integration test: OCR pipeline creates failure manifest on errors."""
+        import json
+        from pathlib import Path
+        from unittest.mock import Mock, patch
+
+        mock_site["subdomain"] = "integration_test"
+
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+
+        # Patch the STORAGE_DIR in the clerk modules
+        import clerk.fetcher
+        import clerk.utils
+
+        monkeypatch.setattr(clerk.fetcher, "STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(clerk.utils, "STORAGE_DIR", str(tmp_path))
+
+        from clerk.fetcher import Fetcher
+
+        fetcher = Fetcher(mock_site)
+
+        # Create test PDF directory with one valid and one corrupted PDF
+        pdf_dir = Path(tmp_path) / "integration_test" / "pdfs" / "TestMeeting"
+        pdf_dir.mkdir(parents=True, exist_ok=True)
+
+        (pdf_dir / "2024-01-01.pdf").write_bytes(b"%PDF-1.4 fake valid pdf")
+        (pdf_dir / "2024-01-02.pdf").write_bytes(b"corrupted")
+
+        # Mock PDF processing - need to mock PdfReadError too
+        from clerk.ocr_utils import PdfReadError
+
+        with (
+            patch("clerk.fetcher.PDF_SUPPORT", True),
+            patch("clerk.fetcher.PdfReader") as mock_reader,
+            patch("clerk.fetcher.PdfReadError", PdfReadError),
+            patch("clerk.fetcher.convert_from_path") as mock_convert,
+            patch("subprocess.check_output") as mock_tesseract,
+            patch("clerk.fetcher.pm.hook.upload_static_file"),
+        ):
+            # First PDF succeeds, second fails
+            def pdf_side_effect(path):
+                if "2024-01-01" in str(path):
+                    mock = Mock()
+                    mock.pages = [Mock()]
+                    return mock
+                else:
+                    raise PdfReadError("corrupted")
+
+            mock_reader.side_effect = pdf_side_effect
+            mock_convert.return_value = [Mock()]
+            mock_tesseract.return_value = b"test text"
+
+            # Run OCR
+            fetcher.do_ocr()
+
+            # Verify failure manifest was created
+            manifest_files = list(Path(tmp_path).glob("integration_test/ocr_failures_*.jsonl"))
+            assert len(manifest_files) == 1
+
+            # Verify manifest content
+            with open(manifest_files[0]) as f:
+                entries = [json.loads(line) for line in f]
+
+            assert len(entries) == 1
+            assert entries[0]["meeting"] == "TestMeeting"
+            assert entries[0]["date"] == "2024-01-02"
+            assert entries[0]["error_class"] == "PdfReadError"

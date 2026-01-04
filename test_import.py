@@ -2,7 +2,7 @@
 """Test that utils.py imports correctly with new dataclasses."""
 
 try:
-    from src.clerk.utils import PageFile, MeetingDateGroup, PageData
+    from src.clerk.utils import MeetingDateGroup, PageData, PageFile
     print("SUCCESS: All dataclasses imported correctly")
     print(f"PageFile: {PageFile}")
     print(f"MeetingDateGroup: {MeetingDateGroup}")
