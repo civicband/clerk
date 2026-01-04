@@ -346,15 +346,14 @@ class Fetcher:
         )
 
     def ocr(self) -> None:
-        # TODO: Assert correct directories exist for minutes and agendas
-        # TODO: This should be a "transform" function
+        """Run OCR on both minutes and agendas."""
         st = time.time()
         self.do_ocr()
         self.do_ocr(prefix="/_agendas")
         et = time.time()
         elapsed_time = et - st
         log(
-            f"OCR execution time: {elapsed_time:.2f} seconds",
+            f"Total OCR execution time: {elapsed_time:.2f} seconds",
             subdomain=self.subdomain,
             elapsed_time=f"{elapsed_time:.2f}",
         )
@@ -377,15 +376,31 @@ class Fetcher:
         )
 
     def do_ocr(self, prefix: str = "") -> None:
+        """Run OCR on all PDFs in the directory.
+
+        Args:
+            prefix: Directory prefix (e.g., "" for minutes, "/_agendas" for agendas)
+        """
+        from clerk.ocr_utils import JobState, FailureManifest, print_progress, PERMANENT_ERRORS, CRITICAL_ERRORS
+        import click
+
+        # Generate unique job ID
+        job_id = f"ocr_{int(time.time())}"
+
+        # Setup directories
         self.images_dir = f"{self.dir_prefix}{prefix}/images"
         pdf_dir = f"{self.dir_prefix}{prefix}/pdfs"
         txt_dir = f"{self.dir_prefix}{prefix}/txt"
         processed_dir = f"{self.dir_prefix}{prefix}/processed"
+
         if not os.path.exists(processed_dir):
             os.makedirs(processed_dir)
+
         if not os.path.exists(f"{pdf_dir}"):
             log(f"No PDFs found in {pdf_dir}", subdomain=self.subdomain)
             return
+
+        # Build job list
         directories = [
             directory for directory in sorted(os.listdir(pdf_dir)) if directory != ".DS_Store"
         ]
@@ -410,22 +425,74 @@ class Fetcher:
 
                 jobs.append((prefix, meeting, date))
 
+        if not jobs:
+            log(f"No PDF documents to process in {pdf_dir}", subdomain=self.subdomain)
+            return
+
+        # Initialize job state and failure manifest
+        state = JobState(job_id=job_id, total_documents=len(jobs))
+        manifest_path = f"{self.dir_prefix}/ocr_failures_{job_id}.jsonl"
+        manifest = FailureManifest(manifest_path)
+
+        log("OCR job started", subdomain=self.subdomain, job_id=job_id,
+            total_documents=len(jobs), prefix=prefix)
+
+        # Process jobs with thread pool
         with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_WORKERS) as executor:
-            future_to_job = {executor.submit(self.do_ocr_job, job): job for job in jobs}
+            future_to_job = {
+                executor.submit(self.do_ocr_job, job, manifest, job_id): job
+                for job in jobs
+            }
 
             for future in concurrent.futures.as_completed(future_to_job):
                 job = future_to_job[future]
                 try:
-                    data = future.result()
+                    future.result()
+                    state.completed += 1
+                except PERMANENT_ERRORS:
+                    state.failed += 1
+                except CRITICAL_ERRORS as e:
+                    manifest.close()
+                    log("Critical error, halting OCR job", subdomain=self.subdomain,
+                        job_id=job_id, error_class=e.__class__.__name__,
+                        error_message=str(e), level="error")
+                    raise
                 except Exception as exc:
+                    # Catch-all for unexpected errors
                     log(
                         f"{job!r} generated an exception: {exc}",
                         subdomain=self.subdomain,
+                        job_id=job_id,
                         level="error",
                     )
-                else:
-                    if data is not None:
-                        log(f"{job!r} page is {len(data)} bytes", subdomain=self.subdomain)
+                    state.failed += 1
+
+                # Print progress every 5 documents
+                processed = state.completed + state.failed + state.skipped
+                if processed % 5 == 0 or processed == state.total_documents:
+                    print_progress(state)
+
+        manifest.close()
+
+        # Log job completion
+        elapsed = time.time() - state.start_time
+        log("OCR job completed", subdomain=self.subdomain, job_id=job_id,
+            completed=state.completed, failed=state.failed, skipped=state.skipped,
+            duration_seconds=int(elapsed))
+
+        # Print final summary to stderr
+        click.echo(
+            f"\nOCR job {job_id} completed: {state.completed} succeeded, "
+            f"{state.failed} failed, {state.skipped} skipped "
+            f"(total: {state.total_documents} documents in {elapsed:.1f}s)",
+            err=True
+        )
+
+        if state.failed > 0:
+            click.echo(
+                f"Failure manifest written to: {manifest_path}",
+                err=True
+            )
 
     @retry_on_transient(max_attempts=3, delay_seconds=2)
     def do_ocr_job(
