@@ -8,7 +8,10 @@ from xml.etree.ElementTree import ParseError
 try:
     from pypdf.errors import PdfReadError
 except ImportError:
-    PdfReadError = Exception
+    # Create a placeholder exception type that will never match
+    class PdfReadError(Exception):
+        """Placeholder for when pypdf is not installed."""
+        pass
 
 
 # Transient errors - retry with backoff

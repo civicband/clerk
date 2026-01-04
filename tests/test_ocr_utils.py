@@ -4,10 +4,11 @@ from xml.etree.ElementTree import ParseError
 
 from clerk.ocr_utils import TRANSIENT_ERRORS, PERMANENT_ERRORS, CRITICAL_ERRORS
 
+# Import PdfReadError from the module we're testing to ensure we test the same class
 try:
     from pypdf.errors import PdfReadError
 except ImportError:
-    PdfReadError = Exception
+    from clerk.ocr_utils import PdfReadError
 
 
 def test_transient_errors_tuple():
