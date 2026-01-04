@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from xml.etree.ElementTree import ParseError
 
+from clerk.output import log
+
 # Optional PDF dependencies
 try:
     from pypdf.errors import PdfReadError
@@ -168,8 +170,6 @@ def retry_on_transient(max_attempts: int = 3, delay_seconds: float = 2):
             for attempt in range(1, max_attempts + 1):
                 try:
                     return func(*args, **kwargs)
-                except CRITICAL_ERRORS:
-                    raise  # Fail fast on critical errors
                 except TRANSIENT_ERRORS as e:
                     if attempt == max_attempts:
                         raise  # Exhausted retries
@@ -177,7 +177,6 @@ def retry_on_transient(max_attempts: int = 3, delay_seconds: float = 2):
                     # Extract subdomain from kwargs if available for logging
                     subdomain = kwargs.get('subdomain', 'unknown')
 
-                    from clerk.output import log
                     log(
                         f"Transient error, retrying in {delay_seconds}s",
                         subdomain=subdomain,
@@ -188,6 +187,8 @@ def retry_on_transient(max_attempts: int = 3, delay_seconds: float = 2):
                         max_retries=max_attempts,
                     )
                     time.sleep(delay_seconds)
+                except CRITICAL_ERRORS:
+                    raise  # Fail fast on critical errors
                 # All other errors pass through (permanent errors)
         return wrapper
     return decorator
