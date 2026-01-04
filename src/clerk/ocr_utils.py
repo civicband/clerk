@@ -26,7 +26,9 @@ TRANSIENT_ERRORS = (
     httpx.ConnectTimeout,
     httpx.ReadTimeout,
     httpx.RemoteProtocolError,
-    OSError,  # Temporary file system issues
+    BlockingIOError,      # Resource temporarily unavailable
+    ChildProcessError,    # Child process issues
+    InterruptedError,     # System call interrupted
 )
 
 # Permanent errors - log and skip

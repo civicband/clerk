@@ -21,7 +21,9 @@ def test_transient_errors_tuple():
     assert httpx.ConnectTimeout in TRANSIENT_ERRORS
     assert httpx.ReadTimeout in TRANSIENT_ERRORS
     assert httpx.RemoteProtocolError in TRANSIENT_ERRORS
-    assert OSError in TRANSIENT_ERRORS
+    assert BlockingIOError in TRANSIENT_ERRORS
+    assert ChildProcessError in TRANSIENT_ERRORS
+    assert InterruptedError in TRANSIENT_ERRORS
 
 
 def test_permanent_errors_tuple():
