@@ -318,3 +318,151 @@ class TestChunkedOCRProcessing:
         assert page_numbers[0] == 21
         assert page_numbers[-1] == 40
         assert len(page_numbers) == 20
+
+
+class TestDoOCRJobEnhanced:
+    """Test enhanced do_ocr_job with logging and error handling."""
+
+    def test_do_ocr_job_logs_operations(self, mock_site, tmp_path, monkeypatch):
+        """do_ocr_job should log each operation with timing."""
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import Mock, patch, MagicMock, mock_open
+        import json
+
+        from clerk.fetcher import Fetcher
+        from clerk.ocr_utils import FailureManifest
+
+        mock_site["subdomain"] = "test"
+
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+
+        fetcher = Fetcher(mock_site)
+        manifest_path = Path(tmp_path) / "failures.jsonl"
+        manifest = FailureManifest(str(manifest_path))
+        job_id = "test_123"
+
+        # Create necessary directories
+        pdf_dir = Path(tmp_path) / "test" / "pdfs" / "Meeting"
+        pdf_dir.mkdir(parents=True, exist_ok=True)
+        txt_dir = Path(tmp_path) / "test" / "txt" / "Meeting" / "2024-01-01"
+        txt_dir.mkdir(parents=True, exist_ok=True)
+        processed_dir = Path(tmp_path) / "test" / "processed" / "Meeting"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        (pdf_dir / "2024-01-01.pdf").write_bytes(b"fake pdf")
+
+        # Mock PDF processing
+        with patch('clerk.fetcher.PDF_SUPPORT', True), \
+             patch('clerk.fetcher.PdfReader') as mock_reader, \
+             patch('clerk.fetcher.convert_from_path') as mock_convert, \
+             patch('subprocess.check_output') as mock_tesseract, \
+             patch('clerk.fetcher.log') as mock_log, \
+             patch('builtins.open', mock_open()), \
+             patch('os.path.exists', return_value=True), \
+             patch('os.listdir', return_value=['1.png']), \
+             patch('os.remove'), \
+             patch('os.utime'), \
+             patch('shutil.rmtree'), \
+             patch('clerk.utils.pm.hook.upload_static_file'):
+
+            mock_reader.return_value.pages = [Mock(), Mock()]  # 2 pages
+            mock_convert.return_value = [Mock(), Mock()]
+            mock_tesseract.return_value = b"test text"
+
+            job = ("", "Meeting", "2024-01-01")
+            fetcher.do_ocr_job(job, manifest, job_id)
+
+            # Verify log calls
+            log_calls = [str(call) for call in mock_log.call_args_list]
+
+            # Should log: Processing document, PDF read, Image conversion, OCR completed, Document completed
+            assert any("Processing document" in str(call) for call in log_calls)
+            assert any("PDF read" in str(call) for call in log_calls)
+            assert any("operation='pdf_read'" in str(call) for call in log_calls)
+            assert any("duration_ms=" in str(call) for call in log_calls)
+
+        manifest.close()
+
+    def test_do_ocr_job_handles_permanent_error(self, mock_site, tmp_path, monkeypatch):
+        """do_ocr_job should record permanent errors in manifest and continue."""
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import Mock, patch, MagicMock
+        import json
+
+        from clerk.fetcher import Fetcher
+        from clerk.ocr_utils import FailureManifest
+
+        mock_site["subdomain"] = "test"
+
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+
+        fetcher = Fetcher(mock_site)
+        manifest_path = Path(tmp_path) / "failures.jsonl"
+        manifest = FailureManifest(str(manifest_path))
+        job_id = "test_123"
+
+        # Create a mock PdfReadError
+        class MockPdfReadError(Exception):
+            pass
+
+        # Mock PDF read error
+        with patch('clerk.fetcher.PDF_SUPPORT', True), \
+             patch('clerk.fetcher.PdfReader', side_effect=MockPdfReadError("corrupted")), \
+             patch('clerk.fetcher.PERMANENT_ERRORS', (MockPdfReadError,)), \
+             patch('clerk.fetcher.log') as mock_log:
+
+            # Create necessary directories
+            pdf_dir = Path(tmp_path) / "test" / "pdfs" / "Meeting"
+            pdf_dir.mkdir(parents=True, exist_ok=True)
+            (pdf_dir / "2024-01-01.pdf").write_bytes(b"fake pdf")
+
+            job = ("", "Meeting", "2024-01-01")
+            fetcher.do_ocr_job(job, manifest, job_id)
+
+            # Should log error
+            assert any("Document failed" in str(call) for call in mock_log.call_args_list)
+
+        manifest.close()
+
+        # Verify manifest entry
+        with open(manifest_path) as f:
+            entry = json.loads(f.readline())
+
+        assert entry["job_id"] == job_id
+        assert entry["meeting"] == "Meeting"
+        assert entry["error_type"] == "permanent"
+        assert entry["error_class"] == "MockPdfReadError"
+
+    def test_do_ocr_job_raises_on_critical_error(self, mock_site, tmp_path, monkeypatch):
+        """do_ocr_job should raise critical errors immediately."""
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import Mock, patch, MagicMock
+
+        from clerk.fetcher import Fetcher
+        from clerk.ocr_utils import FailureManifest
+
+        mock_site["subdomain"] = "test"
+
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+
+        fetcher = Fetcher(mock_site)
+        manifest_path = Path(tmp_path) / "failures.jsonl"
+        manifest = FailureManifest(str(manifest_path))
+        job_id = "test_123"
+
+        # Mock critical error (file not found means storage dir issue)
+        with patch('clerk.fetcher.PDF_SUPPORT', True), \
+             patch('clerk.fetcher.PdfReader', side_effect=FileNotFoundError("missing")), \
+             patch('clerk.fetcher.log'):
+
+            job = ("", "Meeting", "2024-01-01")
+
+            try:
+                fetcher.do_ocr_job(job, manifest, job_id)
+                assert False, "Should have raised FileNotFoundError"
+            except FileNotFoundError:
+                pass  # Expected
+
+        manifest.close()

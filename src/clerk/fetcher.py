@@ -18,6 +18,13 @@ from bs4 import BeautifulSoup
 
 from clerk.output import log
 from clerk.utils import STORAGE_DIR, build_db_from_text_internal, pm
+from clerk.ocr_utils import (
+    retry_on_transient,
+    FailureManifest,
+    JobState,
+    PERMANENT_ERRORS,
+    CRITICAL_ERRORS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -420,104 +427,163 @@ class Fetcher:
                     if data is not None:
                         log(f"{job!r} page is {len(data)} bytes", subdomain=self.subdomain)
 
-    def do_ocr_job(self, job: tuple[str, str, str]) -> None:
+    @retry_on_transient(max_attempts=3, delay_seconds=2)
+    def do_ocr_job(
+        self,
+        job: tuple[str, str, str],
+        manifest: FailureManifest | None = None,
+        job_id: str | None = None
+    ) -> None:
+        """Process a single PDF document through OCR pipeline.
+
+        Args:
+            job: Tuple of (prefix, meeting, date)
+            manifest: FailureManifest for recording failures (optional for backward compatibility)
+            job_id: Unique job identifier for logging (optional for backward compatibility)
+        """
         if not PDF_SUPPORT:
             raise ImportError(
                 "PDF support requires optional dependencies. Install with: pip install clerk[pdf]"
             )
+
         st = time.time()
         prefix = job[0]
         meeting = job[1]
         date = job[2]
 
-        log(f"Processing {job}", subdomain=self.subdomain)
-        doc_path = f"{self.dir_prefix}{prefix}/pdfs/{meeting}/{date}.pdf"
-        doc_image_dir_path = f"{self.dir_prefix}{prefix}/images/{meeting}/{date}"
+        # Generate job_id if not provided (backward compatibility)
+        if job_id is None:
+            job_id = f"{meeting}_{date}"
 
-        # Get page count first to enable chunked processing
+        log("Processing document", subdomain=self.subdomain, job_id=job_id,
+            meeting=meeting, date=date)
+
         try:
-            reader = PdfReader(doc_path)
-            total_pages = len(reader.pages)
-        except Exception as e:
-            log(f"{doc_path} failed to read: {e}", subdomain=self.subdomain, level="error")
-            return
+            doc_path = f"{self.dir_prefix}{prefix}/pdfs/{meeting}/{date}.pdf"
+            doc_image_dir_path = f"{self.dir_prefix}{prefix}/images/{meeting}/{date}"
 
-        # Process PDF in chunks to avoid "too many open files" error
-        try:
-            for chunk_start in range(1, total_pages + 1, PDF_CHUNK_SIZE):
-                chunk_end = min(chunk_start + PDF_CHUNK_SIZE - 1, total_pages)
-                with tempfile.TemporaryDirectory() as path:
-                    pages = convert_from_path(
-                        doc_path,
-                        fmt="png",
-                        size=(1276, 1648),
-                        dpi=150,
-                        output_folder=path,
-                        first_page=chunk_start,
-                        last_page=chunk_end,
-                    )
-                    for idx, page in enumerate(pages):
-                        page_number = chunk_start + idx
-                        page_image_path = f"{doc_image_dir_path}/{page_number}.png"
-                        if os.path.exists(page_image_path) and not prefix:
-                            continue
-                        page.save(page_image_path, "PNG")
-        except Exception as e:
-            log(f"{doc_path} failed to process: {e}", subdomain=self.subdomain, level="error")
-            return
-        for page_image in os.listdir(f"{doc_image_dir_path}"):
-            page_image_path = f"{doc_image_dir_path}/{page_image}"
-            remote_storage_path = f"/{self.subdomain}{prefix}/{meeting}/{date}/{page_image}"
-            txt_filename = page_image.replace(".png", ".txt")
-            txt_filepath = f"{self.dir_prefix}{prefix}/txt/{meeting}/{date}/{txt_filename}"
-            if not os.path.exists(txt_filepath):
-                try:
-                    text = subprocess.check_output(
-                        [
-                            "tesseract",
-                            "-l",
-                            self.ocr_lang,
-                            "--dpi",
-                            "150",
-                            "--oem",
-                            "1",
-                            page_image_path,
-                            "stdout",
-                        ],
-                        stderr=subprocess.DEVNULL,
+            # PDF reading with timing
+            read_st = time.time()
+            try:
+                reader = PdfReader(doc_path)
+                total_pages = len(reader.pages)
+            except Exception as e:
+                log(f"{doc_path} failed to read: {e}", subdomain=self.subdomain, level="error")
+                raise
+
+            log("PDF read", subdomain=self.subdomain, operation="pdf_read",
+                meeting=meeting, date=date, page_count=total_pages,
+                duration_ms=int((time.time() - read_st) * 1000))
+
+            # Image conversion with timing
+            conv_st = time.time()
+            try:
+                for chunk_start in range(1, total_pages + 1, PDF_CHUNK_SIZE):
+                    chunk_end = min(chunk_start + PDF_CHUNK_SIZE - 1, total_pages)
+                    with tempfile.TemporaryDirectory() as path:
+                        pages = convert_from_path(
+                            doc_path,
+                            fmt="png",
+                            size=(1276, 1648),
+                            dpi=150,
+                            output_folder=path,
+                            first_page=chunk_start,
+                            last_page=chunk_end,
+                        )
+                        for idx, page in enumerate(pages):
+                            page_number = chunk_start + idx
+                            page_image_path = f"{doc_image_dir_path}/{page_number}.png"
+                            if os.path.exists(page_image_path) and not prefix:
+                                continue
+                            page.save(page_image_path, "PNG")
+            except Exception as e:
+                log(f"{doc_path} failed to process: {e}", subdomain=self.subdomain, level="error")
+                raise
+
+            log("Image conversion", subdomain=self.subdomain,
+                operation="pdf_to_images", meeting=meeting, date=date,
+                duration_ms=int((time.time() - conv_st) * 1000))
+
+            # OCR with timing
+            ocr_st = time.time()
+            for page_image in os.listdir(f"{doc_image_dir_path}"):
+                page_image_path = f"{doc_image_dir_path}/{page_image}"
+                remote_storage_path = f"/{self.subdomain}{prefix}/{meeting}/{date}/{page_image}"
+                txt_filename = page_image.replace(".png", ".txt")
+                txt_filepath = f"{self.dir_prefix}{prefix}/txt/{meeting}/{date}/{txt_filename}"
+
+                if not os.path.exists(txt_filepath):
+                    try:
+                        text = subprocess.check_output(
+                            [
+                                "tesseract",
+                                "-l",
+                                self.ocr_lang,
+                                "--dpi",
+                                "150",
+                                "--oem",
+                                "1",
+                                page_image_path,
+                                "stdout",
+                            ],
+                            stderr=subprocess.DEVNULL,
+                        )
+
+                        with open(txt_filepath, "wb") as textfile:
+                            textfile.write(text)
+                    except Exception as e:
+                        log(
+                            f"error processing {page_image_path}, {e}",
+                            subdomain=self.subdomain,
+                            level="error",
+                        )
+
+                    pm.hook.upload_static_file(
+                        file_path=page_image_path, storage_path=remote_storage_path
                     )
 
-                    with open(
-                        txt_filepath,
-                        "wb",
-                    ) as textfile:
-                        textfile.write(text)
-                except Exception as e:
-                    log(
-                        f"error processing {page_image_path}, {e}",
-                        subdomain=self.subdomain,
-                        level="error",
-                    )
-                pm.hook.upload_static_file(
-                    file_path=page_image_path, storage_path=remote_storage_path
+                if page_image.endswith(".txt"):
+                    continue
+
+            log("OCR completed", subdomain=self.subdomain, operation="tesseract",
+                meeting=meeting, date=date, page_count=total_pages,
+                duration_ms=int((time.time() - ocr_st) * 1000))
+
+            # Cleanup
+            processed_path = f"{self.dir_prefix}{prefix}/processed/{meeting}/{date}.txt"
+            with open(processed_path, "a"):
+                os.utime(processed_path, None)
+            remote_pdf_path = f"{self.subdomain}{prefix}/_pdfs/{meeting}/{date}.pdf"
+            pm.hook.upload_static_file(file_path=doc_path, storage_path=remote_pdf_path)
+            os.remove(doc_path)
+            shutil.rmtree(doc_image_dir_path)
+
+            log("Document completed", subdomain=self.subdomain, job_id=job_id,
+                meeting=meeting, date=date,
+                total_duration_ms=int((time.time() - st) * 1000))
+
+        except PERMANENT_ERRORS as e:
+            if manifest is not None:
+                manifest.record_failure(
+                    job_id=job_id,
+                    document_path=doc_path,
+                    meeting=meeting,
+                    date=date,
+                    error_type="permanent",
+                    error_class=e.__class__.__name__,
+                    error_message=str(e),
+                    retry_count=0  # Already retried by decorator if transient
                 )
-            if page_image.endswith(".txt"):
-                continue
-        processed_path = f"{self.dir_prefix}{prefix}/processed/{meeting}/{date}.txt"
-        with open(processed_path, "a"):
-            os.utime(processed_path, None)
-        remote_pdf_path = f"{self.subdomain}{prefix}/_pdfs/{meeting}/{date}.pdf"
-        pm.hook.upload_static_file(file_path=doc_path, storage_path=remote_pdf_path)
-        os.remove(doc_path)
-        shutil.rmtree(doc_image_dir_path)
-        et = time.time()
-        elapsed_time = et - st
-        log(
-            f"OCR time: {elapsed_time:.2f} seconds",
-            subdomain=self.subdomain,
-            path=page_image_path,
-            elapsed_time=f"{elapsed_time:.2f}",
-        )
+            log("Document failed", subdomain=self.subdomain, job_id=job_id,
+                meeting=meeting, date=date, error_class=e.__class__.__name__,
+                error_message=str(e), level="error")
+            return  # Skip and continue
+
+        except CRITICAL_ERRORS as e:
+            log("Critical error", subdomain=self.subdomain, job_id=job_id,
+                error_class=e.__class__.__name__, error_message=str(e),
+                level="error")
+            raise  # Fail fast
 
     def fetch_events(self) -> None:
         """Subclasses must override this to fetch meeting data."""
