@@ -136,7 +136,7 @@ def test_failure_manifest_record_failure():
                 error_type="permanent",
                 error_class="PdfReadError",
                 error_message="Corrupted PDF",
-                retry_count=3
+                retry_count=3,
             )
 
         # Read and verify
@@ -168,7 +168,7 @@ def test_failure_manifest_multiple_entries():
                 error_type="permanent",
                 error_class="Error1",
                 error_message="Error 1",
-                retry_count=0
+                retry_count=0,
             )
             manifest.record_failure(
                 job_id="test",
@@ -178,7 +178,7 @@ def test_failure_manifest_multiple_entries():
                 error_type="transient",
                 error_class="Error2",
                 error_message="Error 2",
-                retry_count=3
+                retry_count=3,
             )
 
         # Read and verify
@@ -207,7 +207,7 @@ def test_failure_manifest_append_mode():
                 error_type="permanent",
                 error_class="E",
                 error_message="E",
-                retry_count=0
+                retry_count=0,
             )
 
         # Second manifest appends another entry
@@ -220,7 +220,7 @@ def test_failure_manifest_append_mode():
                 error_type="permanent",
                 error_class="E",
                 error_message="E",
-                retry_count=0
+                retry_count=0,
             )
 
         # Verify both entries exist
@@ -242,14 +242,12 @@ def test_retry_on_transient_success_first_attempt():
 
 def test_retry_on_transient_retries_transient_error():
     """Decorator should retry transient errors."""
-    mock_func = Mock(side_effect=[
-        httpx.ConnectTimeout("timeout"),
-        httpx.ConnectTimeout("timeout"),
-        "success"
-    ])
+    mock_func = Mock(
+        side_effect=[httpx.ConnectTimeout("timeout"), httpx.ConnectTimeout("timeout"), "success"]
+    )
     decorated = retry_on_transient(max_attempts=3, delay_seconds=0.1)(mock_func)
 
-    with patch('time.sleep'):  # Don't actually sleep in tests
+    with patch("time.sleep"):  # Don't actually sleep in tests
         result = decorated()
 
     assert result == "success"
@@ -261,7 +259,7 @@ def test_retry_on_transient_exhausts_retries():
     mock_func = Mock(side_effect=httpx.ConnectTimeout("timeout"))
     decorated = retry_on_transient(max_attempts=3, delay_seconds=0.1)(mock_func)
 
-    with patch('time.sleep'):
+    with patch("time.sleep"):
         try:
             decorated()
             raise AssertionError("Should have raised")
@@ -305,7 +303,7 @@ def test_print_progress_with_no_eta():
     """print_progress should show 'calculating...' when no progress yet."""
     state = JobState(job_id="test", total_documents=100)
 
-    with patch('clerk.output.log') as mock_log:
+    with patch("clerk.output.log") as mock_log:
         print_progress(state, subdomain="test.civic.band")
 
     # Verify log was called with correct message
@@ -327,7 +325,7 @@ def test_print_progress_with_progress():
     state.start_time = time.time() - 10  # Started 10 seconds ago
     state.completed = 50
 
-    with patch('clerk.output.log') as mock_log:
+    with patch("clerk.output.log") as mock_log:
         print_progress(state, subdomain="test.civic.band")
 
     # Verify log was called with correct message
@@ -351,7 +349,7 @@ def test_print_progress_with_failures():
     state.completed = 40
     state.failed = 10
 
-    with patch('clerk.output.log') as mock_log:
+    with patch("clerk.output.log") as mock_log:
         print_progress(state, subdomain="test.civic.band")
 
     # Verify log was called with correct message

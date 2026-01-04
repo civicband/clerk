@@ -17,8 +17,9 @@ try:
     from pypdf.errors import PdfReadError
 except ImportError:
     # Create a placeholder exception type that will never match
-    class PdfReadError(Exception):
+    class PdfReadError(Exception):  # type: ignore[no-redef]
         """Placeholder for when pypdf is not installed."""
+
         pass
 
 
@@ -27,9 +28,9 @@ TRANSIENT_ERRORS = (
     httpx.ConnectTimeout,
     httpx.ReadTimeout,
     httpx.RemoteProtocolError,
-    BlockingIOError,      # Resource temporarily unavailable
-    ChildProcessError,    # Child process issues
-    InterruptedError,     # System call interrupted
+    BlockingIOError,  # Resource temporarily unavailable
+    ChildProcessError,  # Child process issues
+    InterruptedError,  # System call interrupted
 )
 
 # Permanent errors - log and skip
@@ -42,8 +43,8 @@ PERMANENT_ERRORS = (
 # Critical errors - fail fast
 CRITICAL_ERRORS = (
     FileNotFoundError,  # Storage dir doesn't exist
-    PermissionError,    # Can't write to storage
-    ImportError,        # Missing dependencies
+    PermissionError,  # Can't write to storage
+    ImportError,  # Missing dependencies
 )
 
 
@@ -96,7 +97,7 @@ class FailureManifest:
             manifest_path: Path to JSONL file
         """
         self.path = manifest_path
-        self.file = open(manifest_path, 'a')
+        self.file = open(manifest_path, "a")
 
     def record_failure(
         self,
@@ -107,7 +108,7 @@ class FailureManifest:
         error_type: str,
         error_class: str,
         error_message: str,
-        retry_count: int
+        retry_count: int,
     ) -> None:
         """Record a document failure to the manifest.
 
@@ -130,9 +131,9 @@ class FailureManifest:
             "error_class": error_class,
             "error_message": error_message,
             "failed_at": datetime.now().isoformat(),
-            "retry_count": retry_count
+            "retry_count": retry_count,
         }
-        self.file.write(json.dumps(entry) + '\n')
+        self.file.write(json.dumps(entry) + "\n")
         self.file.flush()  # Ensure immediate write
 
     def close(self) -> None:
@@ -167,6 +168,7 @@ def retry_on_transient(max_attempts: int = 3, delay_seconds: float = 2):
         def fetch_pdf(url):
             return httpx.get(url)
     """
+
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -178,7 +180,7 @@ def retry_on_transient(max_attempts: int = 3, delay_seconds: float = 2):
                         raise  # Exhausted retries
 
                     # Extract subdomain from kwargs if available for logging
-                    subdomain = kwargs.get('subdomain', 'unknown')
+                    subdomain = kwargs.get("subdomain", "unknown")
 
                     log(
                         f"Transient error, retrying in {delay_seconds}s",
@@ -193,7 +195,9 @@ def retry_on_transient(max_attempts: int = 3, delay_seconds: float = 2):
                 except CRITICAL_ERRORS:
                     raise  # Fail fast on critical errors
                 # All other errors pass through (permanent errors)
+
         return wrapper
+
     return decorator
 
 
@@ -214,5 +218,5 @@ def print_progress(state: JobState, subdomain: str) -> None:
     log(
         f"OCR Progress: [{processed}/{state.total_documents}] "
         f"{pct:.1f}% complete, {state.failed} failed | {eta_str}",
-        subdomain=subdomain
+        subdomain=subdomain,
     )

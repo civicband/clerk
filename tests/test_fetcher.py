@@ -350,19 +350,20 @@ class TestDoOCRJobEnhanced:
         (pdf_dir / "2024-01-01.pdf").write_bytes(b"fake pdf")
 
         # Mock PDF processing
-        with patch('clerk.fetcher.PDF_SUPPORT', True), \
-             patch('clerk.fetcher.PdfReader') as mock_reader, \
-             patch('clerk.fetcher.convert_from_path') as mock_convert, \
-             patch('subprocess.check_output') as mock_tesseract, \
-             patch('clerk.fetcher.log') as mock_log, \
-             patch('builtins.open', mock_open()), \
-             patch('os.path.exists', return_value=True), \
-             patch('os.listdir', return_value=['1.png']), \
-             patch('os.remove'), \
-             patch('os.utime'), \
-             patch('shutil.rmtree'), \
-             patch('clerk.utils.pm.hook.upload_static_file'):
-
+        with (
+            patch("clerk.fetcher.PDF_SUPPORT", True),
+            patch("clerk.fetcher.PdfReader") as mock_reader,
+            patch("clerk.fetcher.convert_from_path") as mock_convert,
+            patch("subprocess.check_output") as mock_tesseract,
+            patch("clerk.fetcher.log") as mock_log,
+            patch("builtins.open", mock_open()),
+            patch("os.path.exists", return_value=True),
+            patch("os.listdir", return_value=["1.png"]),
+            patch("os.remove"),
+            patch("os.utime"),
+            patch("shutil.rmtree"),
+            patch("clerk.utils.pm.hook.upload_static_file"),
+        ):
             mock_reader.return_value.pages = [Mock(), Mock()]  # 2 pages
             mock_convert.return_value = [Mock(), Mock()]
             mock_tesseract.return_value = b"test text"
@@ -404,11 +405,12 @@ class TestDoOCRJobEnhanced:
             pass
 
         # Mock PDF read error
-        with patch('clerk.fetcher.PDF_SUPPORT', True), \
-             patch('clerk.fetcher.PdfReader', side_effect=MockPdfReadError("corrupted")), \
-             patch('clerk.fetcher.PERMANENT_ERRORS', (MockPdfReadError,)), \
-             patch('clerk.fetcher.log') as mock_log:
-
+        with (
+            patch("clerk.fetcher.PDF_SUPPORT", True),
+            patch("clerk.fetcher.PdfReader", side_effect=MockPdfReadError("corrupted")),
+            patch("clerk.fetcher.PERMANENT_ERRORS", (MockPdfReadError,)),
+            patch("clerk.fetcher.log") as mock_log,
+        ):
             # Create necessary directories
             pdf_dir = Path(tmp_path) / "test" / "pdfs" / "Meeting"
             pdf_dir.mkdir(parents=True, exist_ok=True)
@@ -449,10 +451,11 @@ class TestDoOCRJobEnhanced:
         job_id = "test_123"
 
         # Mock critical error (file not found means storage dir issue)
-        with patch('clerk.fetcher.PDF_SUPPORT', True), \
-             patch('clerk.fetcher.PdfReader', side_effect=FileNotFoundError("missing")), \
-             patch('clerk.fetcher.log'):
-
+        with (
+            patch("clerk.fetcher.PDF_SUPPORT", True),
+            patch("clerk.fetcher.PdfReader", side_effect=FileNotFoundError("missing")),
+            patch("clerk.fetcher.log"),
+        ):
             job = ("", "Meeting", "2024-01-01")
 
             try:
@@ -479,10 +482,11 @@ class TestDoOCRIntegration:
         fetcher = Fetcher(mock_site)
 
         # Mock empty PDF directory
-        with patch('os.path.exists', return_value=True), \
-             patch('os.listdir', return_value=[]), \
-             patch('clerk.output.log'):
-
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("os.listdir", return_value=[]),
+            patch("clerk.output.log"),
+        ):
             fetcher.do_ocr()
 
             # Check that a failure manifest was created (or would be created)
@@ -500,10 +504,11 @@ class TestDoOCRIntegration:
 
         fetcher = Fetcher(mock_site)
 
-        with patch('os.path.exists', return_value=False), \
-             patch('os.makedirs'), \
-             patch('clerk.fetcher.log') as mock_log:
-
+        with (
+            patch("os.path.exists", return_value=False),
+            patch("os.makedirs"),
+            patch("clerk.fetcher.log") as mock_log,
+        ):
             fetcher.do_ocr()
 
             # Should log "No PDFs found"

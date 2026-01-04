@@ -432,14 +432,18 @@ class Fetcher:
         manifest_path = f"{self.dir_prefix}/ocr_failures_{job_id}.jsonl"
         manifest = FailureManifest(manifest_path)
 
-        log("OCR job started", subdomain=self.subdomain, job_id=job_id,
-            total_documents=len(jobs), prefix=prefix)
+        log(
+            "OCR job started",
+            subdomain=self.subdomain,
+            job_id=job_id,
+            total_documents=len(jobs),
+            prefix=prefix,
+        )
 
         # Process jobs with thread pool
         with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_WORKERS) as executor:
             future_to_job = {
-                executor.submit(self.do_ocr_job, job, manifest, job_id): job
-                for job in jobs
+                executor.submit(self.do_ocr_job, job, manifest, job_id): job for job in jobs
             }
 
             for future in concurrent.futures.as_completed(future_to_job):
@@ -451,9 +455,14 @@ class Fetcher:
                     state.failed += 1
                 except CRITICAL_ERRORS as e:
                     manifest.close()
-                    log("Critical error, halting OCR job", subdomain=self.subdomain,
-                        job_id=job_id, error_class=e.__class__.__name__,
-                        error_message=str(e), level="error")
+                    log(
+                        "Critical error, halting OCR job",
+                        subdomain=self.subdomain,
+                        job_id=job_id,
+                        error_class=e.__class__.__name__,
+                        error_message=str(e),
+                        level="error",
+                    )
                     raise
                 except Exception as exc:
                     # Catch-all for unexpected errors
@@ -474,31 +483,29 @@ class Fetcher:
 
         # Log job completion
         elapsed = time.time() - state.start_time
-        log("OCR job completed", subdomain=self.subdomain, job_id=job_id,
-            completed=state.completed, failed=state.failed, skipped=state.skipped,
-            duration_seconds=int(elapsed))
+        log(
+            "OCR job completed",
+            subdomain=self.subdomain,
+            job_id=job_id,
+            completed=state.completed,
+            failed=state.failed,
+            skipped=state.skipped,
+            duration_seconds=int(elapsed),
+        )
 
         # Print final summary
         log(
             f"OCR job {job_id} completed: {state.completed} succeeded, "
             f"{state.failed} failed, {state.skipped} skipped "
             f"(total: {state.total_documents} documents in {elapsed:.1f}s)",
-            subdomain=self.subdomain
+            subdomain=self.subdomain,
         )
 
         if state.failed > 0:
-            log(
-                f"Failure manifest written to: {manifest_path}",
-                subdomain=self.subdomain
-            )
+            log(f"Failure manifest written to: {manifest_path}", subdomain=self.subdomain)
 
     @retry_on_transient(max_attempts=3, delay_seconds=2)
-    def do_ocr_job(
-        self,
-        job: tuple[str, str, str],
-        manifest: FailureManifest,
-        job_id: str
-    ) -> None:
+    def do_ocr_job(self, job: tuple[str, str, str], manifest: FailureManifest, job_id: str) -> None:
         """Process a single PDF document through OCR pipeline.
 
         Args:
@@ -516,8 +523,13 @@ class Fetcher:
         meeting = job[1]
         date = job[2]
 
-        log("Processing document", subdomain=self.subdomain, job_id=job_id,
-            meeting=meeting, date=date)
+        log(
+            "Processing document",
+            subdomain=self.subdomain,
+            job_id=job_id,
+            meeting=meeting,
+            date=date,
+        )
 
         try:
             doc_path = f"{self.dir_prefix}{prefix}/pdfs/{meeting}/{date}.pdf"
@@ -532,9 +544,15 @@ class Fetcher:
                 log(f"{doc_path} failed to read: {e}", subdomain=self.subdomain, level="error")
                 raise
 
-            log("PDF read", subdomain=self.subdomain, operation="pdf_read",
-                meeting=meeting, date=date, page_count=total_pages,
-                duration_ms=int((time.time() - read_st) * 1000))
+            log(
+                "PDF read",
+                subdomain=self.subdomain,
+                operation="pdf_read",
+                meeting=meeting,
+                date=date,
+                page_count=total_pages,
+                duration_ms=int((time.time() - read_st) * 1000),
+            )
 
             # Image conversion with timing
             conv_st = time.time()
@@ -561,9 +579,14 @@ class Fetcher:
                 log(f"{doc_path} failed to process: {e}", subdomain=self.subdomain, level="error")
                 raise
 
-            log("Image conversion", subdomain=self.subdomain,
-                operation="pdf_to_images", meeting=meeting, date=date,
-                duration_ms=int((time.time() - conv_st) * 1000))
+            log(
+                "Image conversion",
+                subdomain=self.subdomain,
+                operation="pdf_to_images",
+                meeting=meeting,
+                date=date,
+                duration_ms=int((time.time() - conv_st) * 1000),
+            )
 
             # OCR with timing
             ocr_st = time.time()
@@ -606,9 +629,15 @@ class Fetcher:
                 if page_image.endswith(".txt"):
                     continue
 
-            log("OCR completed", subdomain=self.subdomain, operation="tesseract",
-                meeting=meeting, date=date, page_count=total_pages,
-                duration_ms=int((time.time() - ocr_st) * 1000))
+            log(
+                "OCR completed",
+                subdomain=self.subdomain,
+                operation="tesseract",
+                meeting=meeting,
+                date=date,
+                page_count=total_pages,
+                duration_ms=int((time.time() - ocr_st) * 1000),
+            )
 
             # Cleanup
             processed_path = f"{self.dir_prefix}{prefix}/processed/{meeting}/{date}.txt"
@@ -619,9 +648,14 @@ class Fetcher:
             os.remove(doc_path)
             shutil.rmtree(doc_image_dir_path)
 
-            log("Document completed", subdomain=self.subdomain, job_id=job_id,
-                meeting=meeting, date=date,
-                total_duration_ms=int((time.time() - st) * 1000))
+            log(
+                "Document completed",
+                subdomain=self.subdomain,
+                job_id=job_id,
+                meeting=meeting,
+                date=date,
+                total_duration_ms=int((time.time() - st) * 1000),
+            )
 
         except PERMANENT_ERRORS as e:
             manifest.record_failure(
@@ -632,17 +666,29 @@ class Fetcher:
                 error_type="permanent",
                 error_class=e.__class__.__name__,
                 error_message=str(e),
-                retry_count=0  # Already retried by decorator if transient
+                retry_count=0,  # Already retried by decorator if transient
             )
-            log("Document failed", subdomain=self.subdomain, job_id=job_id,
-                meeting=meeting, date=date, error_class=e.__class__.__name__,
-                error_message=str(e), level="error")
+            log(
+                "Document failed",
+                subdomain=self.subdomain,
+                job_id=job_id,
+                meeting=meeting,
+                date=date,
+                error_class=e.__class__.__name__,
+                error_message=str(e),
+                level="error",
+            )
             return  # Skip and continue
 
         except CRITICAL_ERRORS as e:
-            log("Critical error", subdomain=self.subdomain, job_id=job_id,
-                error_class=e.__class__.__name__, error_message=str(e),
-                level="error")
+            log(
+                "Critical error",
+                subdomain=self.subdomain,
+                job_id=job_id,
+                error_class=e.__class__.__name__,
+                error_message=str(e),
+                level="error",
+            )
             raise  # Fail fast
 
     def fetch_events(self) -> None:

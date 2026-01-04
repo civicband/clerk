@@ -714,6 +714,7 @@ class TestOCRFailureManifest:
         # Patch the STORAGE_DIR in the clerk modules
         import clerk.fetcher
         import clerk.utils
+
         monkeypatch.setattr(clerk.fetcher, "STORAGE_DIR", str(tmp_path))
         monkeypatch.setattr(clerk.utils, "STORAGE_DIR", str(tmp_path))
 
@@ -731,14 +732,14 @@ class TestOCRFailureManifest:
         # Mock PDF processing - need to mock PdfReadError too
         from clerk.ocr_utils import PdfReadError
 
-        with patch("clerk.fetcher.PDF_SUPPORT", True), patch(
-            "clerk.fetcher.PdfReader"
-        ) as mock_reader, patch("clerk.fetcher.PdfReadError", PdfReadError), patch(
-            "clerk.fetcher.convert_from_path"
-        ) as mock_convert, patch("subprocess.check_output") as mock_tesseract, patch(
-            "clerk.fetcher.pm.hook.upload_static_file"
+        with (
+            patch("clerk.fetcher.PDF_SUPPORT", True),
+            patch("clerk.fetcher.PdfReader") as mock_reader,
+            patch("clerk.fetcher.PdfReadError", PdfReadError),
+            patch("clerk.fetcher.convert_from_path") as mock_convert,
+            patch("subprocess.check_output") as mock_tesseract,
+            patch("clerk.fetcher.pm.hook.upload_static_file"),
         ):
-
             # First PDF succeeds, second fails
             def pdf_side_effect(path):
                 if "2024-01-01" in str(path):
