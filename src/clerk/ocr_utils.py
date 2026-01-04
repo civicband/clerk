@@ -57,7 +57,15 @@ class JobState:
         return (processed / self.total_documents * 100) if self.total_documents > 0 else 0.0
 
     def eta_seconds(self) -> float | None:
-        """Estimate time remaining in seconds."""
+        """Estimate time remaining in seconds.
+
+        Returns:
+            Estimated seconds until completion, or None if no progress yet
+            or if total_documents is zero.
+        """
+        if self.total_documents == 0:
+            return None
+
         processed = self.completed + self.failed + self.skipped
         if processed == 0:
             return None
@@ -65,4 +73,6 @@ class JobState:
         elapsed = time.time() - self.start_time
         rate = elapsed / processed
         remaining = self.total_documents - processed
-        return rate * remaining
+
+        # Ensure we don't return negative ETA if somehow overprocessed
+        return max(0.0, rate * remaining)

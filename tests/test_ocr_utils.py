@@ -89,3 +89,10 @@ def test_eta_seconds_with_progress():
     # Should take ~90 seconds more (10 docs in 10s = 1 doc/s, 90 remaining)
     assert eta is not None
     assert 85 < eta < 95  # Allow some tolerance
+
+
+def test_job_state_zero_total_documents():
+    """JobState should handle zero total documents gracefully."""
+    state = JobState(job_id="test", total_documents=0)
+    assert state.progress_pct() == 0.0
+    assert state.eta_seconds() is None
