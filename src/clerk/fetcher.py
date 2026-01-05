@@ -545,8 +545,8 @@ class Fetcher:
             RuntimeError: If Vision Framework unavailable or processing fails
         """
         try:
-            import Vision
             import Quartz
+            import Vision
         except ImportError as e:
             raise RuntimeError(
                 "Vision Framework requires pyobjc-framework-Vision. "

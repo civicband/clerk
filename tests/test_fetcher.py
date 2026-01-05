@@ -1,6 +1,7 @@
 """Tests for the Fetcher base class."""
 
 import sys
+
 import pytest
 
 
@@ -552,8 +553,9 @@ class TestOCRWithTesseract:
 
     def test_ocr_with_tesseract_handles_subprocess_error(self, tmp_path, mocker):
         """Test that _ocr_with_tesseract handles subprocess errors."""
-        from clerk.fetcher import Fetcher
         import subprocess
+
+        from clerk.fetcher import Fetcher
 
         image_path = tmp_path / "test.png"
         image_path.write_bytes(b"fake png data")
@@ -616,8 +618,9 @@ def test_ocr_with_vision_extracts_text(tmp_path, mocker, monkeypatch):
 @pytest.mark.skipif(sys.platform != "darwin", reason="Vision Framework only on macOS")
 def test_ocr_with_vision_handles_import_error(tmp_path, monkeypatch):
     """Test that _ocr_with_vision raises helpful error when pyobjc not installed."""
-    from clerk.fetcher import Fetcher
     import sys
+
+    from clerk.fetcher import Fetcher
 
     # Set storage dir
     monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
@@ -744,8 +747,9 @@ def test_do_ocr_job_uses_vision_backend(tmp_path, mocker, monkeypatch):
     job = ("", "meeting", "2024-01-01")
     fetcher.do_ocr_job(job, manifest, job_id, backend="vision")
 
-    # Verify Vision was called
+    # Verify Vision was called, Tesseract was not
     assert mock_vision.called
+    assert not mock_tesseract.called
 
     manifest.close()
 
