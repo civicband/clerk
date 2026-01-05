@@ -9,6 +9,7 @@ import tempfile
 import time
 from datetime import datetime
 from hashlib import sha256
+from pathlib import Path
 from typing import Any
 from xml.etree.ElementTree import ParseError
 
@@ -509,6 +510,28 @@ class Fetcher:
         if state.failed > 0:
             log(f"Failure manifest written to: {manifest_path}", subdomain=self.subdomain)
 
+    def _ocr_with_tesseract(self, image_path: Path) -> str:
+        """Extract text from image using Tesseract OCR.
+
+        Args:
+            image_path: Path to PNG image file
+
+        Returns:
+            Extracted text as string
+        """
+        text = subprocess.check_output(
+            [
+                "tesseract",
+                "-l", self.ocr_lang,  # "eng+spa"
+                "--dpi", "150",
+                "--oem", "1",  # LSTM engine
+                str(image_path),
+                "stdout",
+            ],
+            stderr=subprocess.DEVNULL
+        )
+        return text.decode("utf-8")
+
     @retry_on_transient(max_attempts=3, delay_seconds=2)
     def do_ocr_job(
         self, job: tuple[str, str, str], manifest: FailureManifest, job_id: str, backend: str = "tesseract"
@@ -606,22 +629,9 @@ class Fetcher:
 
                 if not os.path.exists(txt_filepath):
                     try:
-                        text = subprocess.check_output(
-                            [
-                                "tesseract",
-                                "-l",
-                                self.ocr_lang,
-                                "--dpi",
-                                "150",
-                                "--oem",
-                                "1",
-                                page_image_path,
-                                "stdout",
-                            ],
-                            stderr=subprocess.DEVNULL,
-                        )
+                        text = self._ocr_with_tesseract(Path(page_image_path))
 
-                        with open(txt_filepath, "wb") as textfile:
+                        with open(txt_filepath, "w", encoding="utf-8") as textfile:
                             textfile.write(text)
                     except Exception as e:
                         log(

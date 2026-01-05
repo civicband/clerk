@@ -513,3 +513,56 @@ class TestDoOCRIntegration:
 
             # Should log "No PDFs found"
             assert any("No PDFs found" in str(call) for call in mock_log.call_args_list)
+
+
+class TestOCRWithTesseract:
+    """Test the _ocr_with_tesseract method."""
+
+    def test_ocr_with_tesseract_extracts_text(self, tmp_path, mocker):
+        """Test that _ocr_with_tesseract extracts text from an image."""
+        from clerk.fetcher import Fetcher
+
+        # Create a mock image
+        image_path = tmp_path / "test.png"
+        image_path.write_bytes(b"fake png data")
+
+        # Mock subprocess to return test text
+        mock_check_output = mocker.patch("subprocess.check_output")
+        mock_check_output.return_value = b"Test OCR text\nLine 2"
+
+        site = {"subdomain": "test", "start_year": 2020, "pages": 0}
+        fetcher = Fetcher(site)
+        result = fetcher._ocr_with_tesseract(image_path)
+
+        assert result == "Test OCR text\nLine 2"
+
+        # Verify tesseract was called with correct args
+        mock_check_output.assert_called_once()
+        args = mock_check_output.call_args[0][0]
+        assert args[0] == "tesseract"
+        assert "-l" in args
+        assert "eng+spa" in args
+        assert "--dpi" in args
+        assert "150" in args
+        assert "--oem" in args
+        assert "1" in args
+        assert str(image_path) in args
+        assert "stdout" in args
+
+    def test_ocr_with_tesseract_handles_subprocess_error(self, tmp_path, mocker):
+        """Test that _ocr_with_tesseract handles subprocess errors."""
+        from clerk.fetcher import Fetcher
+        import subprocess
+
+        image_path = tmp_path / "test.png"
+        image_path.write_bytes(b"fake png data")
+
+        # Mock subprocess to raise error
+        mock_check_output = mocker.patch("subprocess.check_output")
+        mock_check_output.side_effect = subprocess.CalledProcessError(1, "tesseract")
+
+        site = {"subdomain": "test", "start_year": 2020, "pages": 0}
+        fetcher = Fetcher(site)
+
+        with pytest.raises(subprocess.CalledProcessError):
+            fetcher._ocr_with_tesseract(image_path)
