@@ -262,3 +262,11 @@ def mock_site():
         "start_year": 2020,
         "pages": 0,
     }
+
+
+@pytest.fixture
+def cli_runner():
+    """Create a Click CLI test runner."""
+    from click.testing import CliRunner
+
+    return CliRunner()

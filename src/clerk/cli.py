@@ -200,6 +200,12 @@ def new():
 @click.option("--skip-fetch", is_flag=True)
 @click.option("--all-agendas", is_flag=True)
 @click.option("--backfill", is_flag=True)
+@click.option(
+    "--ocr-backend",
+    type=click.Choice(["tesseract", "vision"], case_sensitive=False),
+    default="tesseract",
+    help="OCR backend to use (tesseract or vision). Defaults to tesseract.",
+)
 def update(
     subdomain,
     next_site=False,
@@ -207,6 +213,7 @@ def update(
     skip_fetch=False,
     all_agendas=False,
     backfill=False,
+    ocr_backend="tesseract",
 ):
     """Update a site"""
     update_site_internal(
@@ -216,6 +223,7 @@ def update(
         skip_fetch=skip_fetch,
         all_agendas=all_agendas,
         backfill=backfill,
+        ocr_backend=ocr_backend,
     )
 
 
@@ -226,6 +234,7 @@ def update_site_internal(
     skip_fetch=False,
     all_agendas=False,
     backfill=False,
+    ocr_backend="tesseract",
 ):
     from sqlalchemy import text
 
@@ -278,7 +287,7 @@ def update_site_internal(
     fetcher = get_fetcher(site, all_years=all_years, all_agendas=all_agendas)
     if not skip_fetch:
         fetch_internal(subdomain, fetcher)
-    fetcher.ocr()  # type: ignore
+    fetcher.ocr(backend=ocr_backend)  # type: ignore
 
     # Update status after OCR, before extraction
     with civic_db_connection() as conn:

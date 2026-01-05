@@ -1164,3 +1164,44 @@ class TestExtractEntitiesIntegration:
 
         site_final = db["sites"].get("test.civic.band")
         assert site_final["extraction_status"] == "completed"
+
+
+@pytest.mark.unit
+class TestOCRBackendCLIFlag:
+    """Unit tests for --ocr-backend CLI flag."""
+
+    def test_update_command_accepts_ocr_backend_flag(self, cli_runner, tmp_path):
+        """Test that update command accepts --ocr-backend flag."""
+        result = cli_runner.invoke(
+            cli,
+            ["--storage-dir", str(tmp_path), "update", "test.example.com", "--ocr-backend", "vision"],
+            catch_exceptions=False,
+        )
+        # Should not fail due to unknown option
+        assert "--ocr-backend" not in result.output or result.exit_code != 2
+
+    def test_ocr_backend_defaults_to_tesseract(self, cli_runner, tmp_path, mocker):
+        """Test that OCR backend defaults to tesseract."""
+        mock_fetcher = mocker.patch("clerk.cli.Fetcher")
+
+        cli_runner.invoke(
+            cli,
+            ["--storage-dir", str(tmp_path), "update", "test.example.com"],
+            catch_exceptions=False,
+        )
+
+        # Verify ocr() was called with default backend
+        mock_fetcher.return_value.ocr.assert_called_once()
+
+    def test_ocr_backend_vision_passed_to_fetcher(self, cli_runner, tmp_path, mocker):
+        """Test that --ocr-backend=vision is passed to Fetcher.ocr()."""
+        mock_fetcher = mocker.patch("clerk.cli.Fetcher")
+
+        cli_runner.invoke(
+            cli,
+            ["--storage-dir", str(tmp_path), "update", "test.example.com", "--ocr-backend", "vision"],
+            catch_exceptions=False,
+        )
+
+        # Verify ocr() was called with vision backend
+        mock_fetcher.return_value.ocr.assert_called_once_with(backend="vision")

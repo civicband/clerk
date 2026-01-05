@@ -346,11 +346,15 @@ class Fetcher:
             stderr=subprocess.DEVNULL,
         )
 
-    def ocr(self) -> None:
-        """Run OCR on both minutes and agendas."""
+    def ocr(self, backend: str = "tesseract") -> None:
+        """Run OCR on both minutes and agendas.
+
+        Args:
+            backend: OCR backend to use ('tesseract' or 'vision')
+        """
         st = time.time()
-        self.do_ocr()
-        self.do_ocr(prefix="/_agendas")
+        self.do_ocr(backend=backend)
+        self.do_ocr(prefix="/_agendas", backend=backend)
         et = time.time()
         elapsed_time = et - st
         log(
@@ -376,11 +380,12 @@ class Fetcher:
             minutes=minutes_count,
         )
 
-    def do_ocr(self, prefix: str = "") -> None:
+    def do_ocr(self, prefix: str = "", backend: str = "tesseract") -> None:
         """Run OCR on all PDFs in the directory.
 
         Args:
             prefix: Directory prefix (e.g., "" for minutes, "/_agendas" for agendas)
+            backend: OCR backend to use ('tesseract' or 'vision')
         """
         # Generate unique job ID
         job_id = f"ocr_{int(time.time())}"
@@ -443,7 +448,7 @@ class Fetcher:
         # Process jobs with thread pool
         with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_WORKERS) as executor:
             future_to_job = {
-                executor.submit(self.do_ocr_job, job, manifest, job_id): job for job in jobs
+                executor.submit(self.do_ocr_job, job, manifest, job_id, backend): job for job in jobs
             }
 
             for future in concurrent.futures.as_completed(future_to_job):
@@ -505,13 +510,16 @@ class Fetcher:
             log(f"Failure manifest written to: {manifest_path}", subdomain=self.subdomain)
 
     @retry_on_transient(max_attempts=3, delay_seconds=2)
-    def do_ocr_job(self, job: tuple[str, str, str], manifest: FailureManifest, job_id: str) -> None:
+    def do_ocr_job(
+        self, job: tuple[str, str, str], manifest: FailureManifest, job_id: str, backend: str = "tesseract"
+    ) -> None:
         """Process a single PDF document through OCR pipeline.
 
         Args:
             job: Tuple of (prefix, meeting, date)
             manifest: FailureManifest for recording failures
             job_id: Unique job identifier for logging
+            backend: OCR backend to use ('tesseract' or 'vision')
         """
         if not PDF_SUPPORT:
             raise ImportError(
