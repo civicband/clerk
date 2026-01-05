@@ -49,6 +49,13 @@ autodoc_default_options = {
 
 # Mock imports for heavy dependencies that may not be available during build
 autodoc_mock_imports = [
+    "bs4",
+    "click",
+    "dotenv",
+    "httpx",
+    "pluggy",
+    "sqlalchemy",
+    "sqlite_utils",
     "weasyprint",
     "pdfkit",
     "pdf2image",
