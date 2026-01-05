@@ -681,7 +681,19 @@ class Fetcher:
 
                 if not os.path.exists(txt_filepath):
                     try:
-                        text = self._ocr_with_tesseract(Path(page_image_path))
+                        if backend == "vision":
+                            try:
+                                text = self._ocr_with_vision(Path(page_image_path))
+                            except Exception as e:
+                                log(
+                                    f"Vision OCR failed for {page_image_path}, "
+                                    f"falling back to Tesseract: {e}",
+                                    subdomain=self.subdomain,
+                                    level="warning",
+                                )
+                                text = self._ocr_with_tesseract(Path(page_image_path))
+                        else:
+                            text = self._ocr_with_tesseract(Path(page_image_path))
 
                         with open(txt_filepath, "w", encoding="utf-8") as textfile:
                             textfile.write(text)
@@ -702,7 +714,7 @@ class Fetcher:
             log(
                 "OCR completed",
                 subdomain=self.subdomain,
-                operation="tesseract",
+                operation=backend,
                 meeting=meeting,
                 date=date,
                 page_count=total_pages,

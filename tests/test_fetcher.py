@@ -662,3 +662,100 @@ def test_ocr_with_vision_handles_vision_error(tmp_path, mocker, monkeypatch):
 
     with pytest.raises(RuntimeError, match="Vision OCR failed"):
         fetcher._ocr_with_vision(image_path)
+
+
+def test_do_ocr_job_uses_tesseract_backend(tmp_path, mocker):
+    """Test that do_ocr_job uses Tesseract when backend='tesseract'."""
+    from clerk.fetcher import Fetcher
+
+    # Setup
+    fetcher = Fetcher("test.example.com", storage_dir=str(tmp_path))
+
+    # Mock the OCR methods
+    mock_tesseract = mocker.patch.object(fetcher, "_ocr_with_tesseract", return_value="Tesseract text")
+    mock_vision = mocker.patch.object(fetcher, "_ocr_with_vision", return_value="Vision text")
+
+    # Mock PDF processing
+    mocker.patch("clerk.fetcher.PdfReader")
+    mocker.patch("clerk.fetcher.convert_from_path", return_value=[mocker.MagicMock()])
+    mocker.patch.object(fetcher.pm.hook, "upload_static_file")
+
+    # Create test PDF
+    pdf_dir = tmp_path / "test.example.com" / "pdfs" / "meeting"
+    pdf_dir.mkdir(parents=True)
+    (pdf_dir / "2024-01-01.pdf").write_bytes(b"fake pdf")
+
+    # Run with tesseract backend
+    fetcher.do_ocr_job(("", "meeting", "2024-01-01"), backend="tesseract")
+
+    # Verify Tesseract was called, Vision was not
+    assert mock_tesseract.called
+    assert not mock_vision.called
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="Vision Framework only on macOS")
+def test_do_ocr_job_uses_vision_backend(tmp_path, mocker):
+    """Test that do_ocr_job uses Vision when backend='vision'."""
+    from clerk.fetcher import Fetcher
+
+    # Setup
+    fetcher = Fetcher("test.example.com", storage_dir=str(tmp_path))
+
+    # Mock the OCR methods
+    mock_tesseract = mocker.patch.object(fetcher, "_ocr_with_tesseract", return_value="Tesseract text")
+    mock_vision = mocker.patch.object(fetcher, "_ocr_with_vision", return_value="Vision text")
+
+    # Mock PDF processing
+    mocker.patch("clerk.fetcher.PdfReader")
+    mocker.patch("clerk.fetcher.convert_from_path", return_value=[mocker.MagicMock()])
+    mocker.patch.object(fetcher.pm.hook, "upload_static_file")
+
+    # Create test PDF
+    pdf_dir = tmp_path / "test.example.com" / "pdfs" / "meeting"
+    pdf_dir.mkdir(parents=True)
+    (pdf_dir / "2024-01-01.pdf").write_bytes(b"fake pdf")
+
+    # Run with vision backend
+    fetcher.do_ocr_job(("", "meeting", "2024-01-01"), backend="vision")
+
+    # Verify Vision was called
+    assert mock_vision.called
+
+
+def test_do_ocr_job_falls_back_to_tesseract_on_vision_error(tmp_path, mocker):
+    """Test that do_ocr_job falls back to Tesseract when Vision fails."""
+    from clerk.fetcher import Fetcher
+
+    # Setup
+    fetcher = Fetcher("test.example.com", storage_dir=str(tmp_path))
+
+    # Mock Vision to fail, Tesseract to succeed
+    mock_vision = mocker.patch.object(
+        fetcher, "_ocr_with_vision",
+        side_effect=RuntimeError("Vision failed")
+    )
+    mock_tesseract = mocker.patch.object(fetcher, "_ocr_with_tesseract", return_value="Tesseract text")
+
+    # Mock output.log to verify fallback warning
+    mock_log = mocker.patch("clerk.fetcher.output.log")
+
+    # Mock PDF processing
+    mocker.patch("clerk.fetcher.PdfReader")
+    mocker.patch("clerk.fetcher.convert_from_path", return_value=[mocker.MagicMock()])
+    mocker.patch.object(fetcher.pm.hook, "upload_static_file")
+
+    # Create test PDF
+    pdf_dir = tmp_path / "test.example.com" / "pdfs" / "meeting"
+    pdf_dir.mkdir(parents=True)
+    (pdf_dir / "2024-01-01.pdf").write_bytes(b"fake pdf")
+
+    # Run with vision backend
+    fetcher.do_ocr_job(("", "meeting", "2024-01-01"), backend="vision")
+
+    # Verify both were called (Vision failed, fell back to Tesseract)
+    assert mock_vision.called
+    assert mock_tesseract.called
+
+    # Verify fallback warning was logged
+    log_calls = [call[0][0] for call in mock_log.call_args_list]
+    assert any("falling back to Tesseract" in str(call) for call in log_calls)
