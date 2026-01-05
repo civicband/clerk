@@ -9,6 +9,7 @@ import tempfile
 import time
 from datetime import datetime
 from hashlib import sha256
+from pathlib import Path
 from typing import Any
 from xml.etree.ElementTree import ParseError
 
@@ -346,11 +347,15 @@ class Fetcher:
             stderr=subprocess.DEVNULL,
         )
 
-    def ocr(self) -> None:
-        """Run OCR on both minutes and agendas."""
+    def ocr(self, backend: str = "tesseract") -> None:
+        """Run OCR on both minutes and agendas.
+
+        Args:
+            backend: OCR backend to use ('tesseract' or 'vision')
+        """
         st = time.time()
-        self.do_ocr()
-        self.do_ocr(prefix="/_agendas")
+        self.do_ocr(backend=backend)
+        self.do_ocr(prefix="/_agendas", backend=backend)
         et = time.time()
         elapsed_time = et - st
         log(
@@ -376,11 +381,12 @@ class Fetcher:
             minutes=minutes_count,
         )
 
-    def do_ocr(self, prefix: str = "") -> None:
+    def do_ocr(self, prefix: str = "", backend: str = "tesseract") -> None:
         """Run OCR on all PDFs in the directory.
 
         Args:
             prefix: Directory prefix (e.g., "" for minutes, "/_agendas" for agendas)
+            backend: OCR backend to use ('tesseract' or 'vision')
         """
         # Generate unique job ID
         job_id = f"ocr_{int(time.time())}"
@@ -443,7 +449,8 @@ class Fetcher:
         # Process jobs with thread pool
         with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_WORKERS) as executor:
             future_to_job = {
-                executor.submit(self.do_ocr_job, job, manifest, job_id): job for job in jobs
+                executor.submit(self.do_ocr_job, job, manifest, job_id, backend): job
+                for job in jobs
             }
 
             for future in concurrent.futures.as_completed(future_to_job):
@@ -504,14 +511,96 @@ class Fetcher:
         if state.failed > 0:
             log(f"Failure manifest written to: {manifest_path}", subdomain=self.subdomain)
 
+    def _ocr_with_tesseract(self, image_path: Path) -> str:
+        """Extract text from image using Tesseract OCR.
+
+        Args:
+            image_path: Path to PNG image file
+
+        Returns:
+            Extracted text as string
+        """
+        text = subprocess.check_output(
+            [
+                "tesseract",
+                "-l",
+                self.ocr_lang,  # "eng+spa"
+                "--dpi",
+                "150",
+                "--oem",
+                "1",  # LSTM engine
+                str(image_path),
+                "stdout",
+            ],
+            stderr=subprocess.DEVNULL,
+        )
+        return text.decode("utf-8")
+
+    def _ocr_with_vision(self, image_path: Path) -> str:
+        """Extract text from image using Apple Vision Framework.
+
+        Args:
+            image_path: Path to PNG image file
+
+        Returns:
+            Extracted text as string
+
+        Raises:
+            RuntimeError: If Vision Framework unavailable or processing fails
+        """
+        try:
+            import Quartz
+            import Vision
+        except ImportError as e:
+            raise RuntimeError(
+                "Vision Framework requires pyobjc-framework-Vision. "
+                "Install with: pip install pyobjc-framework-Vision pyobjc-framework-Quartz"
+            ) from e
+
+        try:
+            # Load image
+            image_url = Quartz.NSURL.fileURLWithPath_(str(image_path))
+
+            # Create request with automatic language detection
+            request = Vision.VNRecognizeTextRequest.alloc().init()
+            request.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelAccurate)
+            request.setUsesLanguageCorrection_(True)
+
+            # Process image
+            handler = Vision.VNImageRequestHandler.alloc().initWithURL_options_(image_url, None)
+            success, error = handler.performRequests_error_([request], None)
+
+            if not success:
+                raise RuntimeError(f"Vision request failed: {error}")
+
+            # Extract text from results
+            observations = request.results()
+            if not observations:
+                return ""
+
+            text = "\n".join([obs.text() for obs in observations])
+            return text
+
+        except Exception as e:
+            if isinstance(e, RuntimeError):
+                raise
+            raise RuntimeError(f"Vision OCR failed: {e}") from e
+
     @retry_on_transient(max_attempts=3, delay_seconds=2)
-    def do_ocr_job(self, job: tuple[str, str, str], manifest: FailureManifest, job_id: str) -> None:
+    def do_ocr_job(
+        self,
+        job: tuple[str, str, str],
+        manifest: FailureManifest,
+        job_id: str,
+        backend: str = "tesseract",
+    ) -> None:
         """Process a single PDF document through OCR pipeline.
 
         Args:
             job: Tuple of (prefix, meeting, date)
             manifest: FailureManifest for recording failures
             job_id: Unique job identifier for logging
+            backend: OCR backend to use ('tesseract' or 'vision')
         """
         if not PDF_SUPPORT:
             raise ImportError(
@@ -534,6 +623,13 @@ class Fetcher:
         try:
             doc_path = f"{self.dir_prefix}{prefix}/pdfs/{meeting}/{date}.pdf"
             doc_image_dir_path = f"{self.dir_prefix}{prefix}/images/{meeting}/{date}"
+
+            # Backend tracking at start of processing
+            log(
+                f"Processing {doc_path} with {backend} backend",
+                subdomain=self.subdomain,
+                backend=backend,
+            )
 
             # PDF reading with timing
             read_st = time.time()
@@ -598,22 +694,21 @@ class Fetcher:
 
                 if not os.path.exists(txt_filepath):
                     try:
-                        text = subprocess.check_output(
-                            [
-                                "tesseract",
-                                "-l",
-                                self.ocr_lang,
-                                "--dpi",
-                                "150",
-                                "--oem",
-                                "1",
-                                page_image_path,
-                                "stdout",
-                            ],
-                            stderr=subprocess.DEVNULL,
-                        )
+                        if backend == "vision":
+                            try:
+                                text = self._ocr_with_vision(Path(page_image_path))
+                            except RuntimeError as e:
+                                log(
+                                    f"Vision OCR failed for {page_image_path}, "
+                                    f"falling back to Tesseract: {e}",
+                                    subdomain=self.subdomain,
+                                    level="warning",
+                                )
+                                text = self._ocr_with_tesseract(Path(page_image_path))
+                        else:
+                            text = self._ocr_with_tesseract(Path(page_image_path))
 
-                        with open(txt_filepath, "wb") as textfile:
+                        with open(txt_filepath, "w", encoding="utf-8") as textfile:
                             textfile.write(text)
                     except Exception as e:
                         log(
@@ -632,7 +727,7 @@ class Fetcher:
             log(
                 "OCR completed",
                 subdomain=self.subdomain,
-                operation="tesseract",
+                operation=backend,
                 meeting=meeting,
                 date=date,
                 page_count=total_pages,
@@ -647,6 +742,16 @@ class Fetcher:
             pm.hook.upload_static_file(file_path=doc_path, storage_path=remote_pdf_path)
             os.remove(doc_path)
             shutil.rmtree(doc_image_dir_path)
+
+            # Completion logging with backend and processing stats
+            ocr_duration = time.time() - ocr_st
+            log(
+                f"Completed {doc_path} ({total_pages} pages in {ocr_duration:.2f}s)",
+                subdomain=self.subdomain,
+                backend=backend,
+                page_count=total_pages,
+                duration_seconds=ocr_duration,
+            )
 
             log(
                 "Document completed",

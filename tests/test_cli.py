@@ -1164,3 +1164,83 @@ class TestExtractEntitiesIntegration:
 
         site_final = db["sites"].get("test.civic.band")
         assert site_final["extraction_status"] == "completed"
+
+
+@pytest.mark.unit
+class TestOCRBackendCLIFlag:
+    """Unit tests for --ocr-backend CLI flag."""
+
+    def test_update_command_accepts_ocr_backend_flag(self, cli_runner, mocker):
+        """Test that update command accepts --ocr-backend flag without error."""
+        # Mock the update_site_internal function to avoid needing a database
+        mock_update = mocker.patch("clerk.cli.update_site_internal")
+
+        result = cli_runner.invoke(
+            cli,
+            ["update", "--subdomain", "test.example.com", "--ocr-backend", "vision"],
+        )
+
+        # Command should succeed (not fail due to unknown option)
+        assert result.exit_code == 0
+        # Verify update_site_internal was called with the ocr_backend parameter
+        mock_update.assert_called_once()
+        call_kwargs = mock_update.call_args.kwargs
+        assert call_kwargs["ocr_backend"] == "vision"
+
+    def test_ocr_backend_defaults_to_tesseract(self, cli_runner, mocker):
+        """Test that OCR backend defaults to tesseract when not specified."""
+        # Mock the entire update flow
+        mock_get_fetcher = mocker.patch("clerk.cli.get_fetcher")
+        mock_fetcher_instance = mocker.Mock()
+        mock_get_fetcher.return_value = mock_fetcher_instance
+
+        # Mock database operations (note: these are imported inside the function)
+        mocker.patch("clerk.cli.assert_db_exists")
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+        mocker.patch(
+            "clerk.db.get_site_by_subdomain",
+            return_value={"subdomain": "test.example.com", "start_year": 2020},
+        )
+        mocker.patch("clerk.db.update_site")
+        mocker.patch("clerk.cli.fetch_internal")
+        mocker.patch("clerk.cli.update_page_count")
+
+        cli_runner.invoke(
+            cli,
+            ["update", "--subdomain", "test.example.com"],
+        )
+
+        # Verify ocr() was called with default backend="tesseract"
+        mock_fetcher_instance.ocr.assert_called_once_with(backend="tesseract")
+
+    def test_ocr_backend_vision_passed_to_fetcher(self, cli_runner, mocker):
+        """Test that --ocr-backend=vision is correctly passed to Fetcher.ocr()."""
+        # Mock the entire update flow
+        mock_get_fetcher = mocker.patch("clerk.cli.get_fetcher")
+        mock_fetcher_instance = mocker.Mock()
+        mock_get_fetcher.return_value = mock_fetcher_instance
+
+        # Mock database operations (note: these are imported inside the function)
+        mocker.patch("clerk.cli.assert_db_exists")
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+        mocker.patch(
+            "clerk.db.get_site_by_subdomain",
+            return_value={"subdomain": "test.example.com", "start_year": 2020},
+        )
+        mocker.patch("clerk.db.update_site")
+        mocker.patch("clerk.cli.fetch_internal")
+        mocker.patch("clerk.cli.update_page_count")
+
+        cli_runner.invoke(
+            cli,
+            ["update", "--subdomain", "test.example.com", "--ocr-backend", "vision"],
+        )
+
+        # Verify ocr() was called with backend="vision"
+        mock_fetcher_instance.ocr.assert_called_once_with(backend="vision")

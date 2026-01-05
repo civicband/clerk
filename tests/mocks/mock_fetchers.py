@@ -49,8 +49,12 @@ class MockFetcher(Fetcher):
             },
         ]
 
-    def ocr(self) -> None:
-        """Simulate OCR processing."""
+    def ocr(self, backend: str = "tesseract") -> None:
+        """Simulate OCR processing.
+
+        Args:
+            backend: OCR backend to use ('tesseract' or 'vision')
+        """
         time.sleep(0.01)
         self.ocr_complete = True
 
@@ -86,8 +90,12 @@ class FailingFetcher(MockFetcher):
         """Raise an error when fetching events."""
         raise RuntimeError("Failed to fetch events")
 
-    def ocr(self) -> None:
-        """Raise an error during OCR."""
+    def ocr(self, backend: str = "tesseract") -> None:
+        """Raise an error during OCR.
+
+        Args:
+            backend: OCR backend to use ('tesseract' or 'vision')
+        """
         raise RuntimeError("OCR processing failed")
 
     def transform(self) -> None:
@@ -117,10 +125,14 @@ class SlowFetcher(MockFetcher):
         time.sleep(self.delay)
         super().fetch_events()
 
-    def ocr(self) -> None:
-        """Simulate slow OCR."""
+    def ocr(self, backend: str = "tesseract") -> None:
+        """Simulate slow OCR.
+
+        Args:
+            backend: OCR backend to use ('tesseract' or 'vision')
+        """
         time.sleep(self.delay)
-        super().ocr()
+        super().ocr(backend=backend)
 
     def transform(self) -> None:
         """Simulate slow transform."""
