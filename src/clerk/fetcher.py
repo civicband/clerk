@@ -618,6 +618,13 @@ class Fetcher:
             doc_path = f"{self.dir_prefix}{prefix}/pdfs/{meeting}/{date}.pdf"
             doc_image_dir_path = f"{self.dir_prefix}{prefix}/images/{meeting}/{date}"
 
+            # Backend tracking at start of processing
+            log(
+                f"Processing {doc_path} with {backend} backend",
+                subdomain=self.subdomain,
+                backend=backend,
+            )
+
             # PDF reading with timing
             read_st = time.time()
             try:
@@ -729,6 +736,16 @@ class Fetcher:
             pm.hook.upload_static_file(file_path=doc_path, storage_path=remote_pdf_path)
             os.remove(doc_path)
             shutil.rmtree(doc_image_dir_path)
+
+            # Completion logging with backend and processing stats
+            ocr_duration = (time.time() - ocr_st)
+            log(
+                f"Completed {doc_path} ({total_pages} pages in {ocr_duration:.2f}s)",
+                subdomain=self.subdomain,
+                backend=backend,
+                page_count=total_pages,
+                duration_seconds=ocr_duration,
+            )
 
             log(
                 "Document completed",
