@@ -689,6 +689,9 @@ def test_do_ocr_job_uses_tesseract_backend(tmp_path, mocker, monkeypatch):
     manifest = FailureManifest(str(manifest_path))
     job_id = "test_tesseract_123"
 
+    # Mock PDF support
+    mocker.patch("clerk.fetcher.PDF_SUPPORT", True)
+
     # Mock the OCR methods
     mock_tesseract = mocker.patch.object(
         fetcher, "_ocr_with_tesseract", return_value="Tesseract text"
@@ -735,6 +738,9 @@ def test_do_ocr_job_uses_vision_backend(tmp_path, mocker, monkeypatch):
     manifest = FailureManifest(str(manifest_path))
     job_id = "test_vision_123"
 
+    # Mock PDF support
+    mocker.patch("clerk.fetcher.PDF_SUPPORT", True)
+
     # Mock the OCR methods
     mock_tesseract = mocker.patch.object(
         fetcher, "_ocr_with_tesseract", return_value="Tesseract text"
@@ -779,6 +785,9 @@ def test_do_ocr_job_falls_back_to_tesseract_on_vision_error(tmp_path, mocker, mo
     manifest_path = Path(tmp_path) / "failures.jsonl"
     manifest = FailureManifest(str(manifest_path))
     job_id = "test_fallback_123"
+
+    # Mock PDF support
+    mocker.patch("clerk.fetcher.PDF_SUPPORT", True)
 
     # Mock Vision to fail, Tesseract to succeed
     mock_vision = mocker.patch.object(

@@ -88,7 +88,7 @@ def configure_logging(command_name: str = "unknown"):
         import logging_loki
 
         # Use LokiQueueHandler for async batched sending (much faster than synchronous LokiHandler)
-        loki_queue = Queue()
+        loki_queue: Queue = Queue()
         loki_handler = logging_loki.LokiQueueHandler(
             loki_queue,
             url=f"{loki_url}/loki/api/v1/push",
