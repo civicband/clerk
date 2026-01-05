@@ -356,6 +356,6 @@ BSD 3-Clause License - See [LICENSE](LICENSE) for details.
 
 ## Links
 
-- **Documentation**: [docs/](docs/)
+- **Documentation**: https://clerk.readthedocs.io (or [local docs](docs/))
 - **Issues**: https://github.com/civicband/clerk/issues
 - **civic.band**: https://civic.band
