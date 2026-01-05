@@ -698,11 +698,16 @@ def test_do_ocr_job_uses_tesseract_backend(tmp_path, mocker, monkeypatch):
     )
     mock_vision = mocker.patch.object(fetcher, "_ocr_with_vision", return_value="Vision text")
 
-    # Mock PDF processing
+    # Mock PDF processing and file I/O
     mocker.patch("clerk.fetcher.PdfReader")
     mocker.patch("clerk.fetcher.convert_from_path", return_value=[mocker.MagicMock()])
     mocker.patch("clerk.fetcher.pm.hook.upload_static_file")
     mocker.patch("os.listdir", return_value=["1.png"])
+    mocker.patch("builtins.open", mocker.mock_open())
+    mocker.patch("os.path.exists", return_value=True)
+    mocker.patch("os.remove")
+    mocker.patch("os.utime")
+    mocker.patch("shutil.rmtree")
 
     # Create test PDF and required directories
     pdf_dir = tmp_path / "test" / "pdfs" / "meeting"
@@ -759,11 +764,16 @@ def test_do_ocr_job_uses_vision_backend(tmp_path, mocker, monkeypatch):
     )
     mock_vision = mocker.patch.object(fetcher, "_ocr_with_vision", return_value="Vision text")
 
-    # Mock PDF processing
+    # Mock PDF processing and file I/O
     mocker.patch("clerk.fetcher.PdfReader")
     mocker.patch("clerk.fetcher.convert_from_path", return_value=[mocker.MagicMock()])
     mocker.patch("clerk.fetcher.pm.hook.upload_static_file")
     mocker.patch("os.listdir", return_value=["1.png"])
+    mocker.patch("builtins.open", mocker.mock_open())
+    mocker.patch("os.path.exists", return_value=True)
+    mocker.patch("os.remove")
+    mocker.patch("os.utime")
+    mocker.patch("shutil.rmtree")
 
     # Create test PDF and required directories
     pdf_dir = tmp_path / "test" / "pdfs" / "meeting"
@@ -824,11 +834,16 @@ def test_do_ocr_job_falls_back_to_tesseract_on_vision_error(tmp_path, mocker, mo
     # Mock log to verify fallback warning
     mock_log = mocker.patch("clerk.fetcher.log")
 
-    # Mock PDF processing
+    # Mock PDF processing and file I/O
     mocker.patch("clerk.fetcher.PdfReader")
     mocker.patch("clerk.fetcher.convert_from_path", return_value=[mocker.MagicMock()])
     mocker.patch("clerk.fetcher.pm.hook.upload_static_file")
     mocker.patch("os.listdir", return_value=["1.png"])
+    mocker.patch("builtins.open", mocker.mock_open())
+    mocker.patch("os.path.exists", return_value=True)
+    mocker.patch("os.remove")
+    mocker.patch("os.utime")
+    mocker.patch("shutil.rmtree")
 
     # Create test PDF and required directories
     pdf_dir = tmp_path / "test" / "pdfs" / "meeting"
