@@ -151,6 +151,34 @@ Failure manifest written to: ../sites/example.ca.civic.band/ocr_failures_1234567
 
 Failed documents are logged with full context and recorded in a failure manifest for later retry. See [OCR Logging Documentation](docs/ocr-logging.md) for details.
 
+## OCR Backends
+
+Clerk supports two OCR backends:
+
+### Tesseract (Default)
+
+- **Cross-platform:** Linux, macOS, Windows
+- **Languages:** 100+ languages supported
+- **Setup:** Requires tesseract binary installed
+- **Usage:** `clerk update example.com` (default) or `clerk update example.com --ocr-backend=tesseract`
+
+### Vision Framework (macOS only)
+
+- **Platform:** macOS 10.15+ (M1+ recommended)
+- **Performance:** 3-5x faster than Tesseract on Apple Silicon
+- **Languages:** Automatic language detection
+- **Setup:** `pip install pyobjc-framework-Vision pyobjc-framework-Quartz`
+- **Usage:** `clerk update example.com --ocr-backend=vision`
+
+### Automatic Fallback
+
+If Vision Framework is selected but fails (missing dependencies, errors), clerk automatically falls back to Tesseract and logs a warning.
+
+```bash
+# Try Vision, fall back to Tesseract if needed
+clerk update example.com --ocr-backend=vision
+```
+
 ## Architecture
 
 Clerk uses a multi-database architecture:
