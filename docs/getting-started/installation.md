@@ -79,9 +79,6 @@ cd clerk
 
 # Install with development dependencies
 uv pip install -e ".[dev]"
-
-# Set up pre-commit hooks (optional)
-pre-commit install
 ```
 
 ## Verification
