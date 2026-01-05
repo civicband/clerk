@@ -684,7 +684,7 @@ class Fetcher:
                         if backend == "vision":
                             try:
                                 text = self._ocr_with_vision(Path(page_image_path))
-                            except Exception as e:
+                            except RuntimeError as e:
                                 log(
                                     f"Vision OCR failed for {page_image_path}, "
                                     f"falling back to Tesseract: {e}",

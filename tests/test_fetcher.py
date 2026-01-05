@@ -664,12 +664,23 @@ def test_ocr_with_vision_handles_vision_error(tmp_path, mocker, monkeypatch):
         fetcher._ocr_with_vision(image_path)
 
 
-def test_do_ocr_job_uses_tesseract_backend(tmp_path, mocker):
+def test_do_ocr_job_uses_tesseract_backend(tmp_path, mocker, monkeypatch):
     """Test that do_ocr_job uses Tesseract when backend='tesseract'."""
-    from clerk.fetcher import Fetcher
+    from pathlib import Path
 
-    # Setup
-    fetcher = Fetcher("test.example.com", storage_dir=str(tmp_path))
+    from clerk.fetcher import Fetcher
+    from clerk.ocr_utils import FailureManifest
+
+    # Setup environment
+    monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+
+    site = {"subdomain": "test", "start_year": 2020, "pages": 0}
+    fetcher = Fetcher(site)
+
+    # Create manifest and job_id
+    manifest_path = Path(tmp_path) / "failures.jsonl"
+    manifest = FailureManifest(str(manifest_path))
+    job_id = "test_tesseract_123"
 
     # Mock the OCR methods
     mock_tesseract = mocker.patch.object(fetcher, "_ocr_with_tesseract", return_value="Tesseract text")
@@ -681,25 +692,39 @@ def test_do_ocr_job_uses_tesseract_backend(tmp_path, mocker):
     mocker.patch.object(fetcher.pm.hook, "upload_static_file")
 
     # Create test PDF
-    pdf_dir = tmp_path / "test.example.com" / "pdfs" / "meeting"
+    pdf_dir = tmp_path / "test" / "pdfs" / "meeting"
     pdf_dir.mkdir(parents=True)
     (pdf_dir / "2024-01-01.pdf").write_bytes(b"fake pdf")
 
     # Run with tesseract backend
-    fetcher.do_ocr_job(("", "meeting", "2024-01-01"), backend="tesseract")
+    job = ("", "meeting", "2024-01-01")
+    fetcher.do_ocr_job(job, manifest, job_id, backend="tesseract")
 
     # Verify Tesseract was called, Vision was not
     assert mock_tesseract.called
     assert not mock_vision.called
 
+    manifest.close()
+
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="Vision Framework only on macOS")
-def test_do_ocr_job_uses_vision_backend(tmp_path, mocker):
+def test_do_ocr_job_uses_vision_backend(tmp_path, mocker, monkeypatch):
     """Test that do_ocr_job uses Vision when backend='vision'."""
-    from clerk.fetcher import Fetcher
+    from pathlib import Path
 
-    # Setup
-    fetcher = Fetcher("test.example.com", storage_dir=str(tmp_path))
+    from clerk.fetcher import Fetcher
+    from clerk.ocr_utils import FailureManifest
+
+    # Setup environment
+    monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+
+    site = {"subdomain": "test", "start_year": 2020, "pages": 0}
+    fetcher = Fetcher(site)
+
+    # Create manifest and job_id
+    manifest_path = Path(tmp_path) / "failures.jsonl"
+    manifest = FailureManifest(str(manifest_path))
+    job_id = "test_vision_123"
 
     # Mock the OCR methods
     mock_tesseract = mocker.patch.object(fetcher, "_ocr_with_tesseract", return_value="Tesseract text")
@@ -711,23 +736,37 @@ def test_do_ocr_job_uses_vision_backend(tmp_path, mocker):
     mocker.patch.object(fetcher.pm.hook, "upload_static_file")
 
     # Create test PDF
-    pdf_dir = tmp_path / "test.example.com" / "pdfs" / "meeting"
+    pdf_dir = tmp_path / "test" / "pdfs" / "meeting"
     pdf_dir.mkdir(parents=True)
     (pdf_dir / "2024-01-01.pdf").write_bytes(b"fake pdf")
 
     # Run with vision backend
-    fetcher.do_ocr_job(("", "meeting", "2024-01-01"), backend="vision")
+    job = ("", "meeting", "2024-01-01")
+    fetcher.do_ocr_job(job, manifest, job_id, backend="vision")
 
     # Verify Vision was called
     assert mock_vision.called
 
+    manifest.close()
 
-def test_do_ocr_job_falls_back_to_tesseract_on_vision_error(tmp_path, mocker):
+
+def test_do_ocr_job_falls_back_to_tesseract_on_vision_error(tmp_path, mocker, monkeypatch):
     """Test that do_ocr_job falls back to Tesseract when Vision fails."""
-    from clerk.fetcher import Fetcher
+    from pathlib import Path
 
-    # Setup
-    fetcher = Fetcher("test.example.com", storage_dir=str(tmp_path))
+    from clerk.fetcher import Fetcher
+    from clerk.ocr_utils import FailureManifest
+
+    # Setup environment
+    monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+
+    site = {"subdomain": "test", "start_year": 2020, "pages": 0}
+    fetcher = Fetcher(site)
+
+    # Create manifest and job_id
+    manifest_path = Path(tmp_path) / "failures.jsonl"
+    manifest = FailureManifest(str(manifest_path))
+    job_id = "test_fallback_123"
 
     # Mock Vision to fail, Tesseract to succeed
     mock_vision = mocker.patch.object(
@@ -736,8 +775,8 @@ def test_do_ocr_job_falls_back_to_tesseract_on_vision_error(tmp_path, mocker):
     )
     mock_tesseract = mocker.patch.object(fetcher, "_ocr_with_tesseract", return_value="Tesseract text")
 
-    # Mock output.log to verify fallback warning
-    mock_log = mocker.patch("clerk.fetcher.output.log")
+    # Mock log to verify fallback warning
+    mock_log = mocker.patch("clerk.fetcher.log")
 
     # Mock PDF processing
     mocker.patch("clerk.fetcher.PdfReader")
@@ -745,12 +784,13 @@ def test_do_ocr_job_falls_back_to_tesseract_on_vision_error(tmp_path, mocker):
     mocker.patch.object(fetcher.pm.hook, "upload_static_file")
 
     # Create test PDF
-    pdf_dir = tmp_path / "test.example.com" / "pdfs" / "meeting"
+    pdf_dir = tmp_path / "test" / "pdfs" / "meeting"
     pdf_dir.mkdir(parents=True)
     (pdf_dir / "2024-01-01.pdf").write_bytes(b"fake pdf")
 
     # Run with vision backend
-    fetcher.do_ocr_job(("", "meeting", "2024-01-01"), backend="vision")
+    job = ("", "meeting", "2024-01-01")
+    fetcher.do_ocr_job(job, manifest, job_id, backend="vision")
 
     # Verify both were called (Vision failed, fell back to Tesseract)
     assert mock_vision.called
@@ -759,3 +799,5 @@ def test_do_ocr_job_falls_back_to_tesseract_on_vision_error(tmp_path, mocker):
     # Verify fallback warning was logged
     log_calls = [call[0][0] for call in mock_log.call_args_list]
     assert any("falling back to Tesseract" in str(call) for call in log_calls)
+
+    manifest.close()
