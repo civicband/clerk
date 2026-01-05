@@ -1200,7 +1200,10 @@ class TestOCRBackendCLIFlag:
         mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
         mock_conn.__exit__ = mocker.Mock(return_value=False)
         mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
-        mocker.patch("clerk.db.get_site_by_subdomain", return_value={"subdomain": "test.example.com", "start_year": 2020})
+        mocker.patch(
+            "clerk.db.get_site_by_subdomain",
+            return_value={"subdomain": "test.example.com", "start_year": 2020},
+        )
         mocker.patch("clerk.db.update_site")
         mocker.patch("clerk.cli.fetch_internal")
         mocker.patch("clerk.cli.update_page_count")
@@ -1226,7 +1229,10 @@ class TestOCRBackendCLIFlag:
         mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
         mock_conn.__exit__ = mocker.Mock(return_value=False)
         mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
-        mocker.patch("clerk.db.get_site_by_subdomain", return_value={"subdomain": "test.example.com", "start_year": 2020})
+        mocker.patch(
+            "clerk.db.get_site_by_subdomain",
+            return_value={"subdomain": "test.example.com", "start_year": 2020},
+        )
         mocker.patch("clerk.db.update_site")
         mocker.patch("clerk.cli.fetch_internal")
         mocker.patch("clerk.cli.update_page_count")

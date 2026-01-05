@@ -449,7 +449,8 @@ class Fetcher:
         # Process jobs with thread pool
         with concurrent.futures.ThreadPoolExecutor(max_workers=NUM_WORKERS) as executor:
             future_to_job = {
-                executor.submit(self.do_ocr_job, job, manifest, job_id, backend): job for job in jobs
+                executor.submit(self.do_ocr_job, job, manifest, job_id, backend): job
+                for job in jobs
             }
 
             for future in concurrent.futures.as_completed(future_to_job):
@@ -522,13 +523,16 @@ class Fetcher:
         text = subprocess.check_output(
             [
                 "tesseract",
-                "-l", self.ocr_lang,  # "eng+spa"
-                "--dpi", "150",
-                "--oem", "1",  # LSTM engine
+                "-l",
+                self.ocr_lang,  # "eng+spa"
+                "--dpi",
+                "150",
+                "--oem",
+                "1",  # LSTM engine
                 str(image_path),
                 "stdout",
             ],
-            stderr=subprocess.DEVNULL
+            stderr=subprocess.DEVNULL,
         )
         return text.decode("utf-8")
 
@@ -563,9 +567,7 @@ class Fetcher:
             request.setUsesLanguageCorrection_(True)
 
             # Process image
-            handler = Vision.VNImageRequestHandler.alloc().initWithURL_options_(
-                image_url, None
-            )
+            handler = Vision.VNImageRequestHandler.alloc().initWithURL_options_(image_url, None)
             success, error = handler.performRequests_error_([request], None)
 
             if not success:
@@ -586,7 +588,11 @@ class Fetcher:
 
     @retry_on_transient(max_attempts=3, delay_seconds=2)
     def do_ocr_job(
-        self, job: tuple[str, str, str], manifest: FailureManifest, job_id: str, backend: str = "tesseract"
+        self,
+        job: tuple[str, str, str],
+        manifest: FailureManifest,
+        job_id: str,
+        backend: str = "tesseract",
     ) -> None:
         """Process a single PDF document through OCR pipeline.
 
@@ -738,7 +744,7 @@ class Fetcher:
             shutil.rmtree(doc_image_dir_path)
 
             # Completion logging with backend and processing stats
-            ocr_duration = (time.time() - ocr_st)
+            ocr_duration = time.time() - ocr_st
             log(
                 f"Completed {doc_path} ({total_pages} pages in {ocr_duration:.2f}s)",
                 subdomain=self.subdomain,

@@ -599,7 +599,9 @@ def test_ocr_with_vision_extracts_text(tmp_path, mocker, monkeypatch):
     # Mock handler
     mock_handler = mocker.MagicMock()
     mock_handler.performRequests_error_.return_value = (True, None)
-    mock_vision.VNImageRequestHandler.alloc.return_value.initWithURL_options_.return_value = mock_handler
+    mock_vision.VNImageRequestHandler.alloc.return_value.initWithURL_options_.return_value = (
+        mock_handler
+    )
 
     # Mock NSURL
     mock_url = mocker.MagicMock()
@@ -656,7 +658,9 @@ def test_ocr_with_vision_handles_vision_error(tmp_path, mocker, monkeypatch):
     mock_vision = mocker.MagicMock()
     mock_quartz = mocker.MagicMock()
 
-    mock_vision.VNRecognizeTextRequest.alloc.return_value.init.side_effect = Exception("Vision failed")
+    mock_vision.VNRecognizeTextRequest.alloc.return_value.init.side_effect = Exception(
+        "Vision failed"
+    )
 
     mocker.patch.dict("sys.modules", {"Vision": mock_vision, "Quartz": mock_quartz})
 
@@ -686,7 +690,9 @@ def test_do_ocr_job_uses_tesseract_backend(tmp_path, mocker, monkeypatch):
     job_id = "test_tesseract_123"
 
     # Mock the OCR methods
-    mock_tesseract = mocker.patch.object(fetcher, "_ocr_with_tesseract", return_value="Tesseract text")
+    mock_tesseract = mocker.patch.object(
+        fetcher, "_ocr_with_tesseract", return_value="Tesseract text"
+    )
     mock_vision = mocker.patch.object(fetcher, "_ocr_with_vision", return_value="Vision text")
 
     # Mock PDF processing
@@ -730,7 +736,9 @@ def test_do_ocr_job_uses_vision_backend(tmp_path, mocker, monkeypatch):
     job_id = "test_vision_123"
 
     # Mock the OCR methods
-    mock_tesseract = mocker.patch.object(fetcher, "_ocr_with_tesseract", return_value="Tesseract text")
+    mock_tesseract = mocker.patch.object(
+        fetcher, "_ocr_with_tesseract", return_value="Tesseract text"
+    )
     mock_vision = mocker.patch.object(fetcher, "_ocr_with_vision", return_value="Vision text")
 
     # Mock PDF processing
@@ -774,10 +782,11 @@ def test_do_ocr_job_falls_back_to_tesseract_on_vision_error(tmp_path, mocker, mo
 
     # Mock Vision to fail, Tesseract to succeed
     mock_vision = mocker.patch.object(
-        fetcher, "_ocr_with_vision",
-        side_effect=RuntimeError("Vision failed")
+        fetcher, "_ocr_with_vision", side_effect=RuntimeError("Vision failed")
     )
-    mock_tesseract = mocker.patch.object(fetcher, "_ocr_with_tesseract", return_value="Tesseract text")
+    mock_tesseract = mocker.patch.object(
+        fetcher, "_ocr_with_tesseract", return_value="Tesseract text"
+    )
 
     # Mock log to verify fallback warning
     mock_log = mocker.patch("clerk.fetcher.log")
