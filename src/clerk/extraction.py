@@ -5,6 +5,8 @@ for civic meeting documents. Extraction is feature-flagged via ENABLE_EXTRACTION
 environment variable.
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import re
