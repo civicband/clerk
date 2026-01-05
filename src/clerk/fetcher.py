@@ -532,6 +532,58 @@ class Fetcher:
         )
         return text.decode("utf-8")
 
+    def _ocr_with_vision(self, image_path: Path) -> str:
+        """Extract text from image using Apple Vision Framework.
+
+        Args:
+            image_path: Path to PNG image file
+
+        Returns:
+            Extracted text as string
+
+        Raises:
+            RuntimeError: If Vision Framework unavailable or processing fails
+        """
+        try:
+            import Vision
+            import Quartz
+        except ImportError as e:
+            raise RuntimeError(
+                "Vision Framework requires pyobjc-framework-Vision. "
+                "Install with: pip install pyobjc-framework-Vision pyobjc-framework-Quartz"
+            ) from e
+
+        try:
+            # Load image
+            image_url = Quartz.NSURL.fileURLWithPath_(str(image_path))
+
+            # Create request with automatic language detection
+            request = Vision.VNRecognizeTextRequest.alloc().init()
+            request.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelAccurate)
+            request.setUsesLanguageCorrection_(True)
+
+            # Process image
+            handler = Vision.VNImageRequestHandler.alloc().initWithURL_options_(
+                image_url, None
+            )
+            success, error = handler.performRequests_error_([request], None)
+
+            if not success:
+                raise RuntimeError(f"Vision request failed: {error}")
+
+            # Extract text from results
+            observations = request.results()
+            if not observations:
+                return ""
+
+            text = "\n".join([obs.text() for obs in observations])
+            return text
+
+        except Exception as e:
+            if isinstance(e, RuntimeError):
+                raise
+            raise RuntimeError(f"Vision OCR failed: {e}") from e
+
     @retry_on_transient(max_attempts=3, delay_seconds=2)
     def do_ocr_job(
         self, job: tuple[str, str, str], manifest: FailureManifest, job_id: str, backend: str = "tesseract"

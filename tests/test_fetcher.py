@@ -1,5 +1,6 @@
 """Tests for the Fetcher base class."""
 
+import sys
 import pytest
 
 
@@ -566,3 +567,98 @@ class TestOCRWithTesseract:
 
         with pytest.raises(subprocess.CalledProcessError):
             fetcher._ocr_with_tesseract(image_path)
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="Vision Framework only on macOS")
+def test_ocr_with_vision_extracts_text(tmp_path, mocker, monkeypatch):
+    """Test that _ocr_with_vision extracts text from an image."""
+    from clerk.fetcher import Fetcher
+
+    # Set storage dir
+    monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+
+    # Create a mock image
+    image_path = tmp_path / "test.png"
+    image_path.write_bytes(b"fake png data")
+
+    # Mock Vision Framework
+    mock_vision = mocker.MagicMock()
+    mock_quartz = mocker.MagicMock()
+
+    # Mock the request and observations
+    mock_request = mocker.MagicMock()
+    mock_observation = mocker.MagicMock()
+    mock_observation.text.return_value = "Vision OCR text"
+    mock_request.results.return_value = [mock_observation]
+
+    mock_vision.VNRecognizeTextRequest.alloc.return_value.init.return_value = mock_request
+    mock_vision.VNRequestTextRecognitionLevelAccurate = 1
+
+    # Mock handler
+    mock_handler = mocker.MagicMock()
+    mock_handler.performRequests_error_.return_value = (True, None)
+    mock_vision.VNImageRequestHandler.alloc.return_value.initWithURL_options_.return_value = mock_handler
+
+    # Mock NSURL
+    mock_url = mocker.MagicMock()
+    mock_quartz.NSURL.fileURLWithPath_.return_value = mock_url
+
+    # Patch imports
+    mocker.patch.dict("sys.modules", {"Vision": mock_vision, "Quartz": mock_quartz})
+
+    site = {"subdomain": "test", "start_year": 2020, "pages": 0}
+    fetcher = Fetcher(site)
+    result = fetcher._ocr_with_vision(image_path)
+
+    assert result == "Vision OCR text"
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="Vision Framework only on macOS")
+def test_ocr_with_vision_handles_import_error(tmp_path, monkeypatch):
+    """Test that _ocr_with_vision raises helpful error when pyobjc not installed."""
+    from clerk.fetcher import Fetcher
+    import sys
+
+    # Set storage dir
+    monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+
+    # Remove Vision from sys.modules if present
+    if "Vision" in sys.modules:
+        del sys.modules["Vision"]
+    if "Quartz" in sys.modules:
+        del sys.modules["Quartz"]
+
+    image_path = tmp_path / "test.png"
+    image_path.write_bytes(b"fake png data")
+
+    site = {"subdomain": "test", "start_year": 2020, "pages": 0}
+    fetcher = Fetcher(site)
+
+    with pytest.raises(RuntimeError, match="Vision Framework requires pyobjc"):
+        fetcher._ocr_with_vision(image_path)
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="Vision Framework only on macOS")
+def test_ocr_with_vision_handles_vision_error(tmp_path, mocker, monkeypatch):
+    """Test that _ocr_with_vision handles Vision API errors."""
+    from clerk.fetcher import Fetcher
+
+    # Set storage dir
+    monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+
+    image_path = tmp_path / "test.png"
+    image_path.write_bytes(b"fake png data")
+
+    # Mock Vision Framework to raise error
+    mock_vision = mocker.MagicMock()
+    mock_quartz = mocker.MagicMock()
+
+    mock_vision.VNRecognizeTextRequest.alloc.return_value.init.side_effect = Exception("Vision failed")
+
+    mocker.patch.dict("sys.modules", {"Vision": mock_vision, "Quartz": mock_quartz})
+
+    site = {"subdomain": "test", "start_year": 2020, "pages": 0}
+    fetcher = Fetcher(site)
+
+    with pytest.raises(RuntimeError, match="Vision OCR failed"):
+        fetcher._ocr_with_vision(image_path)
