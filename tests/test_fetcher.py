@@ -698,7 +698,7 @@ def test_do_ocr_job_uses_tesseract_backend(tmp_path, mocker, monkeypatch):
     # Mock PDF processing
     mocker.patch("clerk.fetcher.PdfReader")
     mocker.patch("clerk.fetcher.convert_from_path", return_value=[mocker.MagicMock()])
-    mocker.patch.object(fetcher.pm.hook, "upload_static_file")
+    mocker.patch("clerk.fetcher.pm.hook.upload_static_file")
 
     # Create test PDF
     pdf_dir = tmp_path / "test" / "pdfs" / "meeting"
@@ -744,7 +744,7 @@ def test_do_ocr_job_uses_vision_backend(tmp_path, mocker, monkeypatch):
     # Mock PDF processing
     mocker.patch("clerk.fetcher.PdfReader")
     mocker.patch("clerk.fetcher.convert_from_path", return_value=[mocker.MagicMock()])
-    mocker.patch.object(fetcher.pm.hook, "upload_static_file")
+    mocker.patch("clerk.fetcher.pm.hook.upload_static_file")
 
     # Create test PDF
     pdf_dir = tmp_path / "test" / "pdfs" / "meeting"
@@ -794,7 +794,7 @@ def test_do_ocr_job_falls_back_to_tesseract_on_vision_error(tmp_path, mocker, mo
     # Mock PDF processing
     mocker.patch("clerk.fetcher.PdfReader")
     mocker.patch("clerk.fetcher.convert_from_path", return_value=[mocker.MagicMock()])
-    mocker.patch.object(fetcher.pm.hook, "upload_static_file")
+    mocker.patch("clerk.fetcher.pm.hook.upload_static_file")
 
     # Create test PDF
     pdf_dir = tmp_path / "test" / "pdfs" / "meeting"
