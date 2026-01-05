@@ -1,5 +1,7 @@
 """Unified logging and console output."""
 
+from __future__ import annotations
+
 import logging
 
 import click
