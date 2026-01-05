@@ -47,6 +47,15 @@ autodoc_default_options = {
     "undoc-members": True,
 }
 
+# Mock imports for heavy dependencies that may not be available during build
+autodoc_mock_imports = [
+    "weasyprint",
+    "pdfkit",
+    "pdf2image",
+    "pypdf",
+    "spacy",
+]
+
 # Napoleon settings for docstring parsing
 napoleon_google_docstring = True
 napoleon_numpy_docstring = True

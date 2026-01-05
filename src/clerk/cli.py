@@ -1,3 +1,9 @@
+"""Command-line interface for clerk.
+
+This module provides the main CLI commands for managing civic data pipelines,
+including site creation, data fetching, OCR processing, and database operations.
+"""
+
 import datetime
 import json
 import logging

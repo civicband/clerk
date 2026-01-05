@@ -1,3 +1,9 @@
+"""Plugin hook specifications for clerk.
+
+This module defines the ClerkSpec interface that plugins can implement to extend
+clerk's functionality using the pluggy framework.
+"""
+
 from pluggy import HookimplMarker, HookspecMarker
 
 hookspec = HookspecMarker("civicband.clerk")
