@@ -29,6 +29,10 @@ extraction = [
     "spacy>=3.5.0",
     "numpy<2",  # spaCy/torch not yet compatible with NumPy 2.x
 ]
+vision = [
+    "pyobjc-framework-Vision>=10.0",
+    "pyobjc-framework-Quartz>=10.0",
+]
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
