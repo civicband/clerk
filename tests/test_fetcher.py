@@ -703,10 +703,19 @@ def test_do_ocr_job_uses_tesseract_backend(tmp_path, mocker, monkeypatch):
     mocker.patch("clerk.fetcher.convert_from_path", return_value=[mocker.MagicMock()])
     mocker.patch("clerk.fetcher.pm.hook.upload_static_file")
 
-    # Create test PDF
+    # Create test PDF and required directories
     pdf_dir = tmp_path / "test" / "pdfs" / "meeting"
     pdf_dir.mkdir(parents=True)
     (pdf_dir / "2024-01-01.pdf").write_bytes(b"fake pdf")
+
+    # Create images and txt directories
+    images_dir = tmp_path / "test" / "images" / "meeting" / "2024-01-01"
+    images_dir.mkdir(parents=True)
+    txt_dir = tmp_path / "test" / "txt" / "meeting" / "2024-01-01"
+    txt_dir.mkdir(parents=True)
+
+    # Create a fake image file for OCR to process
+    (images_dir / "1.png").write_bytes(b"fake png")
 
     # Run with tesseract backend
     job = ("", "meeting", "2024-01-01")
@@ -752,10 +761,19 @@ def test_do_ocr_job_uses_vision_backend(tmp_path, mocker, monkeypatch):
     mocker.patch("clerk.fetcher.convert_from_path", return_value=[mocker.MagicMock()])
     mocker.patch("clerk.fetcher.pm.hook.upload_static_file")
 
-    # Create test PDF
+    # Create test PDF and required directories
     pdf_dir = tmp_path / "test" / "pdfs" / "meeting"
     pdf_dir.mkdir(parents=True)
     (pdf_dir / "2024-01-01.pdf").write_bytes(b"fake pdf")
+
+    # Create images and txt directories
+    images_dir = tmp_path / "test" / "images" / "meeting" / "2024-01-01"
+    images_dir.mkdir(parents=True)
+    txt_dir = tmp_path / "test" / "txt" / "meeting" / "2024-01-01"
+    txt_dir.mkdir(parents=True)
+
+    # Create a fake image file for OCR to process
+    (images_dir / "1.png").write_bytes(b"fake png")
 
     # Run with vision backend
     job = ("", "meeting", "2024-01-01")
@@ -805,10 +823,19 @@ def test_do_ocr_job_falls_back_to_tesseract_on_vision_error(tmp_path, mocker, mo
     mocker.patch("clerk.fetcher.convert_from_path", return_value=[mocker.MagicMock()])
     mocker.patch("clerk.fetcher.pm.hook.upload_static_file")
 
-    # Create test PDF
+    # Create test PDF and required directories
     pdf_dir = tmp_path / "test" / "pdfs" / "meeting"
     pdf_dir.mkdir(parents=True)
     (pdf_dir / "2024-01-01.pdf").write_bytes(b"fake pdf")
+
+    # Create images and txt directories
+    images_dir = tmp_path / "test" / "images" / "meeting" / "2024-01-01"
+    images_dir.mkdir(parents=True)
+    txt_dir = tmp_path / "test" / "txt" / "meeting" / "2024-01-01"
+    txt_dir.mkdir(parents=True)
+
+    # Create a fake image file for OCR to process
+    (images_dir / "1.png").write_bytes(b"fake png")
 
     # Run with vision backend
     job = ("", "meeting", "2024-01-01")
