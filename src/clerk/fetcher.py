@@ -1,3 +1,11 @@
+"""Base fetcher class and utilities for creating custom data fetchers.
+
+This module provides the Fetcher base class that all custom fetchers must extend.
+Plugin developers should extend Fetcher and implement the fetch() method.
+"""
+
+from __future__ import annotations
+
 import concurrent.futures
 import json
 import logging
