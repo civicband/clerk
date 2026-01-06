@@ -33,6 +33,13 @@ templates_path = ["_templates"]
 html_static_path = ["_static"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
+# Suppress warnings from historical plan documents
+suppress_warnings = [
+    "myst.header",  # Non-consecutive header levels in plans
+    "misc.highlighting_failure",  # Unknown lexers (cron, txt, jsonl) in plans
+    "myst.xref_missing",  # Missing cross-references in plans
+]
+
 # HTML output configuration
 html_theme = "sphinx_rtd_theme"
 html_theme_options = {
