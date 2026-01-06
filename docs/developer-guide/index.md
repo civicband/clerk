@@ -16,6 +16,7 @@ architecture
 plugin-development
 testing
 ocr-logging
+../deployment
 ```
 
 ## Quick Links
@@ -25,6 +26,7 @@ ocr-logging
 - [Plugin Development](plugin-development.md) - Create custom fetchers and deployers
 - [Testing](testing.md) - Test strategy and guidelines
 - [OCR Logging](ocr-logging.md) - OCR implementation details
+- [Deployment](../deployment.md) - Deploy clerk with launchd on macOS
 
 ## Contributing
 
