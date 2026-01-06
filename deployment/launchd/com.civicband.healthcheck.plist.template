@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.civicband.healthcheck</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{HEALTHCHECK_SCRIPT}}</string>
+    </array>
+
+    <key>StartInterval</key>
+    <integer>900</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>{{LOG_DIR}}/healthcheck.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>{{LOG_DIR}}/healthcheck.error.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>CIVIC_BAND_WEBHOOK_URL</key>
+        <string>{{WEBHOOK_URL}}</string>
+    </dict>
+</dict>
+</plist>
