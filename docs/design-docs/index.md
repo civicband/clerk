@@ -40,7 +40,7 @@ The following documents are available in the [plans directory](https://github.co
 :maxdepth: 1
 :glob:
 
-plans/*
+../plans/*
 ```
 
 ## Using These Documents
