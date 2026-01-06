@@ -4,14 +4,6 @@ Common workflows and CLI commands for working with clerk.
 
 ## Site Management
 
-### List All Sites
-
-```bash
-clerk list
-```
-
-Shows all sites in civic.db with their status.
-
 ### Create New Site
 
 ```bash
@@ -38,14 +30,14 @@ clerk update --subdomain example.civic.band --all-years
 ### Build from Text
 
 ```bash
-# Fast build (no extraction)
+# Fast build (uses cached entity extractions)
 clerk build-db-from-text --subdomain example.civic.band
 
-# With extraction
-clerk build-db-from-text --subdomain example.civic.band --with-extraction
+# Extract entities for uncached pages
+clerk build-db-from-text --subdomain example.civic.band --extract-entities
 
-# Force fresh extraction (ignore cache)
-clerk build-db-from-text --subdomain example.civic.band --force-extraction
+# Re-extract all pages (ignore cache)
+clerk build-db-from-text --subdomain example.civic.band --extract-entities --ignore-cache
 ```
 
 ### Entity Extraction
@@ -64,24 +56,22 @@ clerk extract-entities --next-site
 clerk build-full-db
 ```
 
-### Rebuild Search Index
-
-```bash
-clerk rebuild-site-fts --subdomain example.civic.band
-```
+Builds a combined database from all sites. The FTS (full-text search) index is automatically rebuilt as part of this process.
 
 ## OCR Processing
 
-### OCR with Tesseract (default)
+OCR is handled automatically as part of the `update` command. You can choose the OCR backend:
+
+### Update with Tesseract (default)
 
 ```bash
-clerk ocr --subdomain example.civic.band
+clerk update --subdomain example.civic.band
 ```
 
-### OCR with Vision Framework (macOS)
+### Update with Vision Framework (macOS)
 
 ```bash
-clerk ocr --subdomain example.civic.band --ocr-backend=vision
+clerk update --subdomain example.civic.band --ocr-backend vision
 ```
 
 Vision Framework is 3-5x faster on Apple Silicon and automatically falls back to Tesseract if it fails.
@@ -151,13 +141,10 @@ clerk extract-entities --subdomain example.civic.band
 ### Rebuild After Changes
 
 ```bash
-# 1. Rebuild database
+# 1. Rebuild database (FTS index is automatically rebuilt)
 clerk build-db-from-text --subdomain example.civic.band
 
-# 2. Rebuild search index
-clerk rebuild-site-fts --subdomain example.civic.band
-
-# 3. Build aggregate
+# 2. Build aggregate database
 clerk build-full-db
 ```
 
