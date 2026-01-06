@@ -1,0 +1,79 @@
+#!/bin/bash
+
+# Configuration
+WEBHOOK_URL="${CIVIC_BAND_WEBHOOK_URL:-}"  # Set via environment
+LOG_FILE="{{LOG_DIR}}/update.log"
+ERROR_LOG="{{LOG_DIR}}/update.error.log"
+LOCK_FILE="{{LOCK_FILE}}"
+MAX_AGE=900  # 15 minutes
+
+# Send alert to webhook
+send_alert() {
+    local message="$1"
+    local severity="${2:-warning}"  # warning, error, info
+
+    if [ -z "$WEBHOOK_URL" ]; then
+        echo "No webhook configured, skipping alert: $message"
+        return
+    fi
+
+    local color="warning"
+    [ "$severity" = "error" ] && color="danger"
+    [ "$severity" = "info" ] && color="good"
+
+    curl -s -X POST "$WEBHOOK_URL" \
+        -H 'Content-Type: application/json' \
+        -d "{
+            \"text\": \"Civic Band Update Alert\",
+            \"attachments\": [{
+                \"color\": \"$color\",
+                \"fields\": [{
+                    \"title\": \"Alert\",
+                    \"value\": \"$message\",
+                    \"short\": false
+                }, {
+                    \"title\": \"Server\",
+                    \"value\": \"$(hostname)\",
+                    \"short\": true
+                }, {
+                    \"title\": \"Time\",
+                    \"value\": \"$(date '+%Y-%m-%d %H:%M:%S')\",
+                    \"short\": true
+                }]
+            }]
+        }" >/dev/null 2>&1
+}
+
+# Check if last update was recent
+if [ -f "$LOG_FILE" ]; then
+    LAST_UPDATE=$(stat -f %m "$LOG_FILE")
+    NOW=$(date +%s)
+    AGE=$((NOW - LAST_UPDATE))
+
+    if [ $AGE -gt $MAX_AGE ]; then
+        MESSAGE="Last update was ${AGE}s ago (threshold: ${MAX_AGE}s). Updates may be stuck."
+        echo "WARNING: $MESSAGE"
+        send_alert "$MESSAGE" "error"
+    fi
+fi
+
+# Check for stuck lock
+if [ -f "$LOCK_FILE" ]; then
+    LOCK_PID=$(cat "$LOCK_FILE")
+    LOCK_AGE=$(($(date +%s) - $(stat -f %m "$LOCK_FILE")))
+    if [ $LOCK_AGE -gt 7200 ]; then
+        MESSAGE="Lock file stuck for ${LOCK_AGE}s (PID: $LOCK_PID). May need manual intervention."
+        echo "WARNING: $MESSAGE"
+        send_alert "$MESSAGE" "error"
+    fi
+fi
+
+# Check for recent errors
+if [ -f "$ERROR_LOG" ]; then
+    RECENT_ERRORS=$(tail -100 "$ERROR_LOG" | grep -c "ERROR" || true)
+    if [ $RECENT_ERRORS -gt 10 ]; then
+        MESSAGE="${RECENT_ERRORS} errors in last 100 log lines. Check logs at: $ERROR_LOG"
+        echo "WARNING: $MESSAGE"
+        send_alert "$MESSAGE" "warning"
+    fi
+fi

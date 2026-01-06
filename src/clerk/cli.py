@@ -706,9 +706,244 @@ def extract_entities_internal(subdomain, next_site=False):
         raise
 
 
+@cli.command()
+@click.option("--webhook-url", help="Webhook URL for health check alerts")
+@click.option("--work-dir", help="Working directory path (defaults to current directory)")
+def install_launchd(webhook_url=None, work_dir=None):
+    """Install launchd jobs for automated updates (macOS only)"""
+    import platform
+    import subprocess
+    from pathlib import Path
+
+    # Check if macOS
+    if platform.system() != "Darwin":
+        click.secho("Error: launchd is only available on macOS", fg="red")
+        return
+
+    # Get paths
+    home = Path.home()
+    user = os.environ.get("USER")
+    work_dir = Path(work_dir) if work_dir else Path.cwd()
+    log_dir = work_dir / "logs"
+    lock_file = f"/tmp/civicband-update-{user}.lock"
+
+    # Find required binaries
+    gtimeout = shutil.which("gtimeout")
+    uv = shutil.which("uv")
+
+    if not gtimeout:
+        click.secho("Error: gtimeout not found. Install with: brew install coreutils", fg="red")
+        return
+    if not uv:
+        click.secho("Error: uv not found. Install from: https://docs.astral.sh/uv/", fg="red")
+        return
+
+    # Build PATH
+    path_parts = [
+        "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
+        str(Path.home() / ".cargo/bin"),
+        "/usr/bin",
+        "/bin",
+    ]
+    env_path = ":".join(path_parts)
+
+    # Template substitutions
+    substitutions = {
+        "{{LOCK_FILE}}": lock_file,
+        "{{LOG_DIR}}": str(log_dir),
+        "{{WORK_DIR}}": str(work_dir),
+        "{{GTIMEOUT_PATH}}": gtimeout,
+        "{{UV_PATH}}": uv,
+        "{{WRAPPER_SCRIPT}}": str(work_dir / "update-wrapper.sh"),
+        "{{HEALTHCHECK_SCRIPT}}": str(work_dir / "healthcheck.sh"),
+        "{{PATH}}": env_path,
+        "{{WEBHOOK_URL}}": webhook_url or "",
+    }
+
+    # Get template directory
+    clerk_dir = Path(__file__).parent.parent.parent
+    template_dir = clerk_dir / "deployment" / "launchd"
+
+    if not template_dir.exists():
+        click.secho(f"Error: Template directory not found: {template_dir}", fg="red")
+        return
+
+    click.echo(f"Installing launchd jobs for user: {user}")
+    click.echo(f"Working directory: {work_dir}")
+    click.echo(f"Log directory: {log_dir}")
+
+    # Create log directory
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    # Process templates and install files
+    files_created = []
+
+    # 1. Create wrapper script
+    template_file = template_dir / "update-wrapper.sh.template"
+    output_file = work_dir / "update-wrapper.sh"
+    content = template_file.read_text()
+    for key, value in substitutions.items():
+        content = content.replace(key, value)
+    output_file.write_text(content)
+    output_file.chmod(0o755)
+    files_created.append(str(output_file))
+    click.echo(f"✓ Created: {output_file}")
+
+    # 2. Create healthcheck script
+    template_file = template_dir / "healthcheck.sh.template"
+    output_file = work_dir / "healthcheck.sh"
+    content = template_file.read_text()
+    for key, value in substitutions.items():
+        content = content.replace(key, value)
+    output_file.write_text(content)
+    output_file.chmod(0o755)
+    files_created.append(str(output_file))
+    click.echo(f"✓ Created: {output_file}")
+
+    # 3. Create and install update plist
+    template_file = template_dir / "com.civicband.update.plist.template"
+    plist_dir = home / "Library" / "LaunchAgents"
+    plist_dir.mkdir(parents=True, exist_ok=True)
+    output_file = plist_dir / "com.civicband.update.plist"
+    content = template_file.read_text()
+    for key, value in substitutions.items():
+        content = content.replace(key, value)
+    output_file.write_text(content)
+    files_created.append(str(output_file))
+    click.echo(f"✓ Created: {output_file}")
+
+    # 4. Create and install healthcheck plist
+    template_file = template_dir / "com.civicband.healthcheck.plist.template"
+    output_file = plist_dir / "com.civicband.healthcheck.plist"
+    content = template_file.read_text()
+    for key, value in substitutions.items():
+        content = content.replace(key, value)
+    output_file.write_text(content)
+    files_created.append(str(output_file))
+    click.echo(f"✓ Created: {output_file}")
+
+    # Load launchd jobs
+    click.echo("\nLoading launchd jobs...")
+    try:
+        subprocess.run(
+            ["launchctl", "load", str(plist_dir / "com.civicband.update.plist")],
+            check=True,
+            capture_output=True,
+        )
+        click.echo("✓ Loaded: com.civicband.update")
+    except subprocess.CalledProcessError as e:
+        click.secho(f"Warning: Failed to load update job: {e.stderr.decode()}", fg="yellow")
+
+    try:
+        subprocess.run(
+            ["launchctl", "load", str(plist_dir / "com.civicband.healthcheck.plist")],
+            check=True,
+            capture_output=True,
+        )
+        click.echo("✓ Loaded: com.civicband.healthcheck")
+    except subprocess.CalledProcessError as e:
+        click.secho(f"Warning: Failed to load healthcheck job: {e.stderr.decode()}", fg="yellow")
+
+    # Show status
+    click.echo("\n" + "=" * 60)
+    click.secho("Installation complete!", fg="green", bold=True)
+    click.echo("=" * 60)
+    click.echo("\nMonitor logs with:")
+    click.echo(f"  tail -f {log_dir}/update.log")
+    click.echo(f"  tail -f {log_dir}/healthcheck.log")
+    click.echo("\nManage jobs with:")
+    click.echo("  launchctl list | grep civicband")
+    click.echo("  launchctl unload ~/Library/LaunchAgents/com.civicband.update.plist")
+    click.echo("  launchctl load ~/Library/LaunchAgents/com.civicband.update.plist")
+
+
+@cli.command()
+def uninstall_launchd():
+    """Uninstall launchd jobs for automated updates (macOS only)"""
+    import platform
+    import subprocess
+    from pathlib import Path
+
+    # Check if macOS
+    if platform.system() != "Darwin":
+        click.secho("Error: launchd is only available on macOS", fg="red")
+        return
+
+    home = Path.home()
+    plist_dir = home / "Library" / "LaunchAgents"
+    update_plist = plist_dir / "com.civicband.update.plist"
+    healthcheck_plist = plist_dir / "com.civicband.healthcheck.plist"
+
+    click.echo("Uninstalling launchd jobs...")
+
+    # Unload and remove update job
+    if update_plist.exists():
+        try:
+            subprocess.run(
+                ["launchctl", "unload", str(update_plist)],
+                check=True,
+                capture_output=True,
+            )
+            click.echo("✓ Unloaded: com.civicband.update")
+        except subprocess.CalledProcessError as e:
+            click.secho(f"Warning: Failed to unload update job: {e.stderr.decode()}", fg="yellow")
+
+        update_plist.unlink()
+        click.echo(f"✓ Removed: {update_plist}")
+    else:
+        click.echo("- Update job not found")
+
+    # Unload and remove healthcheck job
+    if healthcheck_plist.exists():
+        try:
+            subprocess.run(
+                ["launchctl", "unload", str(healthcheck_plist)],
+                check=True,
+                capture_output=True,
+            )
+            click.echo("✓ Unloaded: com.civicband.healthcheck")
+        except subprocess.CalledProcessError as e:
+            click.secho(
+                f"Warning: Failed to unload healthcheck job: {e.stderr.decode()}", fg="yellow"
+            )
+
+        healthcheck_plist.unlink()
+        click.echo(f"✓ Removed: {healthcheck_plist}")
+    else:
+        click.echo("- Healthcheck job not found")
+
+    # Optionally clean up scripts and logs
+    work_dir = Path.cwd()
+    wrapper_script = work_dir / "update-wrapper.sh"
+    healthcheck_script = work_dir / "healthcheck.sh"
+
+    if wrapper_script.exists() or healthcheck_script.exists():
+        click.echo("\nThe following files remain in the current directory:")
+        if wrapper_script.exists():
+            click.echo(f"  - {wrapper_script}")
+        if healthcheck_script.exists():
+            click.echo(f"  - {healthcheck_script}")
+        click.echo("  - logs/")
+        click.echo("\nRemove these manually if no longer needed.")
+
+    # Check for lock file
+    user = os.environ.get("USER")
+    lock_file = Path(f"/tmp/civicband-update-{user}.lock")
+    if lock_file.exists():
+        lock_file.unlink()
+        click.echo(f"✓ Removed lock file: {lock_file}")
+
+    click.echo("\n" + "=" * 60)
+    click.secho("Uninstall complete!", fg="green", bold=True)
+    click.echo("=" * 60)
+
+
 cli.add_command(new)
 cli.add_command(update)
 cli.add_command(build_full_db)
 cli.add_command(remove_all_image_dirs)
 cli.add_command(migrate_extraction_schema)
 cli.add_command(extract_entities)
+cli.add_command(install_launchd)
+cli.add_command(uninstall_launchd)

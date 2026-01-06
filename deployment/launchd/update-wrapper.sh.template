@@ -1,0 +1,82 @@
+#!/bin/bash
+
+set -euo pipefail
+
+# Configuration
+LOCK_FILE="{{LOCK_FILE}}"
+MAX_LOCK_AGE=7200  # 2 hours in seconds
+TIMEOUT=3600       # 1 hour
+LOG_DIR="{{LOG_DIR}}"
+WORK_DIR="{{WORK_DIR}}"
+
+# Ensure log directory exists
+mkdir -p "$LOG_DIR"
+
+# Logging function with timestamp
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+}
+
+# Cleanup function
+cleanup() {
+    if [ -f "$LOCK_FILE" ]; then
+        log "Cleaning up lock file"
+        rm -f "$LOCK_FILE"
+    fi
+}
+
+# Set trap to cleanup on exit
+trap cleanup EXIT INT TERM
+
+# Check for existing lock
+if [ -f "$LOCK_FILE" ]; then
+    LOCK_PID=$(cat "$LOCK_FILE")
+    LOCK_AGE=$(($(date +%s) - $(stat -f %m "$LOCK_FILE")))
+
+    # Check if process is still running
+    if kill -0 "$LOCK_PID" 2>/dev/null; then
+        if [ $LOCK_AGE -lt $MAX_LOCK_AGE ]; then
+            log "Update already running (PID: $LOCK_PID, age: ${LOCK_AGE}s). Exiting."
+            exit 0
+        else
+            log "Lock file is stale (age: ${LOCK_AGE}s). Taking over."
+            rm -f "$LOCK_FILE"
+        fi
+    else
+        log "Previous process (PID: $LOCK_PID) is dead. Removing stale lock."
+        rm -f "$LOCK_FILE"
+    fi
+fi
+
+# Create lock file with our PID
+echo $$ > "$LOCK_FILE"
+log "Acquired lock (PID: $$)"
+
+# Change to working directory
+cd "$WORK_DIR" || {
+    log "ERROR: Failed to change to $WORK_DIR"
+    exit 1
+}
+
+# Run the update with timeout
+log "Starting clerk update"
+START_TIME=$(date +%s)
+
+if {{GTIMEOUT_PATH}} "$TIMEOUT" {{UV_PATH}} run clerk update -n; then
+    EXIT_CODE=$?
+    END_TIME=$(date +%s)
+    DURATION=$((END_TIME - START_TIME))
+    log "Update completed successfully in ${DURATION}s (exit code: $EXIT_CODE)"
+else
+    EXIT_CODE=$?
+    END_TIME=$(date +%s)
+    DURATION=$((END_TIME - START_TIME))
+
+    if [ $EXIT_CODE -eq 124 ]; then
+        log "ERROR: Update timed out after ${TIMEOUT}s"
+    else
+        log "ERROR: Update failed with exit code $EXIT_CODE after ${DURATION}s"
+    fi
+fi
+
+exit $EXIT_CODE
