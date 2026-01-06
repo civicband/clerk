@@ -768,6 +768,7 @@ def install_launchd(webhook_url=None, work_dir=None):
     if not template_dir.exists():
         # Try system installation location
         import sys
+
         install_dir = Path(sys.prefix) / "share" / "clerk" / "deployment" / "launchd"
         if install_dir.exists():
             template_dir = install_dir
@@ -778,7 +779,7 @@ def install_launchd(webhook_url=None, work_dir=None):
                 f"  - {clerk_src_dir / 'deployment' / 'launchd'}\n"
                 f"  - {install_dir}\n"
                 f"Make sure clerk is properly installed with: uv sync",
-                fg="red"
+                fg="red",
             )
             return
 
