@@ -761,13 +761,27 @@ def install_launchd(webhook_url=None, work_dir=None):
         "{{WEBHOOK_URL}}": webhook_url or "",
     }
 
-    # Get template directory
-    clerk_dir = Path(__file__).parent.parent.parent
-    template_dir = clerk_dir / "deployment" / "launchd"
+    # Get template directory - try source location first (development), then installation location
+    clerk_src_dir = Path(__file__).parent.parent.parent
+    template_dir = clerk_src_dir / "deployment" / "launchd"
 
     if not template_dir.exists():
-        click.secho(f"Error: Template directory not found: {template_dir}", fg="red")
-        return
+        # Try system installation location
+        import sys
+
+        install_dir = Path(sys.prefix) / "share" / "clerk" / "deployment" / "launchd"
+        if install_dir.exists():
+            template_dir = install_dir
+        else:
+            click.secho(
+                f"Error: Template directory not found.\n"
+                f"Tried:\n"
+                f"  - {clerk_src_dir / 'deployment' / 'launchd'}\n"
+                f"  - {install_dir}\n"
+                f"Make sure clerk is properly installed with: uv sync",
+                fg="red",
+            )
+            return
 
     click.echo(f"Installing launchd jobs for user: {user}")
     click.echo(f"Working directory: {work_dir}")
