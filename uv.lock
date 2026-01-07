@@ -295,6 +295,8 @@ dependencies = [
     { name = "psycopg2-binary" },
     { name = "python-dotenv" },
     { name = "python-logging-loki" },
+    { name = "redis" },
+    { name = "rq" },
     { name = "sqlalchemy" },
     { name = "sqlite-utils" },
 ]
@@ -348,6 +350,8 @@ requires-dist = [
     { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.12.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "python-logging-loki", specifier = ">=0.3.1" },
+    { name = "redis", specifier = ">=5.0.0" },
+    { name = "rq", specifier = ">=1.16.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
     { name = "spacy", marker = "extra == 'extraction'", specifier = ">=3.5.0" },
     { name = "sqlalchemy", specifier = ">=2.0.0" },
@@ -483,6 +487,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/da/1c/017a3e1113ed34d998b27d2c6dba08a9e7cb97d362f0ec988fcd873dcf81/coverage-7.12.0-cp314-cp314t-win_amd64.whl", hash = "sha256:e84da3a0fd233aeec797b981c51af1cabac74f9bd67be42458365b30d11b5291", size = 222423, upload-time = "2025-11-18T13:34:15.14Z" },
     { url = "https://files.pythonhosted.org/packages/4c/36/bcc504fdd5169301b52568802bb1b9cdde2e27a01d39fbb3b4b508ab7c2c/coverage-7.12.0-cp314-cp314t-win_arm64.whl", hash = "sha256:01d24af36fedda51c2b1aca56e4330a3710f83b02a5ff3743a6b015ffa7c9384", size = 220459, upload-time = "2025-11-18T13:34:17.222Z" },
     { url = "https://files.pythonhosted.org/packages/ce/a3/43b749004e3c09452e39bb56347a008f0a0668aad37324a99b5c8ca91d9e/coverage-7.12.0-py3-none-any.whl", hash = "sha256:159d50c0b12e060b15ed3d39f87ed43d4f7f7ad40b8a534f4dd331adbb51104a", size = 209503, upload-time = "2025-11-18T13:34:18.892Z" },
+]
+
+[[package]]
+name = "croniter"
+version = "6.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dateutil" },
+    { name = "pytz" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ad/2f/44d1ae153a0e27be56be43465e5cb39b9650c781e001e7864389deb25090/croniter-6.0.0.tar.gz", hash = "sha256:37c504b313956114a983ece2c2b07790b1f1094fe9d81cc94739214748255577", size = 64481, upload-time = "2024-12-17T17:17:47.32Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/07/4b/290b4c3efd6417a8b0c284896de19b1d5855e6dbdb97d2a35e68fa42de85/croniter-6.0.0-py2.py3-none-any.whl", hash = "sha256:2f878c3856f17896979b2a4379ba1f09c83e374931ea15cc835c5dd2eee9b368", size = 25468, upload-time = "2024-12-17T17:17:45.359Z" },
 ]
 
 [[package]]
@@ -1458,6 +1475,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pytz"
+version = "2025.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f8/bf/abbd3cdfb8fbc7fb3d4d38d320f2441b1e7cbe29be4f23797b4a2b5d8aac/pytz-2025.2.tar.gz", hash = "sha256:360b9e3dbb49a209c21ad61809c7fb453643e048b38924c765813546746e81c3", size = 320884, upload-time = "2025-03-25T02:25:00.538Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/81/c4/34e93fe5f5429d7570ec1fa436f1986fb1f00c3e0f43a589fe2bbcd22c3f/pytz-2025.2-py2.py3-none-any.whl", hash = "sha256:5ddf76296dd8c44c26eb8f4b6f35488f3ccbf6fbbd7adee0b7262d43f0ec2f00", size = 509225, upload-time = "2025-03-25T02:24:58.468Z" },
+]
+
+[[package]]
 name = "pyyaml"
 version = "6.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1504,6 +1530,15 @@ wheels = [
 ]
 
 [[package]]
+name = "redis"
+version = "7.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/43/c8/983d5c6579a411d8a99bc5823cc5712768859b5ce2c8afe1a65b37832c81/redis-7.1.0.tar.gz", hash = "sha256:b1cc3cfa5a2cb9c2ab3ba700864fb0ad75617b41f01352ce5779dabf6d5f9c3c", size = 4796669, upload-time = "2025-11-19T15:54:39.961Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/89/f0/8956f8a86b20d7bb9d6ac0187cf4cd54d8065bc9a1a09eb8011d4d326596/redis-7.1.0-py3-none-any.whl", hash = "sha256:23c52b208f92b56103e17c5d06bdc1a6c2c0b3106583985a76a18f83b265de2b", size = 354159, upload-time = "2025-11-19T15:54:38.064Z" },
+]
+
+[[package]]
 name = "requests"
 version = "2.32.5"
 source = { registry = "https://pypi.org/simple" }
@@ -1525,6 +1560,20 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/91/fb/2835a62f2de226796fce76411daec6b9831eaf6d2fd04994ac1de055dc13/rfc3339-6.2.tar.gz", hash = "sha256:d53c3b5eefaef892b7240ba2a91fef012e86faa4d0a0ca782359c490e00ad4d0", size = 4144, upload-time = "2019-09-24T16:46:18.176Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0f/2e/48d6cf57dec789c90a7b1cb59a21c3cad509f0ec1284632152f33bb1d88d/rfc3339-6.2-py3-none-any.whl", hash = "sha256:f44316b21b21db90a625cde04ebb0d46268f153e6093021fa5893e92a96f58a3", size = 5515, upload-time = "2019-09-24T16:46:16.63Z" },
+]
+
+[[package]]
+name = "rq"
+version = "2.6.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "croniter" },
+    { name = "redis" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/86/6f/a2848f5ba0ca7f1f879c7ad44a2e7b06b98197a7da39be39eda775807f33/rq-2.6.1.tar.gz", hash = "sha256:db5c0d125ac9dbd4438f9a5225ea3e64050542b416fd791d424e2ab5b2853289", size = 675386, upload-time = "2025-11-22T06:45:16.673Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4b/cc/919ccbf0c9b4f8b0f68c3f53e6d8e1e94af4d74cee4e6d3cb2e81f7d0da9/rq-2.6.1-py3-none-any.whl", hash = "sha256:5cc88d3bb5263a407fb2ba2dc6fe8dc710dae94b6f74396cdfe1b32beded9408", size = 112578, upload-time = "2025-11-22T06:45:13.529Z" },
 ]
 
 [[package]]
