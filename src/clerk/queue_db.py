@@ -96,3 +96,42 @@ def increment_stage_progress(conn, site_id):
     )
     conn.execute(stmt)
     conn.commit()
+
+
+def get_jobs_for_site(conn, site_id):
+    """Get all job tracking records for a site.
+
+    Args:
+        conn: SQLAlchemy connection
+        site_id: Site subdomain
+
+    Returns:
+        List of job tracking records as dictionaries
+    """
+    stmt = select(job_tracking_table).where(job_tracking_table.c.site_id == site_id)
+    results = conn.execute(stmt).fetchall()
+    return [dict(row._mapping) for row in results]
+
+
+def delete_jobs_for_site(conn, site_id):
+    """Delete all job tracking records for a site.
+
+    Args:
+        conn: SQLAlchemy connection
+        site_id: Site subdomain
+    """
+    stmt = delete(job_tracking_table).where(job_tracking_table.c.site_id == site_id)
+    conn.execute(stmt)
+    conn.commit()
+
+
+def delete_site_progress(conn, site_id):
+    """Delete site progress record.
+
+    Args:
+        conn: SQLAlchemy connection
+        site_id: Site subdomain
+    """
+    stmt = delete(site_progress_table).where(site_progress_table.c.site_id == site_id)
+    conn.execute(stmt)
+    conn.commit()

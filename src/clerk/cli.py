@@ -1167,6 +1167,114 @@ def status(site_id=None):
         raise click.Abort()
 
 
+@cli.command()
+@click.argument("site_id")
+def purge(site_id):
+    """Remove all jobs for a specific site"""
+    import redis
+    from .db import civic_db_connection
+    from .queue import (
+        get_deploy_queue,
+        get_extraction_queue,
+        get_fetch_queue,
+        get_high_queue,
+        get_ocr_queue,
+    )
+    from .queue_db import delete_jobs_for_site, delete_site_progress, get_jobs_for_site
+
+    # Handle Redis connection errors
+    try:
+        # Get all jobs for the site from database
+        with civic_db_connection() as conn:
+            jobs = get_jobs_for_site(conn, site_id)
+
+        click.echo(f"Found {len(jobs)} job(s) for site {site_id}")
+
+        # Cancel and delete each job from RQ
+        queues = [
+            get_high_queue(),
+            get_fetch_queue(),
+            get_ocr_queue(),
+            get_extraction_queue(),
+            get_deploy_queue(),
+        ]
+
+        deleted_count = 0
+        for job_data in jobs:
+            job_id = job_data["rq_job_id"]
+
+            # Try all queues
+            for queue in queues:
+                try:
+                    job = queue.fetch_job(job_id)
+                    if job:
+                        job.cancel()
+                        job.delete()
+                        deleted_count += 1
+                        break  # Found and deleted, no need to check other queues
+                except Exception:
+                    # Job might not be in this queue, continue
+                    pass
+
+        # Delete from database tables
+        with civic_db_connection() as conn:
+            delete_site_progress(conn, site_id)
+            delete_jobs_for_site(conn, site_id)
+
+        click.echo(f"Purged {deleted_count} job(s) from queues for site {site_id}")
+        click.echo(f"Deleted database records for site {site_id}")
+
+    except (redis.ConnectionError, redis.TimeoutError) as e:
+        click.secho(f"Error: Cannot connect to Redis: {e}", fg="red")
+        raise click.Abort()
+    except Exception as e:
+        click.secho(f"Error purging site: {e}", fg="red")
+        raise click.Abort()
+
+
+@cli.command()
+@click.argument("queue_name")
+def purge_queue(queue_name):
+    """Clear an entire queue (emergency operation)"""
+    import redis
+    from .queue import (
+        get_deploy_queue,
+        get_extraction_queue,
+        get_fetch_queue,
+        get_high_queue,
+        get_ocr_queue,
+    )
+
+    queues = {
+        "high": get_high_queue,
+        "fetch": get_fetch_queue,
+        "ocr": get_ocr_queue,
+        "extraction": get_extraction_queue,
+        "deploy": get_deploy_queue,
+    }
+
+    if queue_name not in queues:
+        click.secho(
+            f"Error: Invalid queue name '{queue_name}'. Valid queues: {', '.join(queues.keys())}",
+            fg="red",
+        )
+        raise click.Abort()
+
+    # Handle Redis connection errors
+    try:
+        queue = queues[queue_name]()
+        count = queue.empty()
+
+        click.echo(f"Cleared {count} job(s) from '{queue_name}' queue")
+
+    except (redis.ConnectionError, redis.TimeoutError) as e:
+        click.secho(f"Error: Cannot connect to Redis: {e}", fg="red")
+        raise click.Abort()
+    except Exception as e:
+        click.secho(f"Error clearing queue: {e}", fg="red")
+        raise click.Abort()
+
+
 cli.add_command(new)
 cli.add_command(update)
 cli.add_command(build_full_db)

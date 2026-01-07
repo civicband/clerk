@@ -1692,3 +1692,150 @@ class TestEnqueueCommand:
         # Command should fail gracefully
         assert result.exit_code != 0
         assert "Redis" in result.output or "redis" in result.output.lower()
+
+
+@pytest.mark.unit
+class TestPurgeCommand:
+    """Tests for the purge command."""
+
+    def test_purge_site_success(self, cli_runner, mocker):
+        """Test purging all jobs for a site."""
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        # Mock get_jobs_for_site to return some jobs
+        mock_get_jobs = mocker.patch("clerk.queue_db.get_jobs_for_site", return_value=[
+            {"rq_job_id": "job-1", "site_id": "site.civic.band", "job_type": "fetch-site", "stage": "fetch"},
+            {"rq_job_id": "job-2", "site_id": "site.civic.band", "job_type": "ocr-page", "stage": "ocr"},
+        ])
+
+        # Mock queue operations
+        mock_queue = mocker.MagicMock()
+        mock_job = mocker.MagicMock()
+        mock_queue.fetch_job.return_value = mock_job
+        mocker.patch("clerk.queue.get_high_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_fetch_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_extraction_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_deploy_queue", return_value=mock_queue)
+
+        # Mock deletion operations
+        mock_delete_jobs = mocker.patch("clerk.queue_db.delete_jobs_for_site")
+        mock_delete_progress = mocker.patch("clerk.queue_db.delete_site_progress")
+
+        result = cli_runner.invoke(cli, ["purge", "site.civic.band"])
+
+        assert result.exit_code == 0
+        assert "2" in result.output  # Should mention 2 jobs purged
+        assert "site.civic.band" in result.output
+
+        # Verify functions were called
+        mock_get_jobs.assert_called_once()
+        mock_delete_jobs.assert_called_once()
+        mock_delete_progress.assert_called_once()
+
+    def test_purge_site_no_jobs(self, cli_runner, mocker):
+        """Test purging a site with no jobs."""
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        # Mock get_jobs_for_site to return empty list
+        mocker.patch("clerk.queue_db.get_jobs_for_site", return_value=[])
+
+        # Mock deletion operations
+        mock_delete_jobs = mocker.patch("clerk.queue_db.delete_jobs_for_site")
+        mock_delete_progress = mocker.patch("clerk.queue_db.delete_site_progress")
+
+        result = cli_runner.invoke(cli, ["purge", "site.civic.band"])
+
+        assert result.exit_code == 0
+        assert "0" in result.output or "no" in result.output.lower()
+
+        # Still delete records even if no jobs
+        mock_delete_jobs.assert_called_once()
+        mock_delete_progress.assert_called_once()
+
+    def test_purge_site_handles_redis_error(self, cli_runner, mocker):
+        """Test purge handles Redis connection errors gracefully."""
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        # Mock get_jobs_for_site to return jobs
+        mocker.patch("clerk.queue_db.get_jobs_for_site", return_value=[
+            {"rq_job_id": "job-1", "site_id": "site.civic.band", "job_type": "fetch-site", "stage": "fetch"},
+        ])
+
+        # Mock Redis to raise connection error
+        import redis
+        mocker.patch("clerk.queue.get_high_queue", side_effect=redis.ConnectionError("Cannot connect to Redis"))
+
+        result = cli_runner.invoke(cli, ["purge", "site.civic.band"])
+
+        # Should handle error gracefully
+        assert result.exit_code != 0
+        assert "Redis" in result.output or "redis" in result.output.lower()
+
+
+@pytest.mark.unit
+class TestPurgeQueueCommand:
+    """Tests for the purge-queue command."""
+
+    def test_purge_queue_success(self, cli_runner, mocker):
+        """Test purging an entire queue."""
+        # Mock queue operations
+        mock_queue = mocker.MagicMock()
+        mock_queue.empty.return_value = 5  # Returns number of jobs removed
+        mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_queue)
+
+        result = cli_runner.invoke(cli, ["purge-queue", "ocr"])
+
+        assert result.exit_code == 0
+        assert "ocr" in result.output.lower()
+        mock_queue.empty.assert_called_once()
+
+    def test_purge_queue_all_queues(self, cli_runner, mocker):
+        """Test purging different queues."""
+        queue_names = ["high", "fetch", "ocr", "extraction", "deploy"]
+
+        for queue_name in queue_names:
+            mock_queue = mocker.MagicMock()
+            mock_queue.empty.return_value = 3
+            mocker.patch(f"clerk.queue.get_{queue_name}_queue", return_value=mock_queue)
+
+            result = cli_runner.invoke(cli, ["purge-queue", queue_name])
+
+            assert result.exit_code == 0
+            assert queue_name in result.output.lower()
+            mock_queue.empty.assert_called_once()
+
+            # Reset mocks for next iteration
+            mocker.resetall()
+
+    def test_purge_queue_invalid_name(self, cli_runner, mocker):
+        """Test purging with invalid queue name."""
+        result = cli_runner.invoke(cli, ["purge-queue", "invalid_queue"])
+
+        # Should fail with error
+        assert result.exit_code != 0
+        assert "invalid" in result.output.lower() or "unknown" in result.output.lower()
+
+    def test_purge_queue_handles_redis_error(self, cli_runner, mocker):
+        """Test purge-queue handles Redis connection errors gracefully."""
+        # Mock Redis to raise connection error
+        import redis
+        mocker.patch("clerk.queue.get_ocr_queue", side_effect=redis.ConnectionError("Cannot connect to Redis"))
+
+        result = cli_runner.invoke(cli, ["purge-queue", "ocr"])
+
+        # Should handle error gracefully
+        assert result.exit_code != 0
+        assert "Redis" in result.output or "redis" in result.output.lower()
