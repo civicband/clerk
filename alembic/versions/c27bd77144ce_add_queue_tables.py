@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.sql import func
 
 
 # revision identifiers, used by Alembic.
@@ -26,15 +27,15 @@ def upgrade() -> None:
     sa.Column('site_id', sa.String(), nullable=False),
     sa.Column('job_type', sa.String(), nullable=False),
     sa.Column('stage', sa.String(), nullable=True),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), server_default=func.now(), nullable=True),
     sa.PrimaryKeyConstraint('rq_job_id')
     )
     op.create_index(op.f('ix_job_tracking_site_id'), 'job_tracking', ['site_id'], unique=False)
     op.create_table('site_progress',
     sa.Column('site_id', sa.String(), nullable=False),
     sa.Column('current_stage', sa.String(), nullable=True),
-    sa.Column('stage_total', sa.Integer(), server_default='0', nullable=True),
-    sa.Column('stage_completed', sa.Integer(), server_default='0', nullable=True),
+    sa.Column('stage_total', sa.Integer(), server_default=sa.text('0'), nullable=False),
+    sa.Column('stage_completed', sa.Integer(), server_default=sa.text('0'), nullable=False),
     sa.Column('started_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
     sa.PrimaryKeyConstraint('site_id')
