@@ -1034,6 +1034,49 @@ def history():
     _run_alembic_command("history")
 
 
+@cli.command()
+@click.argument("subdomains", nargs=-1, required=True)
+@click.option(
+    "--priority",
+    type=click.Choice(["high", "normal", "low"], case_sensitive=False),
+    default="normal",
+    help="Job priority (default: normal)",
+)
+def enqueue(subdomains, priority):
+    """Enqueue sites for processing"""
+    import redis
+    from .queue import enqueue_job, get_redis
+    from .queue_db import track_job, create_site_progress
+    from .db import civic_db_connection, get_site_by_subdomain
+
+    # Validate Redis connection
+    try:
+        get_redis()
+    except (redis.ConnectionError, redis.TimeoutError, SystemExit) as e:
+        click.secho(f"Error: Cannot connect to Redis: {e}", fg="red")
+        raise click.Abort()
+
+    # Process each site
+    for subdomain in subdomains:
+        # Enqueue the job
+        try:
+            job_id = enqueue_job("fetch-site", subdomain, priority=priority)
+        except Exception as e:
+            click.secho(f"Error enqueueing {subdomain}: {e}", fg="red")
+            continue
+
+        # Track in PostgreSQL
+        try:
+            with civic_db_connection() as conn:
+                track_job(conn, job_id, subdomain, "fetch-site", "fetch")
+                create_site_progress(conn, subdomain, "fetch")
+        except Exception as e:
+            click.secho(f"Warning: Failed to track job in database: {e}", fg="yellow")
+
+        # Display confirmation
+        click.echo(f"Enqueued {subdomain} (job: {job_id}, priority: {priority})")
+
+
 cli.add_command(new)
 cli.add_command(update)
 cli.add_command(build_full_db)

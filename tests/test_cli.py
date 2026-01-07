@@ -1360,3 +1360,129 @@ class TestDbCommands:
 
         # Command should fail
         assert result.exit_code != 0
+
+
+@pytest.mark.unit
+class TestEnqueueCommand:
+    """Unit tests for enqueue CLI command."""
+
+    def test_enqueue_single_site(self, cli_runner, mocker):
+        """Test enqueuing a single site."""
+        # Mock Redis and queue operations
+        mock_enqueue_job = mocker.patch("clerk.queue.enqueue_job", return_value="job123")
+
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+        mocker.patch("clerk.db.get_site_by_subdomain", return_value={"subdomain": "site1.civic.band"})
+        mocker.patch("clerk.queue_db.track_job")
+        mocker.patch("clerk.queue_db.create_site_progress")
+
+        # Mock Redis connection test
+        mocker.patch("clerk.queue.get_redis")
+
+        result = cli_runner.invoke(cli, ["enqueue", "site1.civic.band"])
+
+        assert result.exit_code == 0
+        assert "Enqueued site1.civic.band" in result.output
+        assert "job123" in result.output
+        assert "normal" in result.output
+
+        # Verify enqueue_job was called correctly
+        mock_enqueue_job.assert_called_once_with("fetch-site", "site1.civic.band", priority="normal")
+
+    def test_enqueue_multiple_sites(self, cli_runner, mocker):
+        """Test enqueuing multiple sites."""
+        # Mock Redis and queue operations
+        mock_enqueue_job = mocker.patch("clerk.queue.enqueue_job")
+        mock_enqueue_job.side_effect = ["job123", "job456"]
+
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        def mock_get_site(conn, subdomain):
+            return {"subdomain": subdomain}
+
+        mocker.patch("clerk.db.get_site_by_subdomain", side_effect=mock_get_site)
+        mocker.patch("clerk.queue_db.track_job")
+        mocker.patch("clerk.queue_db.create_site_progress")
+
+        # Mock Redis connection test
+        mocker.patch("clerk.queue.get_redis")
+
+        result = cli_runner.invoke(cli, ["enqueue", "site1.civic.band", "site2.civic.band"])
+
+        assert result.exit_code == 0
+        assert "Enqueued site1.civic.band" in result.output
+        assert "job123" in result.output
+        assert "Enqueued site2.civic.band" in result.output
+        assert "job456" in result.output
+
+        # Verify enqueue_job was called twice
+        assert mock_enqueue_job.call_count == 2
+
+    def test_enqueue_with_high_priority(self, cli_runner, mocker):
+        """Test enqueuing with high priority."""
+        # Mock Redis and queue operations
+        mock_enqueue_job = mocker.patch("clerk.queue.enqueue_job", return_value="job123")
+
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+        mocker.patch("clerk.db.get_site_by_subdomain", return_value={"subdomain": "site1.civic.band"})
+        mocker.patch("clerk.queue_db.track_job")
+        mocker.patch("clerk.queue_db.create_site_progress")
+
+        # Mock Redis connection test
+        mocker.patch("clerk.queue.get_redis")
+
+        result = cli_runner.invoke(cli, ["enqueue", "site1.civic.band", "--priority", "high"])
+
+        assert result.exit_code == 0
+        assert "high" in result.output
+
+        # Verify enqueue_job was called with high priority
+        mock_enqueue_job.assert_called_once_with("fetch-site", "site1.civic.band", priority="high")
+
+    def test_enqueue_with_low_priority(self, cli_runner, mocker):
+        """Test enqueuing with low priority."""
+        # Mock Redis and queue operations
+        mock_enqueue_job = mocker.patch("clerk.queue.enqueue_job", return_value="job123")
+
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+        mocker.patch("clerk.db.get_site_by_subdomain", return_value={"subdomain": "site1.civic.band"})
+        mocker.patch("clerk.queue_db.track_job")
+        mocker.patch("clerk.queue_db.create_site_progress")
+
+        # Mock Redis connection test
+        mocker.patch("clerk.queue.get_redis")
+
+        result = cli_runner.invoke(cli, ["enqueue", "site1.civic.band", "--priority", "low"])
+
+        assert result.exit_code == 0
+
+        # Verify enqueue_job was called with low priority
+        mock_enqueue_job.assert_called_once_with("fetch-site", "site1.civic.band", priority="low")
+
+    def test_enqueue_handles_redis_connection_error(self, cli_runner, mocker):
+        """Test that enqueue handles Redis connection errors gracefully."""
+        # Mock Redis to raise connection error
+        import redis
+        mocker.patch("clerk.queue.get_redis", side_effect=redis.ConnectionError("Cannot connect to Redis"))
+
+        result = cli_runner.invoke(cli, ["enqueue", "site1.civic.band"])
+
+        # Command should fail gracefully
+        assert result.exit_code != 0
+        assert "Redis" in result.output or "redis" in result.output.lower()
