@@ -1184,45 +1184,45 @@ def purge(site_id):
 
     # Handle Redis connection errors
     try:
-        # Get all jobs for the site from database
+        # Use single database transaction to prevent race conditions
         with civic_db_connection() as conn:
+            # Get all jobs for the site from database
             jobs = get_jobs_for_site(conn, site_id)
+            click.echo(f"Found {len(jobs)} job(s) for site {site_id}")
 
-        click.echo(f"Found {len(jobs)} job(s) for site {site_id}")
+            # Cancel and delete each job from RQ (outside transaction is OK)
+            queues = [
+                get_high_queue(),
+                get_fetch_queue(),
+                get_ocr_queue(),
+                get_extraction_queue(),
+                get_deploy_queue(),
+            ]
 
-        # Cancel and delete each job from RQ
-        queues = [
-            get_high_queue(),
-            get_fetch_queue(),
-            get_ocr_queue(),
-            get_extraction_queue(),
-            get_deploy_queue(),
-        ]
+            deleted_count = 0
+            for job_data in jobs:
+                job_id = job_data["rq_job_id"]
 
-        deleted_count = 0
-        for job_data in jobs:
-            job_id = job_data["rq_job_id"]
+                # Try all queues
+                for queue in queues:
+                    try:
+                        job = queue.fetch_job(job_id)
+                        if job:
+                            job.cancel()
+                            job.delete()
+                            deleted_count += 1
+                            break  # Found and deleted, no need to check other queues
+                    except Exception as e:
+                        # Job might not be in this queue, or other transient error
+                        # Continue trying other queues
+                        continue
 
-            # Try all queues
-            for queue in queues:
-                try:
-                    job = queue.fetch_job(job_id)
-                    if job:
-                        job.cancel()
-                        job.delete()
-                        deleted_count += 1
-                        break  # Found and deleted, no need to check other queues
-                except Exception:
-                    # Job might not be in this queue, continue
-                    pass
-
-        # Delete from database tables
-        with civic_db_connection() as conn:
+            # Delete database records in same transaction
             delete_site_progress(conn, site_id)
             delete_jobs_for_site(conn, site_id)
 
-        click.echo(f"Purged {deleted_count} job(s) from queues for site {site_id}")
-        click.echo(f"Deleted database records for site {site_id}")
+            click.echo(f"Purged {deleted_count} job(s) from queues for site {site_id}")
+            click.echo(f"Deleted database records for site {site_id}")
 
     except (redis.ConnectionError, redis.TimeoutError) as e:
         click.secho(f"Error: Cannot connect to Redis: {e}", fg="red")
