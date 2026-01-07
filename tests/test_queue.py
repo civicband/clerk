@@ -50,13 +50,32 @@ def test_get_queues_returns_queue_objects(reset_redis_singleton):
         mock_redis = MagicMock()
         mock_get_redis.return_value = mock_redis
 
-        from clerk.queue import get_fetch_queue, get_ocr_queue
+        from clerk.queue import (
+            get_high_queue,
+            get_fetch_queue,
+            get_ocr_queue,
+            get_extraction_queue,
+            get_deploy_queue,
+        )
         from rq import Queue
 
+        # Test all 5 queues
+        high_queue = get_high_queue()
         fetch_queue = get_fetch_queue()
         ocr_queue = get_ocr_queue()
+        extraction_queue = get_extraction_queue()
+        deploy_queue = get_deploy_queue()
 
+        # Verify all are Queue instances
+        assert isinstance(high_queue, Queue)
         assert isinstance(fetch_queue, Queue)
         assert isinstance(ocr_queue, Queue)
+        assert isinstance(extraction_queue, Queue)
+        assert isinstance(deploy_queue, Queue)
+
+        # Verify correct names
+        assert high_queue.name == 'high'
         assert fetch_queue.name == 'fetch'
         assert ocr_queue.name == 'ocr'
+        assert extraction_queue.name == 'extraction'
+        assert deploy_queue.name == 'deploy'
