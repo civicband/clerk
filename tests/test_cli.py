@@ -1363,6 +1363,212 @@ class TestDbCommands:
 
 
 @pytest.mark.unit
+class TestStatusCommand:
+    """Unit tests for status CLI command."""
+
+    def test_status_shows_queue_depths(self, cli_runner, mocker):
+        """Test that status command shows queue depths."""
+        # Mock Redis queues
+        mock_high_queue = mocker.Mock()
+        mock_high_queue.__len__ = mocker.Mock(return_value=0)
+        mock_fetch_queue = mocker.Mock()
+        mock_fetch_queue.__len__ = mocker.Mock(return_value=3)
+        mock_ocr_queue = mocker.Mock()
+        mock_ocr_queue.__len__ = mocker.Mock(return_value=247)
+        mock_extraction_queue = mocker.Mock()
+        mock_extraction_queue.__len__ = mocker.Mock(return_value=1)
+        mock_deploy_queue = mocker.Mock()
+        mock_deploy_queue.__len__ = mocker.Mock(return_value=0)
+
+        mocker.patch("clerk.queue.get_high_queue", return_value=mock_high_queue)
+        mocker.patch("clerk.queue.get_fetch_queue", return_value=mock_fetch_queue)
+        mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_ocr_queue)
+        mocker.patch("clerk.queue.get_extraction_queue", return_value=mock_extraction_queue)
+        mocker.patch("clerk.queue.get_deploy_queue", return_value=mock_deploy_queue)
+
+        # Mock database operations (empty site_progress)
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        # Mock empty result for site_progress
+        mock_result = mocker.Mock()
+        mock_result.fetchall.return_value = []
+        mock_conn.execute.return_value = mock_result
+
+        result = cli_runner.invoke(cli, ["status"])
+
+        assert result.exit_code == 0
+        assert "Queue Status" in result.output
+        assert "High priority" in result.output
+        assert "0 jobs" in result.output
+        assert "Fetch" in result.output
+        assert "3 jobs" in result.output
+        assert "OCR" in result.output
+        assert "247 jobs" in result.output
+        assert "Extraction" in result.output
+        assert "1 jobs" in result.output
+        assert "Deploy" in result.output
+
+    def test_status_shows_active_sites(self, cli_runner, mocker):
+        """Test that status command shows active sites."""
+        # Mock Redis queues (all empty)
+        mock_queue = mocker.Mock()
+        mock_queue.__len__ = mocker.Mock(return_value=0)
+        mocker.patch("clerk.queue.get_high_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_fetch_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_extraction_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_deploy_queue", return_value=mock_queue)
+
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        # Mock site_progress results
+        class MockRow:
+            def __init__(self, site_id, current_stage, stage_completed, stage_total):
+                self.site_id = site_id
+                self.current_stage = current_stage
+                self.stage_completed = stage_completed
+                self.stage_total = stage_total
+
+        mock_result = mocker.Mock()
+        mock_result.fetchall.return_value = [
+            MockRow("site1.civic.band", "ocr", 45, 100),
+            MockRow("site2.civic.band", "extraction", 12, 50),
+            MockRow("site3.civic.band", "fetch", 0, 0),
+        ]
+        mock_conn.execute.return_value = mock_result
+
+        result = cli_runner.invoke(cli, ["status"])
+
+        assert result.exit_code == 0
+        assert "Active Sites" in result.output
+        assert "site1.civic.band" in result.output
+        assert "ocr" in result.output
+        assert "45/100" in result.output
+        assert "45.0%" in result.output
+        assert "site2.civic.band" in result.output
+        assert "extraction" in result.output
+        assert "12/50" in result.output
+        assert "24.0%" in result.output
+        assert "site3.civic.band" in result.output
+        assert "fetch" in result.output
+
+    def test_status_with_site_id_shows_detailed_progress(self, cli_runner, mocker):
+        """Test that status --site-id shows detailed site progress."""
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        # Mock site_progress result for specific site
+        class MockRow:
+            def __init__(self):
+                self.site_id = "example.civic.band"
+                self.current_stage = "ocr"
+                self.stage_completed = 45
+                self.stage_total = 100
+                self.started_at = datetime.datetime(2026, 1, 6, 10, 0, 0)
+                self.updated_at = datetime.datetime(2026, 1, 6, 10, 5, 23)
+
+        mock_result = mocker.Mock()
+        mock_result.fetchone.return_value = MockRow()
+        mock_conn.execute.return_value = mock_result
+
+        result = cli_runner.invoke(cli, ["status", "--site-id", "example.civic.band"])
+
+        assert result.exit_code == 0
+        assert "Site: example.civic.band" in result.output
+        assert "Current stage: ocr" in result.output
+        assert "Progress: 45/100 (45.0%)" in result.output
+        assert "Started: 2026-01-06 10:00:00" in result.output
+        assert "Updated: 2026-01-06 10:05:23" in result.output
+
+    def test_status_with_site_id_not_found(self, cli_runner, mocker):
+        """Test that status --site-id handles site not found."""
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        # Mock empty result (site not found)
+        mock_result = mocker.Mock()
+        mock_result.fetchone.return_value = None
+        mock_conn.execute.return_value = mock_result
+
+        result = cli_runner.invoke(cli, ["status", "--site-id", "nonexistent.civic.band"])
+
+        assert result.exit_code == 0
+        assert "No progress tracking found for site: nonexistent.civic.band" in result.output
+
+    def test_status_handles_empty_queues(self, cli_runner, mocker):
+        """Test that status command handles empty queues gracefully."""
+        # Mock Redis queues (all empty)
+        mock_queue = mocker.Mock()
+        mock_queue.__len__ = mocker.Mock(return_value=0)
+        mocker.patch("clerk.queue.get_high_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_fetch_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_extraction_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_deploy_queue", return_value=mock_queue)
+
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        # Mock empty result for site_progress
+        mock_result = mocker.Mock()
+        mock_result.fetchall.return_value = []
+        mock_conn.execute.return_value = mock_result
+
+        result = cli_runner.invoke(cli, ["status"])
+
+        assert result.exit_code == 0
+        assert "Queue Status" in result.output
+
+    def test_status_handles_redis_connection_error(self, cli_runner, mocker):
+        """Test that status command handles Redis connection errors gracefully."""
+        # Mock Redis to raise connection error
+        import redis
+        mocker.patch("clerk.queue.get_high_queue", side_effect=redis.ConnectionError("Cannot connect"))
+
+        result = cli_runner.invoke(cli, ["status"])
+
+        # Command should fail gracefully
+        assert result.exit_code != 0
+        assert "Redis" in result.output or "redis" in result.output.lower() or "Cannot connect" in result.output
+
+    def test_status_handles_database_connection_error(self, cli_runner, mocker):
+        """Test that status command handles database connection errors gracefully."""
+        # Mock Redis queues (all empty)
+        mock_queue = mocker.Mock()
+        mock_queue.__len__ = mocker.Mock(return_value=0)
+        mocker.patch("clerk.queue.get_high_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_fetch_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_extraction_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_deploy_queue", return_value=mock_queue)
+
+        # Mock database to raise connection error
+        from sqlalchemy.exc import OperationalError
+        mocker.patch("clerk.db.civic_db_connection", side_effect=OperationalError("DB error", None, None))
+
+        result = cli_runner.invoke(cli, ["status"])
+
+        # Command should fail gracefully
+        assert result.exit_code != 0
+
+
+@pytest.mark.unit
 class TestEnqueueCommand:
     """Unit tests for enqueue CLI command."""
 

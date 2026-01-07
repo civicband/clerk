@@ -1077,6 +1077,96 @@ def enqueue(subdomains, priority):
         click.echo(f"Enqueued {subdomain} (job: {job_id}, priority: {priority})")
 
 
+@cli.command()
+@click.option("--site-id", help="Show detailed progress for specific site")
+def status(site_id=None):
+    """Show queue status and site progress"""
+    import redis
+    from sqlalchemy import select
+    from sqlalchemy.exc import OperationalError
+
+    from .db import civic_db_connection
+    from .models import site_progress_table
+    from .queue import (
+        get_deploy_queue,
+        get_extraction_queue,
+        get_fetch_queue,
+        get_high_queue,
+        get_ocr_queue,
+    )
+
+    # Handle Redis connection errors
+    try:
+        # Show queue status if not querying specific site
+        if not site_id:
+            click.echo()
+            click.echo("=== Queue Status ===")
+
+            queues = {
+                "High priority": get_high_queue(),
+                "Fetch": get_fetch_queue(),
+                "OCR": get_ocr_queue(),
+                "Extraction": get_extraction_queue(),
+                "Deploy": get_deploy_queue(),
+            }
+
+            for name, queue in queues.items():
+                job_count = len(queue)
+                click.echo(f"{name:15} {job_count} jobs")
+    except (redis.ConnectionError, redis.TimeoutError) as e:
+        click.secho(f"Error: Cannot connect to Redis: {e}", fg="red")
+        raise click.Abort()
+
+    # Handle database connection errors
+    try:
+        with civic_db_connection() as conn:
+            if site_id:
+                # Query for specific site
+                stmt = select(site_progress_table).where(
+                    site_progress_table.c.site_id == site_id
+                )
+                result = conn.execute(stmt).fetchone()
+
+                if result:
+                    # Display detailed site progress
+                    percentage = (
+                        (result.stage_completed / result.stage_total * 100)
+                        if result.stage_total > 0
+                        else 0
+                    )
+                    click.echo(f"Site: {result.site_id}")
+                    click.echo(f"Current stage: {result.current_stage}")
+                    click.echo(
+                        f"Progress: {result.stage_completed}/{result.stage_total} ({percentage:.1f}%)"
+                    )
+                    click.echo(f"Started: {result.started_at}")
+                    click.echo(f"Updated: {result.updated_at}")
+                else:
+                    click.echo(f"No progress tracking found for site: {site_id}")
+            else:
+                # Query all active sites
+                click.echo()
+                click.echo("=== Active Sites ===")
+
+                stmt = select(site_progress_table).where(
+                    site_progress_table.c.current_stage != "completed"
+                )
+                results = conn.execute(stmt).fetchall()
+
+                if results:
+                    for row in results:
+                        if row.stage_total > 0:
+                            percentage = row.stage_completed / row.stage_total * 100
+                            click.echo(
+                                f"  {row.site_id}: {row.current_stage} ({row.stage_completed}/{row.stage_total}, {percentage:.1f}%)"
+                            )
+                        else:
+                            click.echo(f"  {row.site_id}: {row.current_stage}")
+    except OperationalError as e:
+        click.secho(f"Error: Cannot connect to database: {e}", fg="red")
+        raise click.Abort()
+
+
 cli.add_command(new)
 cli.add_command(update)
 cli.add_command(build_full_db)
