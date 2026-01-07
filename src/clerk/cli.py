@@ -1275,6 +1275,52 @@ def purge_queue(queue_name):
         raise click.Abort()
 
 
+@cli.command()
+@click.argument("worker_type", type=click.Choice(["fetch", "ocr", "extraction", "deploy"]))
+@click.option("--num-workers", "-n", type=int, default=1, help="Number of workers to start")
+@click.option("--burst", is_flag=True, help="Exit when queue empty (for testing)")
+def worker(worker_type, num_workers, burst):
+    """Start RQ workers."""
+    import redis
+    from rq import Worker
+    from rq.worker_pool import WorkerPool
+
+    from .queue import (
+        get_deploy_queue,
+        get_extraction_queue,
+        get_fetch_queue,
+        get_high_queue,
+        get_ocr_queue,
+        get_redis,
+    )
+
+    # Validate Redis connection before starting workers
+    try:
+        get_redis()
+    except (redis.ConnectionError, redis.TimeoutError) as e:
+        click.secho(f"Error: Cannot connect to Redis: {e}", fg="red")
+        raise click.Abort()
+
+    # Map worker types to queue lists (each worker checks high priority first)
+    queue_map = {
+        "fetch": [get_high_queue(), get_fetch_queue()],
+        "ocr": [get_high_queue(), get_ocr_queue()],
+        "extraction": [get_high_queue(), get_extraction_queue()],
+        "deploy": [get_high_queue(), get_deploy_queue()],
+    }
+
+    queues = queue_map[worker_type]
+
+    if num_workers == 1:
+        # Single worker
+        worker_instance = Worker(queues, connection=get_redis())
+        worker_instance.work(with_scheduler=True, burst=burst)
+    else:
+        # Worker pool for multiple workers
+        with WorkerPool(queues, num_workers=num_workers, connection=get_redis()) as pool:
+            pool.start()
+
+
 cli.add_command(new)
 cli.add_command(update)
 cli.add_command(build_full_db)

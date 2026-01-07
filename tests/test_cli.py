@@ -1839,3 +1839,186 @@ class TestPurgeQueueCommand:
         # Should handle error gracefully
         assert result.exit_code != 0
         assert "Redis" in result.output or "redis" in result.output.lower()
+
+
+@pytest.mark.unit
+class TestWorkerCommand:
+    """Tests for the worker CLI command."""
+
+    def test_worker_command_exists(self, cli_runner):
+        """Test that worker command exists and shows help."""
+        result = cli_runner.invoke(cli, ["worker", "--help"])
+        assert result.exit_code == 0
+        assert "Start RQ workers" in result.output
+
+    def test_worker_fetch_single_worker(self, cli_runner, mocker):
+        """Test starting a single fetch worker."""
+        # Mock Redis connection
+        mock_redis = mocker.MagicMock()
+        mocker.patch("clerk.queue.get_redis", return_value=mock_redis)
+
+        # Mock queues
+        mock_high_queue = mocker.MagicMock()
+        mock_fetch_queue = mocker.MagicMock()
+        mocker.patch("clerk.queue.get_high_queue", return_value=mock_high_queue)
+        mocker.patch("clerk.queue.get_fetch_queue", return_value=mock_fetch_queue)
+
+        # Mock Worker class
+        mock_worker = mocker.MagicMock()
+        mock_worker_class = mocker.patch("rq.Worker", return_value=mock_worker)
+
+        result = cli_runner.invoke(cli, ["worker", "fetch"])
+
+        assert result.exit_code == 0
+        # Verify Worker was created with correct queues (high first, then fetch)
+        mock_worker_class.assert_called_once_with(
+            [mock_high_queue, mock_fetch_queue],
+            connection=mock_redis
+        )
+        # Verify worker.work() was called with scheduler and not burst
+        mock_worker.work.assert_called_once_with(with_scheduler=True, burst=False)
+
+    def test_worker_ocr_with_burst_mode(self, cli_runner, mocker):
+        """Test starting OCR worker in burst mode."""
+        # Mock Redis connection
+        mock_redis = mocker.MagicMock()
+        mocker.patch("clerk.queue.get_redis", return_value=mock_redis)
+
+        # Mock queues
+        mock_high_queue = mocker.MagicMock()
+        mock_ocr_queue = mocker.MagicMock()
+        mocker.patch("clerk.queue.get_high_queue", return_value=mock_high_queue)
+        mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_ocr_queue)
+
+        # Mock Worker class
+        mock_worker = mocker.MagicMock()
+        mock_worker_class = mocker.patch("rq.Worker", return_value=mock_worker)
+
+        result = cli_runner.invoke(cli, ["worker", "ocr", "--burst"])
+
+        assert result.exit_code == 0
+        # Verify Worker was created with correct queues
+        mock_worker_class.assert_called_once_with(
+            [mock_high_queue, mock_ocr_queue],
+            connection=mock_redis
+        )
+        # Verify burst mode was enabled
+        mock_worker.work.assert_called_once_with(with_scheduler=True, burst=True)
+
+    def test_worker_extraction_multiple_workers(self, cli_runner, mocker):
+        """Test starting multiple extraction workers with worker pool."""
+        # Mock Redis connection
+        mock_redis = mocker.MagicMock()
+        mocker.patch("clerk.queue.get_redis", return_value=mock_redis)
+
+        # Mock queues
+        mock_high_queue = mocker.MagicMock()
+        mock_extraction_queue = mocker.MagicMock()
+        mocker.patch("clerk.queue.get_high_queue", return_value=mock_high_queue)
+        mocker.patch("clerk.queue.get_extraction_queue", return_value=mock_extraction_queue)
+
+        # Mock WorkerPool class
+        mock_pool = mocker.MagicMock()
+        mock_pool.__enter__ = mocker.Mock(return_value=mock_pool)
+        mock_pool.__exit__ = mocker.Mock(return_value=False)
+        mock_pool_class = mocker.patch("rq.worker_pool.WorkerPool", return_value=mock_pool)
+
+        result = cli_runner.invoke(cli, ["worker", "extraction", "-n", "2"])
+
+        assert result.exit_code == 0
+        # Verify WorkerPool was created with correct parameters
+        mock_pool_class.assert_called_once_with(
+            [mock_high_queue, mock_extraction_queue],
+            num_workers=2,
+            connection=mock_redis
+        )
+        # Verify pool.start() was called
+        mock_pool.start.assert_called_once()
+
+    def test_worker_deploy_type(self, cli_runner, mocker):
+        """Test starting deploy worker."""
+        # Mock Redis connection
+        mock_redis = mocker.MagicMock()
+        mocker.patch("clerk.queue.get_redis", return_value=mock_redis)
+
+        # Mock queues
+        mock_high_queue = mocker.MagicMock()
+        mock_deploy_queue = mocker.MagicMock()
+        mocker.patch("clerk.queue.get_high_queue", return_value=mock_high_queue)
+        mocker.patch("clerk.queue.get_deploy_queue", return_value=mock_deploy_queue)
+
+        # Mock Worker class
+        mock_worker = mocker.MagicMock()
+        mock_worker_class = mocker.patch("rq.Worker", return_value=mock_worker)
+
+        result = cli_runner.invoke(cli, ["worker", "deploy"])
+
+        assert result.exit_code == 0
+        # Verify Worker was created with deploy queue
+        mock_worker_class.assert_called_once_with(
+            [mock_high_queue, mock_deploy_queue],
+            connection=mock_redis
+        )
+
+    def test_worker_handles_redis_connection_error(self, cli_runner, mocker):
+        """Test that worker command handles Redis connection errors."""
+        # Mock Redis to raise connection error
+        import redis
+        mocker.patch("clerk.queue.get_redis", side_effect=redis.ConnectionError("Cannot connect to Redis"))
+
+        result = cli_runner.invoke(cli, ["worker", "fetch"])
+
+        # Command should fail gracefully
+        assert result.exit_code != 0
+        assert "Redis" in result.output or "redis" in result.output.lower()
+
+    def test_worker_invalid_type(self, cli_runner, mocker):
+        """Test that invalid worker type shows error."""
+        result = cli_runner.invoke(cli, ["worker", "invalid_type"])
+
+        # Should fail with invalid choice error
+        assert result.exit_code != 0
+
+    def test_worker_num_workers_flag(self, cli_runner, mocker):
+        """Test --num-workers flag is accepted."""
+        # Mock Redis connection
+        mock_redis = mocker.MagicMock()
+        mocker.patch("clerk.queue.get_redis", return_value=mock_redis)
+
+        # Mock queues
+        mocker.patch("clerk.queue.get_high_queue", return_value=mocker.MagicMock())
+        mocker.patch("clerk.queue.get_fetch_queue", return_value=mocker.MagicMock())
+
+        # Mock WorkerPool
+        mock_pool = mocker.MagicMock()
+        mock_pool.__enter__ = mocker.Mock(return_value=mock_pool)
+        mock_pool.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("rq.worker_pool.WorkerPool", return_value=mock_pool)
+
+        result = cli_runner.invoke(cli, ["worker", "fetch", "--num-workers", "5"])
+
+        assert result.exit_code == 0
+
+    def test_worker_all_worker_types(self, cli_runner, mocker):
+        """Test all valid worker types are accepted."""
+        worker_types = ["fetch", "ocr", "extraction", "deploy"]
+
+        for worker_type in worker_types:
+            # Mock Redis connection
+            mock_redis = mocker.MagicMock()
+            mocker.patch("clerk.queue.get_redis", return_value=mock_redis)
+
+            # Mock all queues
+            mocker.patch("clerk.queue.get_high_queue", return_value=mocker.MagicMock())
+            mocker.patch(f"clerk.queue.get_{worker_type}_queue", return_value=mocker.MagicMock())
+
+            # Mock Worker
+            mock_worker = mocker.MagicMock()
+            mocker.patch("rq.Worker", return_value=mock_worker)
+
+            result = cli_runner.invoke(cli, ["worker", worker_type])
+
+            assert result.exit_code == 0, f"Worker type {worker_type} should work"
+
+            # Reset mocks
+            mocker.resetall()
