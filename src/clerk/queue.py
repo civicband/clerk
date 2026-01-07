@@ -2,10 +2,13 @@
 """Queue management using RQ (Redis Queue)."""
 
 import os
+import sys
+import threading
 import redis
 
 # Global Redis client
 _redis_client = None
+_redis_lock = threading.Lock()
 
 
 def get_redis():
@@ -13,9 +16,27 @@ def get_redis():
 
     Uses REDIS_URL environment variable for connection.
     Defaults to redis://localhost:6379 if not set.
+
+    Thread-safe initialization with double-checked locking.
+    Validates connection on initialization (fail-fast).
+
+    Raises:
+        SystemExit: If Redis connection cannot be established.
     """
     global _redis_client
+
     if _redis_client is None:
-        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
-        _redis_client = redis.from_url(redis_url, decode_responses=True)
+        with _redis_lock:
+            # Double-check: another thread might have initialized
+            if _redis_client is None:
+                redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+                try:
+                    client = redis.from_url(redis_url, decode_responses=True)
+                    client.ping()  # Test connection
+                    _redis_client = client
+                except (redis.ConnectionError, redis.TimeoutError) as e:
+                    print(f"ERROR: Cannot connect to Redis: {e}", file=sys.stderr)
+                    print(f"REDIS_URL: {redis_url}", file=sys.stderr)
+                    sys.exit(1)
+
     return _redis_client
