@@ -66,3 +66,48 @@ def get_extraction_queue():
 def get_deploy_queue():
     """Get deploy jobs queue."""
     return Queue('deploy', connection=get_redis())
+
+
+def enqueue_job(job_type, site_id, priority='normal', **kwargs):
+    """Enqueue a job to the appropriate queue.
+
+    Args:
+        job_type: Type of job (fetch-site, ocr-page, etc.)
+        site_id: Site subdomain
+        priority: 'high', 'normal', or 'low'
+        **kwargs: Additional job parameters
+
+    Returns:
+        RQ job ID
+    """
+    # Determine which queue to use
+    if priority == 'high':
+        queue = get_high_queue()
+    else:
+        # Route to stage-specific queue based on job type
+        stage = job_type.split('-')[0]  # fetch-site → fetch
+        queue_map = {
+            'fetch': get_fetch_queue(),
+            'ocr': get_ocr_queue(),
+            'extraction': get_extraction_queue(),
+            'deploy': get_deploy_queue(),
+        }
+        queue = queue_map.get(stage, get_fetch_queue())
+
+    # Import worker function based on job type
+    from . import workers
+
+    job_function_map = {
+        'fetch-site': workers.fetch_site_job,
+        'ocr-page': workers.ocr_page_job,
+        'extract-site': workers.extraction_job,
+        'deploy-site': workers.deploy_job,
+    }
+
+    job_function = job_function_map.get(job_type)
+    if not job_function:
+        raise ValueError(f"Unknown job type: {job_type}")
+
+    # Enqueue the job
+    job = queue.enqueue(job_function, site_id, **kwargs)
+    return job.id
