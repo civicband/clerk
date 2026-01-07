@@ -5,6 +5,7 @@ import os
 import sys
 import threading
 import redis
+from rq import Queue
 
 # Global Redis client
 _redis_client = None
@@ -40,3 +41,28 @@ def get_redis():
                     sys.exit(1)
 
     return _redis_client
+
+
+def get_high_queue():
+    """Get high-priority queue (express lane)."""
+    return Queue('high', connection=get_redis())
+
+
+def get_fetch_queue():
+    """Get fetch jobs queue."""
+    return Queue('fetch', connection=get_redis())
+
+
+def get_ocr_queue():
+    """Get OCR jobs queue."""
+    return Queue('ocr', connection=get_redis())
+
+
+def get_extraction_queue():
+    """Get extraction jobs queue."""
+    return Queue('extraction', connection=get_redis())
+
+
+def get_deploy_queue():
+    """Get deploy jobs queue."""
+    return Queue('deploy', connection=get_redis())

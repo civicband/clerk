@@ -42,3 +42,21 @@ def test_get_redis_singleton_behavior(reset_redis_singleton):
         assert client1 is client2
         mock_redis.assert_called_once()  # Only called once
         mock_client.ping.assert_called_once()  # Only called once
+
+
+def test_get_queues_returns_queue_objects(reset_redis_singleton):
+    """Test that queue getters return RQ Queue objects."""
+    with patch('clerk.queue.get_redis') as mock_get_redis:
+        mock_redis = MagicMock()
+        mock_get_redis.return_value = mock_redis
+
+        from clerk.queue import get_fetch_queue, get_ocr_queue
+        from rq import Queue
+
+        fetch_queue = get_fetch_queue()
+        ocr_queue = get_ocr_queue()
+
+        assert isinstance(fetch_queue, Queue)
+        assert isinstance(ocr_queue, Queue)
+        assert fetch_queue.name == 'fetch'
+        assert ocr_queue.name == 'ocr'
