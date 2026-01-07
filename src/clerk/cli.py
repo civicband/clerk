@@ -953,6 +953,141 @@ def uninstall_launchd():
     click.echo("=" * 60)
 
 
+@cli.group()
+def db():
+    """Database migration commands"""
+    pass
+
+
+@db.command()
+def upgrade():
+    """Run database migrations to latest version"""
+    import subprocess
+    from pathlib import Path
+
+    # Find alembic.ini - try current directory first, then package location
+    alembic_ini = None
+    cwd_ini = Path.cwd() / "alembic.ini"
+
+    if cwd_ini.exists():
+        alembic_ini = cwd_ini
+    else:
+        # Try package location (for installed package)
+        import sys
+
+        package_ini = Path(sys.prefix) / "share" / "clerk" / "alembic.ini"
+        if package_ini.exists():
+            alembic_ini = package_ini
+
+    if not alembic_ini:
+        click.secho(
+            "Error: alembic.ini not found. Please run this command from the project root directory.",
+            fg="red",
+        )
+        raise click.Abort()
+
+    # Run alembic upgrade
+    result = subprocess.run(
+        ["alembic", "-c", str(alembic_ini), "upgrade", "head"],
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        click.secho(f"Error running alembic upgrade: {result.stderr}", fg="red")
+        raise click.Abort()
+
+    click.echo(result.stdout)
+    if result.stderr:
+        click.echo(result.stderr, err=True)
+
+
+@db.command()
+def current():
+    """Show current database migration version"""
+    import subprocess
+    from pathlib import Path
+
+    # Find alembic.ini
+    alembic_ini = None
+    cwd_ini = Path.cwd() / "alembic.ini"
+
+    if cwd_ini.exists():
+        alembic_ini = cwd_ini
+    else:
+        # Try package location
+        import sys
+
+        package_ini = Path(sys.prefix) / "share" / "clerk" / "alembic.ini"
+        if package_ini.exists():
+            alembic_ini = package_ini
+
+    if not alembic_ini:
+        click.secho(
+            "Error: alembic.ini not found. Please run this command from the project root directory.",
+            fg="red",
+        )
+        raise click.Abort()
+
+    # Run alembic current
+    result = subprocess.run(
+        ["alembic", "-c", str(alembic_ini), "current"],
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        click.secho(f"Error running alembic current: {result.stderr}", fg="red")
+        raise click.Abort()
+
+    click.echo(result.stdout)
+    if result.stderr:
+        click.echo(result.stderr, err=True)
+
+
+@db.command()
+def history():
+    """Show database migration history"""
+    import subprocess
+    from pathlib import Path
+
+    # Find alembic.ini
+    alembic_ini = None
+    cwd_ini = Path.cwd() / "alembic.ini"
+
+    if cwd_ini.exists():
+        alembic_ini = cwd_ini
+    else:
+        # Try package location
+        import sys
+
+        package_ini = Path(sys.prefix) / "share" / "clerk" / "alembic.ini"
+        if package_ini.exists():
+            alembic_ini = package_ini
+
+    if not alembic_ini:
+        click.secho(
+            "Error: alembic.ini not found. Please run this command from the project root directory.",
+            fg="red",
+        )
+        raise click.Abort()
+
+    # Run alembic history
+    result = subprocess.run(
+        ["alembic", "-c", str(alembic_ini), "history"],
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        click.secho(f"Error running alembic history: {result.stderr}", fg="red")
+        raise click.Abort()
+
+    click.echo(result.stdout)
+    if result.stderr:
+        click.echo(result.stderr, err=True)
+
+
 cli.add_command(new)
 cli.add_command(update)
 cli.add_command(build_full_db)
@@ -961,3 +1096,4 @@ cli.add_command(migrate_extraction_schema)
 cli.add_command(extract_entities)
 cli.add_command(install_launchd)
 cli.add_command(uninstall_launchd)
+cli.add_command(db)

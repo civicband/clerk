@@ -1244,3 +1244,119 @@ class TestOCRBackendCLIFlag:
 
         # Verify ocr() was called with backend="vision"
         mock_fetcher_instance.ocr.assert_called_once_with(backend="vision")
+
+
+@pytest.mark.unit
+class TestDbCommands:
+    """Unit tests for database migration CLI commands."""
+
+    def test_db_upgrade_command_exists(self, cli_runner):
+        """Test that 'clerk db upgrade' command exists."""
+        result = cli_runner.invoke(cli, ["db", "upgrade", "--help"])
+        assert result.exit_code == 0
+
+    def test_db_current_command_exists(self, cli_runner):
+        """Test that 'clerk db current' command exists."""
+        result = cli_runner.invoke(cli, ["db", "current", "--help"])
+        assert result.exit_code == 0
+
+    def test_db_history_command_exists(self, cli_runner):
+        """Test that 'clerk db history' command exists."""
+        result = cli_runner.invoke(cli, ["db", "history", "--help"])
+        assert result.exit_code == 0
+
+    def test_db_upgrade_calls_alembic(self, cli_runner, mocker, tmp_path):
+        """Test that 'clerk db upgrade' calls alembic upgrade head."""
+        # Create a mock alembic.ini in a temporary location
+        alembic_ini = tmp_path / "alembic.ini"
+        alembic_ini.write_text("[alembic]\nscript_location = alembic")
+
+        # Mock subprocess.run to capture alembic calls
+        mock_run = mocker.patch("subprocess.run")
+        mock_run.return_value = mocker.Mock(returncode=0, stdout="", stderr="")
+
+        # Mock finding the alembic.ini file
+        mocker.patch("pathlib.Path.cwd", return_value=tmp_path)
+
+        result = cli_runner.invoke(cli, ["db", "upgrade"])
+
+        assert result.exit_code == 0
+        # Verify alembic was called with correct arguments
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args[0][0]
+        assert "alembic" in call_args
+        assert "upgrade" in call_args
+        assert "head" in call_args
+
+    def test_db_current_calls_alembic(self, cli_runner, mocker, tmp_path):
+        """Test that 'clerk db current' calls alembic current."""
+        # Create a mock alembic.ini in a temporary location
+        alembic_ini = tmp_path / "alembic.ini"
+        alembic_ini.write_text("[alembic]\nscript_location = alembic")
+
+        # Mock subprocess.run
+        mock_run = mocker.patch("subprocess.run")
+        mock_run.return_value = mocker.Mock(returncode=0, stdout="abc123 (head)", stderr="")
+
+        # Mock finding the alembic.ini file
+        mocker.patch("pathlib.Path.cwd", return_value=tmp_path)
+
+        result = cli_runner.invoke(cli, ["db", "current"])
+
+        assert result.exit_code == 0
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args[0][0]
+        assert "alembic" in call_args
+        assert "current" in call_args
+
+    def test_db_history_calls_alembic(self, cli_runner, mocker, tmp_path):
+        """Test that 'clerk db history' calls alembic history."""
+        # Create a mock alembic.ini in a temporary location
+        alembic_ini = tmp_path / "alembic.ini"
+        alembic_ini.write_text("[alembic]\nscript_location = alembic")
+
+        # Mock subprocess.run
+        mock_run = mocker.patch("subprocess.run")
+        mock_run.return_value = mocker.Mock(returncode=0, stdout="Migration history", stderr="")
+
+        # Mock finding the alembic.ini file
+        mocker.patch("pathlib.Path.cwd", return_value=tmp_path)
+
+        result = cli_runner.invoke(cli, ["db", "history"])
+
+        assert result.exit_code == 0
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args[0][0]
+        assert "alembic" in call_args
+        assert "history" in call_args
+
+    def test_db_upgrade_handles_missing_alembic_ini(self, cli_runner, mocker, tmp_path):
+        """Test that db upgrade shows error when alembic.ini is not found."""
+        # Mock Path.cwd to return a directory without alembic.ini
+        mocker.patch("pathlib.Path.cwd", return_value=tmp_path)
+
+        result = cli_runner.invoke(cli, ["db", "upgrade"])
+
+        # Command should fail gracefully
+        assert result.exit_code != 0
+        assert "alembic.ini" in result.output.lower()
+
+    def test_db_upgrade_handles_alembic_failure(self, cli_runner, mocker, tmp_path):
+        """Test that db upgrade handles alembic command failure."""
+        # Create a mock alembic.ini
+        alembic_ini = tmp_path / "alembic.ini"
+        alembic_ini.write_text("[alembic]\nscript_location = alembic")
+
+        # Mock subprocess.run to simulate failure
+        mock_run = mocker.patch("subprocess.run")
+        mock_run.return_value = mocker.Mock(
+            returncode=1, stdout="", stderr="Error: Database connection failed"
+        )
+
+        # Mock finding the alembic.ini file
+        mocker.patch("pathlib.Path.cwd", return_value=tmp_path)
+
+        result = cli_runner.invoke(cli, ["db", "upgrade"])
+
+        # Command should fail
+        assert result.exit_code != 0
