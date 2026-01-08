@@ -3,12 +3,13 @@
 import os
 import time
 from pathlib import Path
+
 from .db import civic_db_connection, get_site_by_subdomain
 from .queue_db import (
-    update_site_progress,
+    create_site_progress,
     increment_stage_progress,
     track_job,
-    create_site_progress,
+    update_site_progress,
 )
 
 
@@ -20,8 +21,8 @@ def fetch_site_job(subdomain, all_years=False, all_agendas=False):
         all_years: Fetch all years (default: False)
         all_agendas: Fetch all agendas (default: False)
     """
-    from .cli import get_fetcher, fetch_internal
-    from .queue import get_ocr_queue, get_extraction_queue
+    from .cli import fetch_internal, get_fetcher
+    from .queue import get_extraction_queue, get_ocr_queue
 
     # Get site data
     with civic_db_connection() as conn:
@@ -178,8 +179,8 @@ def db_compilation_job(subdomain, extract_entities):
         subdomain: Site subdomain
         extract_entities: Whether to include entity extraction
     """
-    from .utils import build_db_from_text_internal
     from .queue import get_deploy_queue
+    from .utils import build_db_from_text_internal
 
     # Count text files to process
     storage_dir = os.getenv('STORAGE_DIR', '../sites')

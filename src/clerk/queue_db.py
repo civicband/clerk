@@ -1,7 +1,9 @@
 """Database helpers for queue job tracking and progress."""
 
 from datetime import UTC, datetime
-from sqlalchemy import select, insert, update, delete
+
+from sqlalchemy import delete, insert, select, update
+
 from .models import job_tracking_table, site_progress_table
 
 

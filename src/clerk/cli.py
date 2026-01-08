@@ -962,8 +962,8 @@ def _find_alembic_ini():
     Raises:
         click.Abort: If alembic.ini is not found
     """
-    from pathlib import Path
     import sys
+    from pathlib import Path
 
     # Try current directory first
     cwd_ini = Path.cwd() / "alembic.ini"
@@ -1045,16 +1045,17 @@ def history():
 def enqueue(subdomains, priority):
     """Enqueue sites for processing"""
     import redis
+
+    from .db import civic_db_connection
     from .queue import enqueue_job, get_redis
-    from .queue_db import track_job, create_site_progress
-    from .db import civic_db_connection, get_site_by_subdomain
+    from .queue_db import create_site_progress, track_job
 
     # Validate Redis connection
     try:
         get_redis()
     except (redis.ConnectionError, redis.TimeoutError, SystemExit) as e:
         click.secho(f"Error: Cannot connect to Redis: {e}", fg="red")
-        raise click.Abort()
+        raise click.Abort() from e
 
     # Process each site
     for subdomain in subdomains:
@@ -1115,7 +1116,7 @@ def status(subdomain=None):
                 click.echo(f"{name:15} {job_count} jobs")
     except (redis.ConnectionError, redis.TimeoutError) as e:
         click.secho(f"Error: Cannot connect to Redis: {e}", fg="red")
-        raise click.Abort()
+        raise click.Abort() from e
 
     # Handle database connection errors
     try:
@@ -1164,7 +1165,7 @@ def status(subdomain=None):
                             click.echo(f"  {row.subdomain}: {row.current_stage}")
     except OperationalError as e:
         click.secho(f"Error: Cannot connect to database: {e}", fg="red")
-        raise click.Abort()
+        raise click.Abort() from e
 
 
 @cli.command()
@@ -1172,6 +1173,7 @@ def status(subdomain=None):
 def purge(subdomain):
     """Remove all jobs for a specific site"""
     import redis
+
     from .db import civic_db_connection
     from .queue import (
         get_deploy_queue,
@@ -1212,7 +1214,7 @@ def purge(subdomain):
                             job.delete()
                             deleted_count += 1
                             break  # Found and deleted, no need to check other queues
-                    except Exception as e:
+                    except Exception:
                         # Job might not be in this queue, or other transient error
                         # Continue trying other queues
                         continue
@@ -1226,10 +1228,10 @@ def purge(subdomain):
 
     except (redis.ConnectionError, redis.TimeoutError) as e:
         click.secho(f"Error: Cannot connect to Redis: {e}", fg="red")
-        raise click.Abort()
+        raise click.Abort() from e
     except Exception as e:
         click.secho(f"Error purging site: {e}", fg="red")
-        raise click.Abort()
+        raise click.Abort() from e
 
 
 @cli.command()
@@ -1237,6 +1239,7 @@ def purge(subdomain):
 def purge_queue(queue_name):
     """Clear an entire queue (emergency operation)"""
     import redis
+
     from .queue import (
         get_deploy_queue,
         get_extraction_queue,
@@ -1269,10 +1272,10 @@ def purge_queue(queue_name):
 
     except (redis.ConnectionError, redis.TimeoutError) as e:
         click.secho(f"Error: Cannot connect to Redis: {e}", fg="red")
-        raise click.Abort()
+        raise click.Abort() from e
     except Exception as e:
         click.secho(f"Error clearing queue: {e}", fg="red")
-        raise click.Abort()
+        raise click.Abort() from e
 
 
 @cli.command()
@@ -1299,7 +1302,7 @@ def worker(worker_type, num_workers, burst):
         get_redis()
     except (redis.ConnectionError, redis.TimeoutError) as e:
         click.secho(f"Error: Cannot connect to Redis: {e}", fg="red")
-        raise click.Abort()
+        raise click.Abort() from e
 
     # Map worker types to queue lists (each worker checks high priority first)
     queue_map = {

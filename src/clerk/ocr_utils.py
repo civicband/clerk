@@ -6,7 +6,6 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 from xml.etree.ElementTree import ParseError
 
 import httpx
@@ -59,14 +58,14 @@ class JobState:
     failed: int = 0
     skipped: int = 0
     start_time: float = field(default_factory=time.time)
-    current_document: Optional[str] = None
+    current_document: str | None = None
 
     def progress_pct(self) -> float:
         """Calculate progress percentage."""
         processed = self.completed + self.failed + self.skipped
         return (processed / self.total_documents * 100) if self.total_documents > 0 else 0.0
 
-    def eta_seconds(self) -> Optional[float]:
+    def eta_seconds(self) -> float | None:
         """Estimate time remaining in seconds.
 
         Returns:
