@@ -1,6 +1,7 @@
 """RQ worker job functions."""
 
 import os
+import time
 from pathlib import Path
 from .db import civic_db_connection, get_site_by_subdomain
 from .queue_db import (
@@ -118,7 +119,6 @@ def ocr_page_job(subdomain, pdf_path, backend='tesseract'):
     job = (prefix, meeting, date)
 
     # Run OCR job without manifest (RQ tracks job failures)
-    import time
     job_id = f"worker_ocr_{int(time.time())}"
     fetcher.do_ocr_job(job, None, job_id, backend=backend)
 
