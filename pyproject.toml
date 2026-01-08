@@ -58,6 +58,9 @@ packages = ["src/clerk"]
 
 [tool.hatch.build.targets.wheel.shared-data]
 "deployment" = "share/clerk/deployment"
+"scripts" = "share/clerk/scripts"
+"alembic.ini" = "share/clerk/alembic.ini"
+"alembic" = "share/clerk/alembic"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
