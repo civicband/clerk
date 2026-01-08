@@ -1430,8 +1430,8 @@ class TestStatusCommand:
 
         # Mock site_progress results
         class MockRow:
-            def __init__(self, site_id, current_stage, stage_completed, stage_total):
-                self.site_id = site_id
+            def __init__(self, subdomain, current_stage, stage_completed, stage_total):
+                self.subdomain = subdomain
                 self.current_stage = current_stage
                 self.stage_completed = stage_completed
                 self.stage_total = stage_total
@@ -1460,7 +1460,7 @@ class TestStatusCommand:
         assert "fetch" in result.output
 
     def test_status_with_site_id_shows_detailed_progress(self, cli_runner, mocker):
-        """Test that status --site-id shows detailed site progress."""
+        """Test that status --subdomain shows detailed site progress."""
         # Mock database operations
         mock_conn = mocker.MagicMock()
         mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
@@ -1470,7 +1470,7 @@ class TestStatusCommand:
         # Mock site_progress result for specific site
         class MockRow:
             def __init__(self):
-                self.site_id = "example.civic.band"
+                self.subdomain = "example.civic.band"
                 self.current_stage = "ocr"
                 self.stage_completed = 45
                 self.stage_total = 100
@@ -1481,7 +1481,7 @@ class TestStatusCommand:
         mock_result.fetchone.return_value = MockRow()
         mock_conn.execute.return_value = mock_result
 
-        result = cli_runner.invoke(cli, ["status", "--site-id", "example.civic.band"])
+        result = cli_runner.invoke(cli, ["status", "--subdomain", "example.civic.band"])
 
         assert result.exit_code == 0
         assert "Site: example.civic.band" in result.output
@@ -1491,7 +1491,7 @@ class TestStatusCommand:
         assert "Updated: 2026-01-06 10:05:23" in result.output
 
     def test_status_with_site_id_not_found(self, cli_runner, mocker):
-        """Test that status --site-id handles site not found."""
+        """Test that status --subdomain handles site not found."""
         # Mock database operations
         mock_conn = mocker.MagicMock()
         mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
@@ -1503,7 +1503,7 @@ class TestStatusCommand:
         mock_result.fetchone.return_value = None
         mock_conn.execute.return_value = mock_result
 
-        result = cli_runner.invoke(cli, ["status", "--site-id", "nonexistent.civic.band"])
+        result = cli_runner.invoke(cli, ["status", "--subdomain", "nonexistent.civic.band"])
 
         assert result.exit_code == 0
         assert "No progress tracking found for site: nonexistent.civic.band" in result.output
