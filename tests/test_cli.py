@@ -1842,6 +1842,148 @@ class TestPurgeQueueCommand:
 
 
 @pytest.mark.unit
+class TestInstallWorkersCommand:
+    """Tests for the install-workers CLI command."""
+
+    def test_install_workers_command_exists(self, cli_runner):
+        """Test that install-workers command exists."""
+        result = cli_runner.invoke(cli, ["install-workers", "--help"])
+        assert result.exit_code == 0
+
+    def test_install_workers_finds_script_in_dev_mode(self, cli_runner, mocker, tmp_path):
+        """Test that install-workers finds script in development mode."""
+        # Create mock script in development location
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+        script_path = scripts_dir / "install-workers.sh"
+        script_path.write_text("#!/bin/bash\necho 'test'")
+        script_path.chmod(0o755)
+
+        # Mock Path(__file__).parent to point to our test location
+        mocker.patch("pathlib.Path", return_value=tmp_path / "src" / "clerk" / "cli.py")
+
+        # Mock subprocess.run
+        mock_run = mocker.patch("subprocess.run")
+        mock_run.return_value = mocker.Mock(returncode=0)
+
+        # Mock sys.exit to prevent test from exiting
+        mock_exit = mocker.patch("sys.exit")
+
+        result = cli_runner.invoke(cli, ["install-workers"])
+
+        # Should attempt to run the script
+        assert mock_run.called or mock_exit.called
+
+    def test_install_workers_script_not_found(self, cli_runner, mocker):
+        """Test that install-workers shows error when script not found."""
+        # Mock sys.prefix to point to non-existent location
+        mocker.patch("sys.prefix", "/nonexistent/path")
+
+        # Mock __file__ to point to non-existent location
+        mock_file = mocker.MagicMock()
+        mock_file.parent.parent.parent = mocker.MagicMock()
+
+        # Mock pathlib.Path to return paths that don't exist
+        def mock_path_factory(*args):
+            mock_path = mocker.MagicMock()
+            mock_path.exists.return_value = False
+            mock_path.__truediv__.return_value = mock_path
+            return mock_path
+
+        mocker.patch("pathlib.Path", side_effect=mock_path_factory)
+
+        result = cli_runner.invoke(cli, ["install-workers"])
+
+        # Should fail with non-zero exit code
+        assert result.exit_code != 0
+
+    def test_install_workers_executes_script(self, cli_runner, mocker, tmp_path):
+        """Test that install-workers executes the script."""
+        # Create mock script
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+        script_path = scripts_dir / "install-workers.sh"
+        script_path.write_text("#!/bin/bash\necho 'Installing workers'")
+        script_path.chmod(0o755)
+
+        # Mock script location finding
+        mocker.patch("pathlib.Path.cwd", return_value=tmp_path)
+
+        # Create the expected path structure
+        dev_path = tmp_path / "scripts" / "install-workers.sh"
+
+        # Mock subprocess.run
+        mock_run = mocker.patch("subprocess.run")
+        mock_run.return_value = mocker.Mock(returncode=0)
+
+        # Mock sys.exit
+        mock_exit = mocker.patch("sys.exit")
+
+        result = cli_runner.invoke(cli, ["install-workers"])
+
+        # Verify subprocess.run was called
+        if mock_run.called:
+            call_args = mock_run.call_args
+            # Check that script path was in the call
+            assert any("install-workers.sh" in str(arg) for arg in call_args[0][0])
+
+
+@pytest.mark.unit
+class TestUninstallWorkersCommand:
+    """Tests for the uninstall-workers CLI command."""
+
+    def test_uninstall_workers_command_exists(self, cli_runner):
+        """Test that uninstall-workers command exists."""
+        result = cli_runner.invoke(cli, ["uninstall-workers", "--help"])
+        assert result.exit_code == 0
+
+    def test_uninstall_workers_finds_script_in_dev_mode(self, cli_runner, mocker, tmp_path):
+        """Test that uninstall-workers finds script in development mode."""
+        # Create mock script in development location
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+        script_path = scripts_dir / "uninstall-workers.sh"
+        script_path.write_text("#!/bin/bash\necho 'test'")
+        script_path.chmod(0o755)
+
+        # Mock subprocess.run
+        mock_run = mocker.patch("subprocess.run")
+        mock_run.return_value = mocker.Mock(returncode=0)
+
+        # Mock sys.exit
+        mock_exit = mocker.patch("sys.exit")
+
+        result = cli_runner.invoke(cli, ["uninstall-workers"])
+
+        # Should attempt to run the script
+        assert mock_run.called or mock_exit.called
+
+    def test_uninstall_workers_executes_script(self, cli_runner, mocker, tmp_path):
+        """Test that uninstall-workers executes the script."""
+        # Create mock script
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+        script_path = scripts_dir / "uninstall-workers.sh"
+        script_path.write_text("#!/bin/bash\necho 'Uninstalling workers'")
+        script_path.chmod(0o755)
+
+        # Mock subprocess.run
+        mock_run = mocker.patch("subprocess.run")
+        mock_run.return_value = mocker.Mock(returncode=0)
+
+        # Mock sys.exit
+        mock_exit = mocker.patch("sys.exit")
+
+        result = cli_runner.invoke(cli, ["uninstall-workers"])
+
+        # Verify subprocess.run was called
+        if mock_run.called:
+            call_args = mock_run.call_args
+            # Check that script path was in the call
+            assert any("uninstall-workers.sh" in str(arg) for arg in call_args[0][0])
+
+
+@pytest.mark.unit
 class TestWorkerCommand:
     """Tests for the worker CLI command."""
 

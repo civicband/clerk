@@ -1321,6 +1321,66 @@ def worker(worker_type, num_workers, burst):
             pool.start()
 
 
+@cli.command()
+def install_workers():
+    """Install RQ workers as background services (macOS/Linux)."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    # Try package location first (installed)
+    package_scripts = Path(sys.prefix) / "share" / "clerk" / "scripts"
+
+    # Try relative to this file (development)
+    dev_scripts = Path(__file__).parent.parent.parent / "scripts"
+
+    script_path = None
+    if (package_scripts / "install-workers.sh").exists():
+        script_path = package_scripts / "install-workers.sh"
+    elif (dev_scripts / "install-workers.sh").exists():
+        script_path = dev_scripts / "install-workers.sh"
+    else:
+        click.secho("Error: install-workers.sh script not found", fg="red")
+        raise click.Abort()
+
+    # Execute the script
+    result = subprocess.run(
+        [str(script_path)],
+        cwd=Path.cwd(),  # Run in current directory (where .env is)
+    )
+    sys.exit(result.returncode)
+
+
+@cli.command()
+def uninstall_workers():
+    """Uninstall RQ worker background services (macOS/Linux)."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    # Try package location first (installed)
+    package_scripts = Path(sys.prefix) / "share" / "clerk" / "scripts"
+
+    # Try relative to this file (development)
+    dev_scripts = Path(__file__).parent.parent.parent / "scripts"
+
+    script_path = None
+    if (package_scripts / "uninstall-workers.sh").exists():
+        script_path = package_scripts / "uninstall-workers.sh"
+    elif (dev_scripts / "uninstall-workers.sh").exists():
+        script_path = dev_scripts / "uninstall-workers.sh"
+    else:
+        click.secho("Error: uninstall-workers.sh script not found", fg="red")
+        raise click.Abort()
+
+    # Execute the script
+    result = subprocess.run(
+        [str(script_path)],
+        cwd=Path.cwd(),  # Run in current directory (where .env is)
+    )
+    sys.exit(result.returncode)
+
+
 cli.add_command(new)
 cli.add_command(update)
 cli.add_command(build_full_db)
