@@ -1,6 +1,6 @@
 """Database helpers for queue job tracking and progress."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from sqlalchemy import select, insert, update, delete
 from .models import job_tracking_table, site_progress_table
 
@@ -20,7 +20,7 @@ def track_job(conn, rq_job_id, subdomain, job_type, stage):
         subdomain=subdomain,
         job_type=job_type,
         stage=stage,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
     )
     conn.execute(stmt)
     conn.commit()
@@ -40,8 +40,8 @@ def create_site_progress(conn, subdomain, stage):
     data = {
         "subdomain": subdomain,
         "current_stage": stage,
-        "started_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow(),
+        "started_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
     }
 
     # Upsert (insert or update on conflict)
@@ -65,7 +65,7 @@ def update_site_progress(conn, subdomain, stage=None, stage_total=None):
         stage: New stage (optional)
         stage_total: Total items in stage (optional)
     """
-    updates = {"updated_at": datetime.utcnow()}
+    updates = {"updated_at": datetime.now(UTC)}
     if stage:
         updates["current_stage"] = stage
     if stage_total is not None:
@@ -91,7 +91,7 @@ def increment_stage_progress(conn, subdomain):
         .where(site_progress_table.c.subdomain == subdomain)
         .values(
             stage_completed=site_progress_table.c.stage_completed + 1,
-            updated_at=datetime.utcnow()
+            updated_at=datetime.now(UTC)
         )
     )
     conn.execute(stmt)

@@ -1334,6 +1334,8 @@ class TestDbCommands:
         """Test that db upgrade shows error when alembic.ini is not found."""
         # Mock Path.cwd to return a directory without alembic.ini
         mocker.patch("pathlib.Path.cwd", return_value=tmp_path)
+        # Mock sys.prefix to point to a location without package alembic.ini
+        mocker.patch("sys.prefix", tmp_path / "fake_prefix")
 
         result = cli_runner.invoke(cli, ["db", "upgrade"])
 
