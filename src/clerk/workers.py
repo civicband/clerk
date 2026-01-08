@@ -117,25 +117,10 @@ def ocr_page_job(subdomain, pdf_path, backend='tesseract'):
     # Create job tuple for do_ocr_job
     job = (prefix, meeting, date)
 
-    # Create minimal manifest (we don't need it for individual jobs)
-    from .ocr_utils import FailureManifest
-    import tempfile
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as f:
-        manifest_path = f.name
-    manifest = FailureManifest(manifest_path)
-
-    try:
-        # Run OCR job
-        import time
-        job_id = f"worker_ocr_{int(time.time())}"
-        fetcher.do_ocr_job(job, manifest, job_id, backend=backend)
-    finally:
-        manifest.close()
-        # Clean up temp manifest
-        try:
-            os.unlink(manifest_path)
-        except OSError:
-            pass
+    # Run OCR job without manifest (RQ tracks job failures)
+    import time
+    job_id = f"worker_ocr_{int(time.time())}"
+    fetcher.do_ocr_job(job, None, job_id, backend=backend)
 
     # Increment progress counter
     with civic_db_connection() as conn:
