@@ -30,7 +30,7 @@ job_tracking_table = Table(
     "job_tracking",
     metadata,
     Column("rq_job_id", String, primary_key=True),
-    Column("site_id", String, nullable=False, index=True),
+    Column("subdomain", String, nullable=False, index=True),
     Column("job_type", String, nullable=False),
     Column("stage", String, nullable=True),
     Column("created_at", DateTime(timezone=True), server_default=func.now()),
@@ -39,7 +39,7 @@ job_tracking_table = Table(
 site_progress_table = Table(
     "site_progress",
     metadata,
-    Column("site_id", String, primary_key=True),
+    Column("subdomain", String, primary_key=True),
     Column("current_stage", String, nullable=True),
     Column("stage_total", Integer, server_default="0"),
     Column("stage_completed", Integer, server_default="0"),

@@ -11,11 +11,11 @@ from .queue_db import (
 )
 
 
-def fetch_site_job(site_id, all_years=False, all_agendas=False):
+def fetch_site_job(subdomain, all_years=False, all_agendas=False):
     """RQ job: Fetch PDFs for a site then spawn OCR jobs.
 
     Args:
-        site_id: Site subdomain
+        subdomain: Site subdomain
         all_years: Fetch all years (default: False)
         all_agendas: Fetch all agendas (default: False)
     """
@@ -24,27 +24,27 @@ def fetch_site_job(site_id, all_years=False, all_agendas=False):
 
     # Get site data
     with civic_db_connection() as conn:
-        site = get_site_by_subdomain(conn, site_id)
+        site = get_site_by_subdomain(conn, subdomain)
 
     if not site:
-        raise ValueError(f"Site not found: {site_id}")
+        raise ValueError(f"Site not found: {subdomain}")
 
     # Update progress to fetch stage
     with civic_db_connection() as conn:
-        create_site_progress(conn, site_id, 'fetch')
+        create_site_progress(conn, subdomain, 'fetch')
 
     # Perform fetch using existing logic
     fetcher = get_fetcher(site, all_years=all_years, all_agendas=all_agendas)
-    fetch_internal(site_id, fetcher)
+    fetch_internal(subdomain, fetcher)
 
     # Count PDFs that need OCR
     storage_dir = os.getenv('STORAGE_DIR', '../sites')
-    pdf_dir = Path(f"{storage_dir}/{site_id}/pdfs")
+    pdf_dir = Path(f"{storage_dir}/{subdomain}/pdfs")
     pdf_files = list(pdf_dir.glob("**/*.pdf")) if pdf_dir.exists() else []
 
     # Update progress: moving to OCR stage
     with civic_db_connection() as conn:
-        update_site_progress(conn, site_id, stage='ocr', stage_total=len(pdf_files))
+        update_site_progress(conn, subdomain, stage='ocr', stage_total=len(pdf_files))
 
     # Spawn OCR jobs (fan-out)
     ocr_queue = get_ocr_queue()
@@ -55,7 +55,7 @@ def fetch_site_job(site_id, all_years=False, all_agendas=False):
     for pdf_path in pdf_files:
         job = ocr_queue.enqueue(
             ocr_page_job,
-            site_id=site_id,
+            subdomain=subdomain,
             pdf_path=str(pdf_path),
             backend=ocr_backend,
             job_timeout='10m',
@@ -65,29 +65,29 @@ def fetch_site_job(site_id, all_years=False, all_agendas=False):
 
         # Track in PostgreSQL
         with civic_db_connection() as conn:
-            track_job(conn, job.id, site_id, 'ocr-page', 'ocr')
+            track_job(conn, job.id, subdomain, 'ocr-page', 'ocr')
 
     # Spawn coordinator job that waits for ALL OCR jobs (fan-in)
     if ocr_job_ids:
         extraction_queue = get_extraction_queue()
         coord_job = extraction_queue.enqueue(
             ocr_complete_coordinator,
-            site_id=site_id,
+            subdomain=subdomain,
             depends_on=ocr_job_ids,  # RQ waits for ALL
             job_timeout='5m',
-            description=f'OCR coordinator: {site_id}'
+            description=f'OCR coordinator: {subdomain}'
         )
 
         # Track coordinator job
         with civic_db_connection() as conn:
-            track_job(conn, coord_job.id, site_id, 'ocr-coordinator', 'ocr')
+            track_job(conn, coord_job.id, subdomain, 'ocr-coordinator', 'ocr')
 
 
-def ocr_page_job(site_id, pdf_path, backend='tesseract'):
+def ocr_page_job(subdomain, pdf_path, backend='tesseract'):
     """RQ job: OCR a single PDF page.
 
     Args:
-        site_id: Site subdomain
+        subdomain: Site subdomain
         pdf_path: Path to PDF file
         backend: OCR backend (tesseract or vision)
     """
@@ -95,16 +95,16 @@ def ocr_page_job(site_id, pdf_path, backend='tesseract'):
 
     # Get site to create a fetcher instance
     with civic_db_connection() as conn:
-        site = get_site_by_subdomain(conn, site_id)
+        site = get_site_by_subdomain(conn, subdomain)
 
     if not site:
-        raise ValueError(f"Site not found: {site_id}")
+        raise ValueError(f"Site not found: {subdomain}")
 
     # Create fetcher instance to use its OCR methods
     fetcher = get_fetcher(site)
 
     # Parse PDF path to extract meeting and date
-    # Expected path format: {storage_dir}/{site_id}/pdfs/{meeting}/{date}.pdf
+    # Expected path format: {storage_dir}/{subdomain}/pdfs/{meeting}/{date}.pdf
     path_obj = Path(pdf_path)
     date = path_obj.stem  # filename without .pdf
     meeting = path_obj.parent.name
@@ -139,88 +139,88 @@ def ocr_page_job(site_id, pdf_path, backend='tesseract'):
 
     # Increment progress counter
     with civic_db_connection() as conn:
-        increment_stage_progress(conn, site_id)
+        increment_stage_progress(conn, subdomain)
 
 
-def ocr_complete_coordinator(site_id):
+def ocr_complete_coordinator(subdomain):
     """RQ job: Runs after ALL OCR jobs complete, spawns extraction.
 
     This coordinator only runs when all OCR job dependencies succeed.
 
     Args:
-        site_id: Site subdomain
+        subdomain: Site subdomain
     """
     from .queue import get_extraction_queue
 
     # Update progress: moving to extraction stage
     with civic_db_connection() as conn:
-        update_site_progress(conn, site_id, stage='extraction')
+        update_site_progress(conn, subdomain, stage='extraction')
 
     # Spawn extraction job
     extraction_queue = get_extraction_queue()
     job = extraction_queue.enqueue(
         extraction_job,
-        site_id=site_id,
+        subdomain=subdomain,
         job_timeout='2h',
-        description=f'Extract entities: {site_id}'
+        description=f'Extract entities: {subdomain}'
     )
 
     # Track in PostgreSQL
     with civic_db_connection() as conn:
-        track_job(conn, job.id, site_id, 'extract-site', 'extraction')
+        track_job(conn, job.id, subdomain, 'extract-site', 'extraction')
 
 
-def extraction_job(site_id):
+def extraction_job(subdomain):
     """RQ job: Extract entities from text files.
 
     Args:
-        site_id: Site subdomain
+        subdomain: Site subdomain
     """
     from .utils import build_db_from_text_internal
     from .queue import get_deploy_queue
 
     # Count text files to process
     storage_dir = os.getenv('STORAGE_DIR', '../sites')
-    txt_dir = Path(f"{storage_dir}/{site_id}/txt")
+    txt_dir = Path(f"{storage_dir}/{subdomain}/txt")
     txt_files = list(txt_dir.glob("**/*.txt")) if txt_dir.exists() else []
 
     # Update progress: processing extraction
     with civic_db_connection() as conn:
-        update_site_progress(conn, site_id, stage='extraction', stage_total=len(txt_files))
+        update_site_progress(conn, subdomain, stage='extraction', stage_total=len(txt_files))
 
     # Use existing extraction logic
-    build_db_from_text_internal(site_id, extract_entities=True, ignore_cache=False)
+    build_db_from_text_internal(subdomain, extract_entities=True, ignore_cache=False)
 
     # Update progress: moving to deploy stage
     with civic_db_connection() as conn:
-        update_site_progress(conn, site_id, stage='deploy', stage_total=1)
+        update_site_progress(conn, subdomain, stage='deploy', stage_total=1)
 
     # Spawn deploy job
     deploy_queue = get_deploy_queue()
     job = deploy_queue.enqueue(
         deploy_job,
-        site_id=site_id,
+        subdomain=subdomain,
         job_timeout='10m',
-        description=f'Deploy: {site_id}'
+        description=f'Deploy: {subdomain}'
     )
 
     # Track in PostgreSQL
     with civic_db_connection() as conn:
-        track_job(conn, job.id, site_id, 'deploy-site', 'deploy')
+        track_job(conn, job.id, subdomain, 'deploy-site', 'deploy')
 
 
-def deploy_job(site_id):
+def deploy_job(subdomain):
     """RQ job: Deploy site.
 
     Args:
-        site_id: Site subdomain
+        subdomain: Site subdomain
     """
     from .utils import pm
 
     # Use existing deploy logic
-    pm.hook.deploy_municipality(subdomain=site_id)
+    pm.hook.deploy_municipality(subdomain=subdomain)
 
     # Mark complete
     with civic_db_connection() as conn:
-        update_site_progress(conn, site_id, stage='completed', stage_total=1)
-        increment_stage_progress(conn, site_id)
+        update_site_progress(conn, subdomain, stage='completed', stage_total=1)
+        increment_stage_progress(conn, subdomain)

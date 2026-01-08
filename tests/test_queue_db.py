@@ -24,14 +24,14 @@ def test_get_jobs_for_site_returns_jobs():
     mock_row1 = MagicMock()
     mock_row1._mapping = {
         'rq_job_id': 'job-1',
-        'site_id': 'site.civic.band',
+        'subdomain': 'site.civic.band',
         'job_type': 'fetch-site',
         'stage': 'fetch'
     }
     mock_row2 = MagicMock()
     mock_row2._mapping = {
         'rq_job_id': 'job-2',
-        'site_id': 'site.civic.band',
+        'subdomain': 'site.civic.band',
         'job_type': 'ocr-page',
         'stage': 'ocr'
     }

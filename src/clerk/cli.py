@@ -1078,8 +1078,8 @@ def enqueue(subdomains, priority):
 
 
 @cli.command()
-@click.option("--site-id", help="Show detailed progress for specific site")
-def status(site_id=None):
+@click.option("--subdomain", help="Show detailed progress for specific site")
+def status(subdomain=None):
     """Show queue status and site progress"""
     import redis
     from sqlalchemy import select
@@ -1098,7 +1098,7 @@ def status(site_id=None):
     # Handle Redis connection errors
     try:
         # Show queue status if not querying specific site
-        if not site_id:
+        if not subdomain:
             click.echo()
             click.echo("=== Queue Status ===")
 
@@ -1120,10 +1120,10 @@ def status(site_id=None):
     # Handle database connection errors
     try:
         with civic_db_connection() as conn:
-            if site_id:
+            if subdomain:
                 # Query for specific site
                 stmt = select(site_progress_table).where(
-                    site_progress_table.c.site_id == site_id
+                    site_progress_table.c.subdomain == subdomain
                 )
                 result = conn.execute(stmt).fetchone()
 
@@ -1134,7 +1134,7 @@ def status(site_id=None):
                         if result.stage_total > 0
                         else 0
                     )
-                    click.echo(f"Site: {result.site_id}")
+                    click.echo(f"Site: {result.subdomain}")
                     click.echo(f"Current stage: {result.current_stage}")
                     click.echo(
                         f"Progress: {result.stage_completed}/{result.stage_total} ({percentage:.1f}%)"
@@ -1142,7 +1142,7 @@ def status(site_id=None):
                     click.echo(f"Started: {result.started_at}")
                     click.echo(f"Updated: {result.updated_at}")
                 else:
-                    click.echo(f"No progress tracking found for site: {site_id}")
+                    click.echo(f"No progress tracking found for site: {subdomain}")
             else:
                 # Query all active sites
                 click.echo()
@@ -1158,18 +1158,18 @@ def status(site_id=None):
                         if row.stage_total > 0:
                             percentage = row.stage_completed / row.stage_total * 100
                             click.echo(
-                                f"  {row.site_id}: {row.current_stage} ({row.stage_completed}/{row.stage_total}, {percentage:.1f}%)"
+                                f"  {row.subdomain}: {row.current_stage} ({row.stage_completed}/{row.stage_total}, {percentage:.1f}%)"
                             )
                         else:
-                            click.echo(f"  {row.site_id}: {row.current_stage}")
+                            click.echo(f"  {row.subdomain}: {row.current_stage}")
     except OperationalError as e:
         click.secho(f"Error: Cannot connect to database: {e}", fg="red")
         raise click.Abort()
 
 
 @cli.command()
-@click.argument("site_id")
-def purge(site_id):
+@click.argument("subdomain")
+def purge(subdomain):
     """Remove all jobs for a specific site"""
     import redis
     from .db import civic_db_connection
@@ -1187,8 +1187,8 @@ def purge(site_id):
         # Use single database transaction to prevent race conditions
         with civic_db_connection() as conn:
             # Get all jobs for the site from database
-            jobs = get_jobs_for_site(conn, site_id)
-            click.echo(f"Found {len(jobs)} job(s) for site {site_id}")
+            jobs = get_jobs_for_site(conn, subdomain)
+            click.echo(f"Found {len(jobs)} job(s) for site {subdomain}")
 
             # Cancel and delete each job from RQ (outside transaction is OK)
             queues = [
@@ -1218,11 +1218,11 @@ def purge(site_id):
                         continue
 
             # Delete database records in same transaction
-            delete_site_progress(conn, site_id)
-            delete_jobs_for_site(conn, site_id)
+            delete_site_progress(conn, subdomain)
+            delete_jobs_for_site(conn, subdomain)
 
-            click.echo(f"Purged {deleted_count} job(s) from queues for site {site_id}")
-            click.echo(f"Deleted database records for site {site_id}")
+            click.echo(f"Purged {deleted_count} job(s) from queues for site {subdomain}")
+            click.echo(f"Deleted database records for site {subdomain}")
 
     except (redis.ConnectionError, redis.TimeoutError) as e:
         click.secho(f"Error: Cannot connect to Redis: {e}", fg="red")
