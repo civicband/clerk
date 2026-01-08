@@ -1,6 +1,4 @@
-import pytest
-from unittest.mock import Mock, MagicMock
-from sqlalchemy import select
+from unittest.mock import MagicMock, Mock
 
 
 def test_track_job_inserts_record():

@@ -1,4 +1,3 @@
-import pytest
 
 
 def test_fetch_site_job_exists():

@@ -1869,12 +1869,12 @@ class TestInstallWorkersCommand:
         mock_run.return_value = mocker.Mock(returncode=0)
 
         # Mock sys.exit to prevent test from exiting
-        mock_exit = mocker.patch("sys.exit")
+        _mock_exit = mocker.patch("sys.exit")
 
-        result = cli_runner.invoke(cli, ["install-workers"])
+        _result = cli_runner.invoke(cli, ["install-workers"])
 
         # Should attempt to run the script
-        assert mock_run.called or mock_exit.called
+        assert mock_run.called or _mock_exit.called
 
     def test_install_workers_script_not_found(self, cli_runner, mocker):
         """Test that install-workers shows error when script not found."""
@@ -1912,16 +1912,16 @@ class TestInstallWorkersCommand:
         mocker.patch("pathlib.Path.cwd", return_value=tmp_path)
 
         # Create the expected path structure
-        dev_path = tmp_path / "scripts" / "install-workers.sh"
+        _dev_path = tmp_path / "scripts" / "install-workers.sh"
 
         # Mock subprocess.run
         mock_run = mocker.patch("subprocess.run")
         mock_run.return_value = mocker.Mock(returncode=0)
 
         # Mock sys.exit
-        mock_exit = mocker.patch("sys.exit")
+        _mock_exit = mocker.patch("sys.exit")
 
-        result = cli_runner.invoke(cli, ["install-workers"])
+        _result = cli_runner.invoke(cli, ["install-workers"])
 
         # Verify subprocess.run was called
         if mock_run.called:
@@ -1953,12 +1953,12 @@ class TestUninstallWorkersCommand:
         mock_run.return_value = mocker.Mock(returncode=0)
 
         # Mock sys.exit
-        mock_exit = mocker.patch("sys.exit")
+        _mock_exit = mocker.patch("sys.exit")
 
-        result = cli_runner.invoke(cli, ["uninstall-workers"])
+        _result = cli_runner.invoke(cli, ["uninstall-workers"])
 
         # Should attempt to run the script
-        assert mock_run.called or mock_exit.called
+        assert mock_run.called or _mock_exit.called
 
     def test_uninstall_workers_executes_script(self, cli_runner, mocker, tmp_path):
         """Test that uninstall-workers executes the script."""
@@ -1974,9 +1974,9 @@ class TestUninstallWorkersCommand:
         mock_run.return_value = mocker.Mock(returncode=0)
 
         # Mock sys.exit
-        mock_exit = mocker.patch("sys.exit")
+        _mock_exit = mocker.patch("sys.exit")
 
-        result = cli_runner.invoke(cli, ["uninstall-workers"])
+        _result = cli_runner.invoke(cli, ["uninstall-workers"])
 
         # Verify subprocess.run was called
         if mock_run.called:

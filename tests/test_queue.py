@@ -1,6 +1,7 @@
 # tests/test_queue.py
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 
 @pytest.fixture
@@ -50,14 +51,15 @@ def test_get_queues_returns_queue_objects(reset_redis_singleton):
         mock_redis = MagicMock()
         mock_get_redis.return_value = mock_redis
 
-        from clerk.queue import (
-            get_high_queue,
-            get_fetch_queue,
-            get_ocr_queue,
-            get_extraction_queue,
-            get_deploy_queue,
-        )
         from rq import Queue
+
+        from clerk.queue import (
+            get_deploy_queue,
+            get_extraction_queue,
+            get_fetch_queue,
+            get_high_queue,
+            get_ocr_queue,
+        )
 
         # Test all 5 queues
         high_queue = get_high_queue()

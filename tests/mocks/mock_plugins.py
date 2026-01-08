@@ -1,6 +1,6 @@
 """Mock plugin implementations for testing."""
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from clerk import hookimpl
 
@@ -9,7 +9,7 @@ class TestPlugin:
     """Test plugin that implements all clerk hooks for testing."""
 
     @hookimpl
-    def fetcher_extra(self, label: str) -> Optional[Dict[str, Any]]:
+    def fetcher_extra(self, label: str) -> dict[str, Any] | None:
         """Return extra configuration for fetchers."""
         if label == "test_scraper":
             return {"test_key": "test_value"}
@@ -32,7 +32,7 @@ class TestPlugin:
         self.deployed_subdomains.append(subdomain)
 
     @hookimpl
-    def post_deploy(self, site: Dict[str, Any]):
+    def post_deploy(self, site: dict[str, Any]):
         """Mock post-deployment actions."""
         # Record post_deploy calls
         self.post_deploy_calls = getattr(self, "post_deploy_calls", [])
@@ -53,7 +53,7 @@ class TestPlugin:
         self.post_create_calls.append(subdomain)
 
     @hookimpl
-    def create_site(self, subdomain: str, site_data: Dict[str, Any]):
+    def create_site(self, subdomain: str, site_data: dict[str, Any]):
         """Mock site creation in datastore."""
         # Record create_site calls
         self.create_site_calls = getattr(self, "create_site_calls", [])
@@ -81,7 +81,7 @@ class TestPlugin:
             db["sites"].insert(filtered_data, pk="subdomain", replace=True)
 
     @hookimpl
-    def update_site(self, subdomain: str, updates: Dict[str, Any]):
+    def update_site(self, subdomain: str, updates: dict[str, Any]):
         """Mock site update in datastore."""
         # Record update_site calls
         self.update_site_calls = getattr(self, "update_site_calls", [])
@@ -125,7 +125,7 @@ class FailingPlugin:
         raise RuntimeError("deploy_municipality failed")
 
     @hookimpl
-    def post_deploy(self, site: Dict[str, Any]):
+    def post_deploy(self, site: dict[str, Any]):
         """Raise an error."""
         raise RuntimeError("post_deploy failed")
 
@@ -140,11 +140,11 @@ class FailingPlugin:
         raise RuntimeError("post_create failed")
 
     @hookimpl
-    def create_site(self, subdomain: str, site_data: Dict[str, Any]):
+    def create_site(self, subdomain: str, site_data: dict[str, Any]):
         """Raise an error."""
         raise RuntimeError("create_site failed")
 
     @hookimpl
-    def update_site(self, subdomain: str, updates: Dict[str, Any]):
+    def update_site(self, subdomain: str, updates: dict[str, Any]):
         """Raise an error."""
         raise RuntimeError("update_site failed")
