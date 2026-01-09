@@ -7,7 +7,7 @@ def test_track_job_inserts_record():
 
     from clerk.queue_db import track_job
 
-    track_job(mock_conn, 'rq-job-123', 'site.civic.band', 'fetch-site', 'fetch')
+    track_job(mock_conn, "rq-job-123", "site.civic.band", "fetch-site", "fetch")
 
     mock_conn.execute.assert_called_once()
     mock_conn.commit.assert_called_once()
@@ -21,17 +21,17 @@ def test_get_jobs_for_site_returns_jobs():
     # Create mock rows with _mapping attribute
     mock_row1 = MagicMock()
     mock_row1._mapping = {
-        'rq_job_id': 'job-1',
-        'subdomain': 'site.civic.band',
-        'job_type': 'fetch-site',
-        'stage': 'fetch'
+        "rq_job_id": "job-1",
+        "subdomain": "site.civic.band",
+        "job_type": "fetch-site",
+        "stage": "fetch",
     }
     mock_row2 = MagicMock()
     mock_row2._mapping = {
-        'rq_job_id': 'job-2',
-        'subdomain': 'site.civic.band',
-        'job_type': 'ocr-page',
-        'stage': 'ocr'
+        "rq_job_id": "job-2",
+        "subdomain": "site.civic.band",
+        "job_type": "ocr-page",
+        "stage": "ocr",
     }
 
     mock_result.fetchall.return_value = [mock_row1, mock_row2]
@@ -39,11 +39,11 @@ def test_get_jobs_for_site_returns_jobs():
 
     from clerk.queue_db import get_jobs_for_site
 
-    jobs = get_jobs_for_site(mock_conn, 'site.civic.band')
+    jobs = get_jobs_for_site(mock_conn, "site.civic.band")
 
     assert len(jobs) == 2
-    assert jobs[0]['rq_job_id'] == 'job-1'
-    assert jobs[1]['rq_job_id'] == 'job-2'
+    assert jobs[0]["rq_job_id"] == "job-1"
+    assert jobs[1]["rq_job_id"] == "job-2"
     mock_conn.execute.assert_called_once()
 
 
@@ -56,7 +56,7 @@ def test_get_jobs_for_site_empty():
 
     from clerk.queue_db import get_jobs_for_site
 
-    jobs = get_jobs_for_site(mock_conn, 'nonexistent.civic.band')
+    jobs = get_jobs_for_site(mock_conn, "nonexistent.civic.band")
 
     assert jobs == []
     mock_conn.execute.assert_called_once()
@@ -68,7 +68,7 @@ def test_delete_jobs_for_site():
 
     from clerk.queue_db import delete_jobs_for_site
 
-    delete_jobs_for_site(mock_conn, 'site.civic.band')
+    delete_jobs_for_site(mock_conn, "site.civic.band")
 
     mock_conn.execute.assert_called_once()
     mock_conn.commit.assert_called_once()
@@ -80,7 +80,7 @@ def test_delete_site_progress():
 
     from clerk.queue_db import delete_site_progress
 
-    delete_site_progress(mock_conn, 'site.civic.band')
+    delete_site_progress(mock_conn, "site.civic.band")
 
     mock_conn.execute.assert_called_once()
     mock_conn.commit.assert_called_once()

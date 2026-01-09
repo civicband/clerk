@@ -1541,13 +1541,20 @@ class TestStatusCommand:
         """Test that status command handles Redis connection errors gracefully."""
         # Mock Redis to raise connection error
         import redis
-        mocker.patch("clerk.queue.get_high_queue", side_effect=redis.ConnectionError("Cannot connect"))
+
+        mocker.patch(
+            "clerk.queue.get_high_queue", side_effect=redis.ConnectionError("Cannot connect")
+        )
 
         result = cli_runner.invoke(cli, ["status"])
 
         # Command should fail gracefully
         assert result.exit_code != 0
-        assert "Redis" in result.output or "redis" in result.output.lower() or "Cannot connect" in result.output
+        assert (
+            "Redis" in result.output
+            or "redis" in result.output.lower()
+            or "Cannot connect" in result.output
+        )
 
     def test_status_handles_database_connection_error(self, cli_runner, mocker):
         """Test that status command handles database connection errors gracefully."""
@@ -1562,7 +1569,10 @@ class TestStatusCommand:
 
         # Mock database to raise connection error
         from sqlalchemy.exc import OperationalError
-        mocker.patch("clerk.db.civic_db_connection", side_effect=OperationalError("DB error", None, None))
+
+        mocker.patch(
+            "clerk.db.civic_db_connection", side_effect=OperationalError("DB error", None, None)
+        )
 
         result = cli_runner.invoke(cli, ["status"])
 
@@ -1584,7 +1594,9 @@ class TestEnqueueCommand:
         mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
         mock_conn.__exit__ = mocker.Mock(return_value=False)
         mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
-        mocker.patch("clerk.db.get_site_by_subdomain", return_value={"subdomain": "site1.civic.band"})
+        mocker.patch(
+            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "site1.civic.band"}
+        )
         mocker.patch("clerk.queue_db.track_job")
         mocker.patch("clerk.queue_db.create_site_progress")
 
@@ -1599,7 +1611,9 @@ class TestEnqueueCommand:
         assert "normal" in result.output
 
         # Verify enqueue_job was called correctly
-        mock_enqueue_job.assert_called_once_with("fetch-site", "site1.civic.band", priority="normal")
+        mock_enqueue_job.assert_called_once_with(
+            "fetch-site", "site1.civic.band", priority="normal"
+        )
 
     def test_enqueue_multiple_sites(self, cli_runner, mocker):
         """Test enqueuing multiple sites."""
@@ -1644,7 +1658,9 @@ class TestEnqueueCommand:
         mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
         mock_conn.__exit__ = mocker.Mock(return_value=False)
         mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
-        mocker.patch("clerk.db.get_site_by_subdomain", return_value={"subdomain": "site1.civic.band"})
+        mocker.patch(
+            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "site1.civic.band"}
+        )
         mocker.patch("clerk.queue_db.track_job")
         mocker.patch("clerk.queue_db.create_site_progress")
 
@@ -1669,7 +1685,9 @@ class TestEnqueueCommand:
         mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
         mock_conn.__exit__ = mocker.Mock(return_value=False)
         mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
-        mocker.patch("clerk.db.get_site_by_subdomain", return_value={"subdomain": "site1.civic.band"})
+        mocker.patch(
+            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "site1.civic.band"}
+        )
         mocker.patch("clerk.queue_db.track_job")
         mocker.patch("clerk.queue_db.create_site_progress")
 
@@ -1687,7 +1705,10 @@ class TestEnqueueCommand:
         """Test that enqueue handles Redis connection errors gracefully."""
         # Mock Redis to raise connection error
         import redis
-        mocker.patch("clerk.queue.get_redis", side_effect=redis.ConnectionError("Cannot connect to Redis"))
+
+        mocker.patch(
+            "clerk.queue.get_redis", side_effect=redis.ConnectionError("Cannot connect to Redis")
+        )
 
         result = cli_runner.invoke(cli, ["enqueue", "site1.civic.band"])
 
@@ -1709,10 +1730,23 @@ class TestPurgeCommand:
         mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
 
         # Mock get_jobs_for_site to return some jobs
-        mock_get_jobs = mocker.patch("clerk.queue_db.get_jobs_for_site", return_value=[
-            {"rq_job_id": "job-1", "site_id": "site.civic.band", "job_type": "fetch-site", "stage": "fetch"},
-            {"rq_job_id": "job-2", "site_id": "site.civic.band", "job_type": "ocr-page", "stage": "ocr"},
-        ])
+        mock_get_jobs = mocker.patch(
+            "clerk.queue_db.get_jobs_for_site",
+            return_value=[
+                {
+                    "rq_job_id": "job-1",
+                    "site_id": "site.civic.band",
+                    "job_type": "fetch-site",
+                    "stage": "fetch",
+                },
+                {
+                    "rq_job_id": "job-2",
+                    "site_id": "site.civic.band",
+                    "job_type": "ocr-page",
+                    "stage": "ocr",
+                },
+            ],
+        )
 
         # Mock queue operations
         mock_queue = mocker.MagicMock()
@@ -1772,13 +1806,25 @@ class TestPurgeCommand:
         mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
 
         # Mock get_jobs_for_site to return jobs
-        mocker.patch("clerk.queue_db.get_jobs_for_site", return_value=[
-            {"rq_job_id": "job-1", "site_id": "site.civic.band", "job_type": "fetch-site", "stage": "fetch"},
-        ])
+        mocker.patch(
+            "clerk.queue_db.get_jobs_for_site",
+            return_value=[
+                {
+                    "rq_job_id": "job-1",
+                    "site_id": "site.civic.band",
+                    "job_type": "fetch-site",
+                    "stage": "fetch",
+                },
+            ],
+        )
 
         # Mock Redis to raise connection error
         import redis
-        mocker.patch("clerk.queue.get_high_queue", side_effect=redis.ConnectionError("Cannot connect to Redis"))
+
+        mocker.patch(
+            "clerk.queue.get_high_queue",
+            side_effect=redis.ConnectionError("Cannot connect to Redis"),
+        )
 
         result = cli_runner.invoke(cli, ["purge", "site.civic.band"])
 
@@ -1834,7 +1880,11 @@ class TestPurgeQueueCommand:
         """Test purge-queue handles Redis connection errors gracefully."""
         # Mock Redis to raise connection error
         import redis
-        mocker.patch("clerk.queue.get_ocr_queue", side_effect=redis.ConnectionError("Cannot connect to Redis"))
+
+        mocker.patch(
+            "clerk.queue.get_ocr_queue",
+            side_effect=redis.ConnectionError("Cannot connect to Redis"),
+        )
 
         result = cli_runner.invoke(cli, ["purge-queue", "ocr"])
 
@@ -2016,8 +2066,7 @@ class TestWorkerCommand:
         assert result.exit_code == 0
         # Verify Worker was created with correct queues (high first, then fetch)
         mock_worker_class.assert_called_once_with(
-            [mock_high_queue, mock_fetch_queue],
-            connection=mock_redis
+            [mock_high_queue, mock_fetch_queue], connection=mock_redis
         )
         # Verify worker.work() was called with scheduler and not burst
         mock_worker.work.assert_called_once_with(with_scheduler=True, burst=False)
@@ -2043,8 +2092,7 @@ class TestWorkerCommand:
         assert result.exit_code == 0
         # Verify Worker was created with correct queues
         mock_worker_class.assert_called_once_with(
-            [mock_high_queue, mock_ocr_queue],
-            connection=mock_redis
+            [mock_high_queue, mock_ocr_queue], connection=mock_redis
         )
         # Verify burst mode was enabled
         mock_worker.work.assert_called_once_with(with_scheduler=True, burst=True)
@@ -2072,9 +2120,7 @@ class TestWorkerCommand:
         assert result.exit_code == 0
         # Verify WorkerPool was created with correct parameters
         mock_pool_class.assert_called_once_with(
-            [mock_high_queue, mock_extraction_queue],
-            num_workers=2,
-            connection=mock_redis
+            [mock_high_queue, mock_extraction_queue], num_workers=2, connection=mock_redis
         )
         # Verify pool.start() was called
         mock_pool.start.assert_called_once()
@@ -2100,15 +2146,17 @@ class TestWorkerCommand:
         assert result.exit_code == 0
         # Verify Worker was created with deploy queue
         mock_worker_class.assert_called_once_with(
-            [mock_high_queue, mock_deploy_queue],
-            connection=mock_redis
+            [mock_high_queue, mock_deploy_queue], connection=mock_redis
         )
 
     def test_worker_handles_redis_connection_error(self, cli_runner, mocker):
         """Test that worker command handles Redis connection errors."""
         # Mock Redis to raise connection error
         import redis
-        mocker.patch("clerk.queue.get_redis", side_effect=redis.ConnectionError("Cannot connect to Redis"))
+
+        mocker.patch(
+            "clerk.queue.get_redis", side_effect=redis.ConnectionError("Cannot connect to Redis")
+        )
 
         result = cli_runner.invoke(cli, ["worker", "fetch"])
 

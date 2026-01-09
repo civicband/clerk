@@ -8,6 +8,7 @@ import pytest
 def reset_redis_singleton():
     """Reset the Redis singleton state before each test."""
     import clerk.queue
+
     clerk.queue._redis_client = None
     yield
     clerk.queue._redis_client = None
@@ -15,12 +16,13 @@ def reset_redis_singleton():
 
 def test_get_redis_returns_client(reset_redis_singleton):
     """Test that get_redis returns a Redis client."""
-    with patch('clerk.queue.redis.from_url') as mock_redis:
+    with patch("clerk.queue.redis.from_url") as mock_redis:
         mock_client = MagicMock()
         mock_client.ping.return_value = True
         mock_redis.return_value = mock_client
 
         from clerk.queue import get_redis
+
         client = get_redis()
 
         assert client == mock_client
@@ -30,7 +32,7 @@ def test_get_redis_returns_client(reset_redis_singleton):
 
 def test_get_redis_singleton_behavior(reset_redis_singleton):
     """Test that get_redis returns the same instance on multiple calls."""
-    with patch('clerk.queue.redis.from_url') as mock_redis:
+    with patch("clerk.queue.redis.from_url") as mock_redis:
         mock_client = MagicMock()
         mock_client.ping.return_value = True
         mock_redis.return_value = mock_client
@@ -47,7 +49,7 @@ def test_get_redis_singleton_behavior(reset_redis_singleton):
 
 def test_get_queues_returns_queue_objects(reset_redis_singleton):
     """Test that queue getters return RQ Queue objects."""
-    with patch('clerk.queue.get_redis') as mock_get_redis:
+    with patch("clerk.queue.get_redis") as mock_get_redis:
         mock_redis = MagicMock()
         mock_get_redis.return_value = mock_redis
 
@@ -76,11 +78,11 @@ def test_get_queues_returns_queue_objects(reset_redis_singleton):
         assert isinstance(deploy_queue, Queue)
 
         # Verify correct names
-        assert high_queue.name == 'high'
-        assert fetch_queue.name == 'fetch'
-        assert ocr_queue.name == 'ocr'
-        assert extraction_queue.name == 'extraction'
-        assert deploy_queue.name == 'deploy'
+        assert high_queue.name == "high"
+        assert fetch_queue.name == "fetch"
+        assert ocr_queue.name == "ocr"
+        assert extraction_queue.name == "extraction"
+        assert deploy_queue.name == "deploy"
 
 
 def test_enqueue_job_adds_to_correct_queue(reset_redis_singleton):
@@ -90,25 +92,27 @@ def test_enqueue_job_adds_to_correct_queue(reset_redis_singleton):
     mock_workers_module.fetch_site_job = MagicMock()
 
     import sys
-    sys.modules['clerk.workers'] = mock_workers_module
+
+    sys.modules["clerk.workers"] = mock_workers_module
 
     try:
         from clerk.queue import enqueue_job
 
-        with patch('clerk.queue.get_high_queue') as mock_high, \
-             patch('clerk.queue.get_fetch_queue') as mock_fetch:
-
+        with (
+            patch("clerk.queue.get_high_queue") as mock_high,
+            patch("clerk.queue.get_fetch_queue") as mock_fetch,
+        ):
             mock_high_queue = MagicMock()
             mock_fetch_queue = MagicMock()
             mock_high.return_value = mock_high_queue
             mock_fetch.return_value = mock_fetch_queue
 
-            mock_high_queue.enqueue.return_value = MagicMock(id='job-high-123')
-            mock_fetch_queue.enqueue.return_value = MagicMock(id='job-fetch-456')
+            mock_high_queue.enqueue.return_value = MagicMock(id="job-high-123")
+            mock_fetch_queue.enqueue.return_value = MagicMock(id="job-fetch-456")
 
             # High priority goes to express queue
-            job_id = enqueue_job('fetch-site', 'site.civic.band', priority='high')
-            assert job_id == 'job-high-123'
+            job_id = enqueue_job("fetch-site", "site.civic.band", priority="high")
+            assert job_id == "job-high-123"
             mock_high_queue.enqueue.assert_called_once()
 
             # Reset for next test
@@ -116,10 +120,10 @@ def test_enqueue_job_adds_to_correct_queue(reset_redis_singleton):
             mock_fetch_queue.reset_mock()
 
             # Normal priority goes to stage queue
-            job_id = enqueue_job('fetch-site', 'site.civic.band', priority='normal')
-            assert job_id == 'job-fetch-456'
+            job_id = enqueue_job("fetch-site", "site.civic.band", priority="normal")
+            assert job_id == "job-fetch-456"
             mock_fetch_queue.enqueue.assert_called_once()
     finally:
         # Clean up the mock module
-        if 'clerk.workers' in sys.modules:
-            del sys.modules['clerk.workers']
+        if "clerk.workers" in sys.modules:
+            del sys.modules["clerk.workers"]

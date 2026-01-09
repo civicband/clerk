@@ -74,9 +74,11 @@ def update_site_progress(conn, subdomain, stage=None, stage_total=None):
         updates["stage_total"] = stage_total
         updates["stage_completed"] = 0  # Reset counter
 
-    stmt = update(site_progress_table).where(
-        site_progress_table.c.subdomain == subdomain
-    ).values(**updates)
+    stmt = (
+        update(site_progress_table)
+        .where(site_progress_table.c.subdomain == subdomain)
+        .values(**updates)
+    )
     conn.execute(stmt)
     conn.commit()
 
@@ -92,8 +94,7 @@ def increment_stage_progress(conn, subdomain):
         update(site_progress_table)
         .where(site_progress_table.c.subdomain == subdomain)
         .values(
-            stage_completed=site_progress_table.c.stage_completed + 1,
-            updated_at=datetime.now(UTC)
+            stage_completed=site_progress_table.c.stage_completed + 1, updated_at=datetime.now(UTC)
         )
     )
     conn.execute(stmt)

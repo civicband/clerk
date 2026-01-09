@@ -46,30 +46,30 @@ def get_redis():
 
 def get_high_queue():
     """Get high-priority queue (express lane)."""
-    return Queue('high', connection=get_redis())
+    return Queue("high", connection=get_redis())
 
 
 def get_fetch_queue():
     """Get fetch jobs queue."""
-    return Queue('fetch', connection=get_redis())
+    return Queue("fetch", connection=get_redis())
 
 
 def get_ocr_queue():
     """Get OCR jobs queue."""
-    return Queue('ocr', connection=get_redis())
+    return Queue("ocr", connection=get_redis())
 
 
 def get_extraction_queue():
     """Get extraction jobs queue."""
-    return Queue('extraction', connection=get_redis())
+    return Queue("extraction", connection=get_redis())
 
 
 def get_deploy_queue():
     """Get deploy jobs queue."""
-    return Queue('deploy', connection=get_redis())
+    return Queue("deploy", connection=get_redis())
 
 
-def enqueue_job(job_type, site_id, priority='normal', **kwargs):
+def enqueue_job(job_type, site_id, priority="normal", **kwargs):
     """Enqueue a job to the appropriate queue.
 
     Args:
@@ -82,16 +82,16 @@ def enqueue_job(job_type, site_id, priority='normal', **kwargs):
         RQ job ID
     """
     # Determine which queue to use
-    if priority == 'high':
+    if priority == "high":
         queue = get_high_queue()
     else:
         # Route to stage-specific queue based on job type
-        stage = job_type.split('-')[0]  # fetch-site → fetch
+        stage = job_type.split("-")[0]  # fetch-site → fetch
         queue_map = {
-            'fetch': get_fetch_queue(),
-            'ocr': get_ocr_queue(),
-            'extraction': get_extraction_queue(),
-            'deploy': get_deploy_queue(),
+            "fetch": get_fetch_queue(),
+            "ocr": get_ocr_queue(),
+            "extraction": get_extraction_queue(),
+            "deploy": get_deploy_queue(),
         }
         queue = queue_map.get(stage, get_fetch_queue())
 
@@ -99,10 +99,10 @@ def enqueue_job(job_type, site_id, priority='normal', **kwargs):
     from . import workers
 
     job_function_map = {
-        'fetch-site': workers.fetch_site_job,
-        'ocr-page': workers.ocr_page_job,
-        'extract-site': workers.extraction_job,
-        'deploy-site': workers.deploy_job,
+        "fetch-site": workers.fetch_site_job,
+        "ocr-page": workers.ocr_page_job,
+        "extract-site": workers.extraction_job,
+        "deploy-site": workers.deploy_job,
     }
 
     job_function = job_function_map.get(job_type)
