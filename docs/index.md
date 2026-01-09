@@ -4,6 +4,7 @@ A Python library for managing civic data pipelines for civic.band. Clerk handles
 
 ## Features
 
+- **Distributed Task Queue**: RQ-based distributed processing with parallel OCR, real-time monitoring, and horizontal scaling
 - **Site Management**: Create and manage civic sites with metadata
 - **Data Pipeline**: Automated fetch → OCR → transform → deploy workflow
 - **Plugin System**: Extensible architecture using pluggy for custom fetchers and deployers
