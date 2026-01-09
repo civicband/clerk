@@ -1192,32 +1192,35 @@ def purge(subdomain):
             jobs = get_jobs_for_site(conn, subdomain)
             click.echo(f"Found {len(jobs)} job(s) for site {subdomain}")
 
-            # Cancel and delete each job from RQ (outside transaction is OK)
-            queues = [
-                get_high_queue(),
-                get_fetch_queue(),
-                get_ocr_queue(),
-                get_extraction_queue(),
-                get_deploy_queue(),
-            ]
-
             deleted_count = 0
-            for job_data in jobs:
-                job_id = job_data["rq_job_id"]
 
-                # Try all queues
-                for queue in queues:
-                    try:
-                        job = queue.fetch_job(job_id)
-                        if job:
-                            job.cancel()
-                            job.delete()
-                            deleted_count += 1
-                            break  # Found and deleted, no need to check other queues
-                    except Exception:
-                        # Job might not be in this queue, or other transient error
-                        # Continue trying other queues
-                        continue
+            # Only connect to Redis if there are jobs to purge
+            if jobs:
+                # Cancel and delete each job from RQ (outside transaction is OK)
+                queues = [
+                    get_high_queue(),
+                    get_fetch_queue(),
+                    get_ocr_queue(),
+                    get_extraction_queue(),
+                    get_deploy_queue(),
+                ]
+
+                for job_data in jobs:
+                    job_id = job_data["rq_job_id"]
+
+                    # Try all queues
+                    for queue in queues:
+                        try:
+                            job = queue.fetch_job(job_id)
+                            if job:
+                                job.cancel()
+                                job.delete()
+                                deleted_count += 1
+                                break  # Found and deleted, no need to check other queues
+                        except Exception:
+                            # Job might not be in this queue, or other transient error
+                            # Continue trying other queues
+                            continue
 
             # Delete database records in same transaction
             delete_site_progress(conn, subdomain)
