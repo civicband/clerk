@@ -16,6 +16,8 @@ dependencies = [
     "sqlalchemy>=2.0.0",
     "psycopg2-binary>=2.9.0",
     "alembic>=1.13.0",
+    "rq>=2.6.0",
+    "redis>=5.0.0,<8.0.0",
 ]
 
 [project.optional-dependencies]
@@ -56,6 +58,9 @@ packages = ["src/clerk"]
 
 [tool.hatch.build.targets.wheel.shared-data]
 "deployment" = "share/clerk/deployment"
+"scripts" = "share/clerk/scripts"
+"alembic.ini" = "share/clerk/alembic.ini"
+"alembic" = "share/clerk/alembic"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.civicband.clerk.worker.{{WORKER_TYPE}}.{{WORKER_NUM}}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{CLERK_PATH}}</string>
+        <string>worker</string>
+        <string>{{WORKER_TYPE}}</string>
+        <string>--burst</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>{{WORKING_DIR}}</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>REDIS_URL</key>
+        <string>{{REDIS_URL}}</string>
+        <key>DATABASE_URL</key>
+        <string>{{DATABASE_URL}}</string>
+        <key>STORAGE_DIR</key>
+        <string>{{STORAGE_DIR}}</string>
+        <key>DEFAULT_OCR_BACKEND</key>
+        <string>{{DEFAULT_OCR_BACKEND}}</string>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>{{LOG_DIR}}/clerk-worker-{{WORKER_TYPE}}-{{WORKER_NUM}}.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{LOG_DIR}}/clerk-worker-{{WORKER_TYPE}}-{{WORKER_NUM}}.error.log</string>
+    <key>KeepAlive</key>
+    <true/>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>

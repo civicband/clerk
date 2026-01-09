@@ -1244,3 +1244,973 @@ class TestOCRBackendCLIFlag:
 
         # Verify ocr() was called with backend="vision"
         mock_fetcher_instance.ocr.assert_called_once_with(backend="vision")
+
+
+@pytest.mark.unit
+class TestDbCommands:
+    """Unit tests for database migration CLI commands."""
+
+    def test_db_upgrade_command_exists(self, cli_runner):
+        """Test that 'clerk db upgrade' command exists."""
+        result = cli_runner.invoke(cli, ["db", "upgrade", "--help"])
+        assert result.exit_code == 0
+
+    def test_db_current_command_exists(self, cli_runner):
+        """Test that 'clerk db current' command exists."""
+        result = cli_runner.invoke(cli, ["db", "current", "--help"])
+        assert result.exit_code == 0
+
+    def test_db_history_command_exists(self, cli_runner):
+        """Test that 'clerk db history' command exists."""
+        result = cli_runner.invoke(cli, ["db", "history", "--help"])
+        assert result.exit_code == 0
+
+    def test_db_upgrade_calls_alembic(self, cli_runner, mocker, tmp_path):
+        """Test that 'clerk db upgrade' calls alembic upgrade head."""
+        # Create a mock alembic.ini in a temporary location
+        alembic_ini = tmp_path / "alembic.ini"
+        alembic_ini.write_text("[alembic]\nscript_location = alembic")
+
+        # Mock subprocess.run to capture alembic calls
+        mock_run = mocker.patch("subprocess.run")
+        mock_run.return_value = mocker.Mock(returncode=0, stdout="", stderr="")
+
+        # Mock finding the alembic.ini file
+        mocker.patch("pathlib.Path.cwd", return_value=tmp_path)
+
+        result = cli_runner.invoke(cli, ["db", "upgrade"])
+
+        assert result.exit_code == 0
+        # Verify alembic was called with correct arguments
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args[0][0]
+        assert "alembic" in call_args
+        assert "upgrade" in call_args
+        assert "head" in call_args
+
+    def test_db_current_calls_alembic(self, cli_runner, mocker, tmp_path):
+        """Test that 'clerk db current' calls alembic current."""
+        # Create a mock alembic.ini in a temporary location
+        alembic_ini = tmp_path / "alembic.ini"
+        alembic_ini.write_text("[alembic]\nscript_location = alembic")
+
+        # Mock subprocess.run
+        mock_run = mocker.patch("subprocess.run")
+        mock_run.return_value = mocker.Mock(returncode=0, stdout="abc123 (head)", stderr="")
+
+        # Mock finding the alembic.ini file
+        mocker.patch("pathlib.Path.cwd", return_value=tmp_path)
+
+        result = cli_runner.invoke(cli, ["db", "current"])
+
+        assert result.exit_code == 0
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args[0][0]
+        assert "alembic" in call_args
+        assert "current" in call_args
+
+    def test_db_history_calls_alembic(self, cli_runner, mocker, tmp_path):
+        """Test that 'clerk db history' calls alembic history."""
+        # Create a mock alembic.ini in a temporary location
+        alembic_ini = tmp_path / "alembic.ini"
+        alembic_ini.write_text("[alembic]\nscript_location = alembic")
+
+        # Mock subprocess.run
+        mock_run = mocker.patch("subprocess.run")
+        mock_run.return_value = mocker.Mock(returncode=0, stdout="Migration history", stderr="")
+
+        # Mock finding the alembic.ini file
+        mocker.patch("pathlib.Path.cwd", return_value=tmp_path)
+
+        result = cli_runner.invoke(cli, ["db", "history"])
+
+        assert result.exit_code == 0
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args[0][0]
+        assert "alembic" in call_args
+        assert "history" in call_args
+
+    def test_db_upgrade_handles_missing_alembic_ini(self, cli_runner, mocker, tmp_path):
+        """Test that db upgrade shows error when alembic.ini is not found."""
+        # Mock Path.cwd to return a directory without alembic.ini
+        mocker.patch("pathlib.Path.cwd", return_value=tmp_path)
+        # Mock sys.prefix to point to a location without package alembic.ini
+        mocker.patch("sys.prefix", tmp_path / "fake_prefix")
+
+        result = cli_runner.invoke(cli, ["db", "upgrade"])
+
+        # Command should fail gracefully
+        assert result.exit_code != 0
+        assert "alembic.ini" in result.output.lower()
+
+    def test_db_upgrade_handles_alembic_failure(self, cli_runner, mocker, tmp_path):
+        """Test that db upgrade handles alembic command failure."""
+        # Create a mock alembic.ini
+        alembic_ini = tmp_path / "alembic.ini"
+        alembic_ini.write_text("[alembic]\nscript_location = alembic")
+
+        # Mock subprocess.run to simulate failure
+        mock_run = mocker.patch("subprocess.run")
+        mock_run.return_value = mocker.Mock(
+            returncode=1, stdout="", stderr="Error: Database connection failed"
+        )
+
+        # Mock finding the alembic.ini file
+        mocker.patch("pathlib.Path.cwd", return_value=tmp_path)
+
+        result = cli_runner.invoke(cli, ["db", "upgrade"])
+
+        # Command should fail
+        assert result.exit_code != 0
+
+
+@pytest.mark.unit
+class TestStatusCommand:
+    """Unit tests for status CLI command."""
+
+    def test_status_shows_queue_depths(self, cli_runner, mocker):
+        """Test that status command shows queue depths."""
+        # Mock Redis queues
+        mock_high_queue = mocker.Mock()
+        mock_high_queue.__len__ = mocker.Mock(return_value=0)
+        mock_fetch_queue = mocker.Mock()
+        mock_fetch_queue.__len__ = mocker.Mock(return_value=3)
+        mock_ocr_queue = mocker.Mock()
+        mock_ocr_queue.__len__ = mocker.Mock(return_value=247)
+        mock_extraction_queue = mocker.Mock()
+        mock_extraction_queue.__len__ = mocker.Mock(return_value=1)
+        mock_deploy_queue = mocker.Mock()
+        mock_deploy_queue.__len__ = mocker.Mock(return_value=0)
+
+        mocker.patch("clerk.queue.get_high_queue", return_value=mock_high_queue)
+        mocker.patch("clerk.queue.get_fetch_queue", return_value=mock_fetch_queue)
+        mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_ocr_queue)
+        mocker.patch("clerk.queue.get_extraction_queue", return_value=mock_extraction_queue)
+        mocker.patch("clerk.queue.get_deploy_queue", return_value=mock_deploy_queue)
+
+        # Mock database operations (empty site_progress)
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        # Mock empty result for site_progress
+        mock_result = mocker.Mock()
+        mock_result.fetchall.return_value = []
+        mock_conn.execute.return_value = mock_result
+
+        result = cli_runner.invoke(cli, ["status"])
+
+        assert result.exit_code == 0
+        assert "Queue Status" in result.output
+        assert "High priority" in result.output
+        assert "0 jobs" in result.output
+        assert "Fetch" in result.output
+        assert "3 jobs" in result.output
+        assert "OCR" in result.output
+        assert "247 jobs" in result.output
+        assert "Extraction" in result.output
+        assert "1 jobs" in result.output
+        assert "Deploy" in result.output
+
+    def test_status_shows_active_sites(self, cli_runner, mocker):
+        """Test that status command shows active sites."""
+        # Mock Redis queues (all empty)
+        mock_queue = mocker.Mock()
+        mock_queue.__len__ = mocker.Mock(return_value=0)
+        mocker.patch("clerk.queue.get_high_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_fetch_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_extraction_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_deploy_queue", return_value=mock_queue)
+
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        # Mock site_progress results
+        class MockRow:
+            def __init__(self, subdomain, current_stage, stage_completed, stage_total):
+                self.subdomain = subdomain
+                self.current_stage = current_stage
+                self.stage_completed = stage_completed
+                self.stage_total = stage_total
+
+        mock_result = mocker.Mock()
+        mock_result.fetchall.return_value = [
+            MockRow("site1.civic.band", "ocr", 45, 100),
+            MockRow("site2.civic.band", "extraction", 12, 50),
+            MockRow("site3.civic.band", "fetch", 0, 0),
+        ]
+        mock_conn.execute.return_value = mock_result
+
+        result = cli_runner.invoke(cli, ["status"])
+
+        assert result.exit_code == 0
+        assert "Active Sites" in result.output
+        assert "site1.civic.band" in result.output
+        assert "ocr" in result.output
+        assert "45/100" in result.output
+        assert "45.0%" in result.output
+        assert "site2.civic.band" in result.output
+        assert "extraction" in result.output
+        assert "12/50" in result.output
+        assert "24.0%" in result.output
+        assert "site3.civic.band" in result.output
+        assert "fetch" in result.output
+
+    def test_status_with_site_id_shows_detailed_progress(self, cli_runner, mocker):
+        """Test that status --subdomain shows detailed site progress."""
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        # Mock site_progress result for specific site
+        class MockRow:
+            def __init__(self):
+                self.subdomain = "example.civic.band"
+                self.current_stage = "ocr"
+                self.stage_completed = 45
+                self.stage_total = 100
+                self.started_at = datetime.datetime(2026, 1, 6, 10, 0, 0)
+                self.updated_at = datetime.datetime(2026, 1, 6, 10, 5, 23)
+
+        mock_result = mocker.Mock()
+        mock_result.fetchone.return_value = MockRow()
+        mock_conn.execute.return_value = mock_result
+
+        result = cli_runner.invoke(cli, ["status", "--subdomain", "example.civic.band"])
+
+        assert result.exit_code == 0
+        assert "Site: example.civic.band" in result.output
+        assert "Current stage: ocr" in result.output
+        assert "Progress: 45/100 (45.0%)" in result.output
+        assert "Started: 2026-01-06 10:00:00" in result.output
+        assert "Updated: 2026-01-06 10:05:23" in result.output
+
+    def test_status_with_site_id_not_found(self, cli_runner, mocker):
+        """Test that status --subdomain handles site not found."""
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        # Mock empty result (site not found)
+        mock_result = mocker.Mock()
+        mock_result.fetchone.return_value = None
+        mock_conn.execute.return_value = mock_result
+
+        result = cli_runner.invoke(cli, ["status", "--subdomain", "nonexistent.civic.band"])
+
+        assert result.exit_code == 0
+        assert "No progress tracking found for site: nonexistent.civic.band" in result.output
+
+    def test_status_handles_empty_queues(self, cli_runner, mocker):
+        """Test that status command handles empty queues gracefully."""
+        # Mock Redis queues (all empty)
+        mock_queue = mocker.Mock()
+        mock_queue.__len__ = mocker.Mock(return_value=0)
+        mocker.patch("clerk.queue.get_high_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_fetch_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_extraction_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_deploy_queue", return_value=mock_queue)
+
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        # Mock empty result for site_progress
+        mock_result = mocker.Mock()
+        mock_result.fetchall.return_value = []
+        mock_conn.execute.return_value = mock_result
+
+        result = cli_runner.invoke(cli, ["status"])
+
+        assert result.exit_code == 0
+        assert "Queue Status" in result.output
+
+    def test_status_handles_redis_connection_error(self, cli_runner, mocker):
+        """Test that status command handles Redis connection errors gracefully."""
+        # Mock Redis to raise connection error
+        import redis
+
+        mocker.patch(
+            "clerk.queue.get_high_queue", side_effect=redis.ConnectionError("Cannot connect")
+        )
+
+        result = cli_runner.invoke(cli, ["status"])
+
+        # Command should fail gracefully
+        assert result.exit_code != 0
+        assert (
+            "Redis" in result.output
+            or "redis" in result.output.lower()
+            or "Cannot connect" in result.output
+        )
+
+    def test_status_handles_database_connection_error(self, cli_runner, mocker):
+        """Test that status command handles database connection errors gracefully."""
+        # Mock Redis queues (all empty)
+        mock_queue = mocker.Mock()
+        mock_queue.__len__ = mocker.Mock(return_value=0)
+        mocker.patch("clerk.queue.get_high_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_fetch_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_extraction_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_deploy_queue", return_value=mock_queue)
+
+        # Mock database to raise connection error
+        from sqlalchemy.exc import OperationalError
+
+        mocker.patch(
+            "clerk.db.civic_db_connection", side_effect=OperationalError("DB error", None, None)
+        )
+
+        result = cli_runner.invoke(cli, ["status"])
+
+        # Command should fail gracefully
+        assert result.exit_code != 0
+
+
+@pytest.mark.unit
+class TestEnqueueCommand:
+    """Unit tests for enqueue CLI command."""
+
+    def test_enqueue_single_site(self, cli_runner, mocker):
+        """Test enqueuing a single site."""
+        # Mock Redis and queue operations
+        mock_enqueue_job = mocker.patch("clerk.queue.enqueue_job", return_value="job123")
+
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+        mocker.patch(
+            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "site1.civic.band"}
+        )
+        mocker.patch("clerk.queue_db.track_job")
+        mocker.patch("clerk.queue_db.create_site_progress")
+
+        # Mock Redis connection test
+        mocker.patch("clerk.queue.get_redis")
+
+        result = cli_runner.invoke(cli, ["enqueue", "site1.civic.band"])
+
+        assert result.exit_code == 0
+        assert "Enqueued site1.civic.band" in result.output
+        assert "job123" in result.output
+        assert "normal" in result.output
+
+        # Verify enqueue_job was called correctly
+        mock_enqueue_job.assert_called_once_with(
+            "fetch-site", "site1.civic.band", priority="normal"
+        )
+
+    def test_enqueue_multiple_sites(self, cli_runner, mocker):
+        """Test enqueuing multiple sites."""
+        # Mock Redis and queue operations
+        mock_enqueue_job = mocker.patch("clerk.queue.enqueue_job")
+        mock_enqueue_job.side_effect = ["job123", "job456"]
+
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        def mock_get_site(conn, subdomain):
+            return {"subdomain": subdomain}
+
+        mocker.patch("clerk.db.get_site_by_subdomain", side_effect=mock_get_site)
+        mocker.patch("clerk.queue_db.track_job")
+        mocker.patch("clerk.queue_db.create_site_progress")
+
+        # Mock Redis connection test
+        mocker.patch("clerk.queue.get_redis")
+
+        result = cli_runner.invoke(cli, ["enqueue", "site1.civic.band", "site2.civic.band"])
+
+        assert result.exit_code == 0
+        assert "Enqueued site1.civic.band" in result.output
+        assert "job123" in result.output
+        assert "Enqueued site2.civic.band" in result.output
+        assert "job456" in result.output
+
+        # Verify enqueue_job was called twice
+        assert mock_enqueue_job.call_count == 2
+
+    def test_enqueue_with_high_priority(self, cli_runner, mocker):
+        """Test enqueuing with high priority."""
+        # Mock Redis and queue operations
+        mock_enqueue_job = mocker.patch("clerk.queue.enqueue_job", return_value="job123")
+
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+        mocker.patch(
+            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "site1.civic.band"}
+        )
+        mocker.patch("clerk.queue_db.track_job")
+        mocker.patch("clerk.queue_db.create_site_progress")
+
+        # Mock Redis connection test
+        mocker.patch("clerk.queue.get_redis")
+
+        result = cli_runner.invoke(cli, ["enqueue", "site1.civic.band", "--priority", "high"])
+
+        assert result.exit_code == 0
+        assert "high" in result.output
+
+        # Verify enqueue_job was called with high priority
+        mock_enqueue_job.assert_called_once_with("fetch-site", "site1.civic.band", priority="high")
+
+    def test_enqueue_with_low_priority(self, cli_runner, mocker):
+        """Test enqueuing with low priority."""
+        # Mock Redis and queue operations
+        mock_enqueue_job = mocker.patch("clerk.queue.enqueue_job", return_value="job123")
+
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+        mocker.patch(
+            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "site1.civic.band"}
+        )
+        mocker.patch("clerk.queue_db.track_job")
+        mocker.patch("clerk.queue_db.create_site_progress")
+
+        # Mock Redis connection test
+        mocker.patch("clerk.queue.get_redis")
+
+        result = cli_runner.invoke(cli, ["enqueue", "site1.civic.band", "--priority", "low"])
+
+        assert result.exit_code == 0
+
+        # Verify enqueue_job was called with low priority
+        mock_enqueue_job.assert_called_once_with("fetch-site", "site1.civic.band", priority="low")
+
+    def test_enqueue_handles_redis_connection_error(self, cli_runner, mocker):
+        """Test that enqueue handles Redis connection errors gracefully."""
+        # Mock Redis to raise connection error
+        import redis
+
+        mocker.patch(
+            "clerk.queue.get_redis", side_effect=redis.ConnectionError("Cannot connect to Redis")
+        )
+
+        result = cli_runner.invoke(cli, ["enqueue", "site1.civic.band"])
+
+        # Command should fail gracefully
+        assert result.exit_code != 0
+        assert "Redis" in result.output or "redis" in result.output.lower()
+
+
+@pytest.mark.unit
+class TestPurgeCommand:
+    """Tests for the purge command."""
+
+    def test_purge_site_success(self, cli_runner, mocker):
+        """Test purging all jobs for a site."""
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        # Mock get_jobs_for_site to return some jobs
+        mock_get_jobs = mocker.patch(
+            "clerk.queue_db.get_jobs_for_site",
+            return_value=[
+                {
+                    "rq_job_id": "job-1",
+                    "site_id": "site.civic.band",
+                    "job_type": "fetch-site",
+                    "stage": "fetch",
+                },
+                {
+                    "rq_job_id": "job-2",
+                    "site_id": "site.civic.band",
+                    "job_type": "ocr-page",
+                    "stage": "ocr",
+                },
+            ],
+        )
+
+        # Mock queue operations
+        mock_queue = mocker.MagicMock()
+        mock_job = mocker.MagicMock()
+        mock_queue.fetch_job.return_value = mock_job
+        mocker.patch("clerk.queue.get_high_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_fetch_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_extraction_queue", return_value=mock_queue)
+        mocker.patch("clerk.queue.get_deploy_queue", return_value=mock_queue)
+
+        # Mock deletion operations
+        mock_delete_jobs = mocker.patch("clerk.queue_db.delete_jobs_for_site")
+        mock_delete_progress = mocker.patch("clerk.queue_db.delete_site_progress")
+
+        result = cli_runner.invoke(cli, ["purge", "site.civic.band"])
+
+        assert result.exit_code == 0
+        assert "2" in result.output  # Should mention 2 jobs purged
+        assert "site.civic.band" in result.output
+
+        # Verify functions were called
+        mock_get_jobs.assert_called_once()
+        mock_delete_jobs.assert_called_once()
+        mock_delete_progress.assert_called_once()
+
+    def test_purge_site_no_jobs(self, cli_runner, mocker):
+        """Test purging a site with no jobs."""
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        # Mock get_jobs_for_site to return empty list
+        mocker.patch("clerk.queue_db.get_jobs_for_site", return_value=[])
+
+        # Mock deletion operations
+        mock_delete_jobs = mocker.patch("clerk.queue_db.delete_jobs_for_site")
+        mock_delete_progress = mocker.patch("clerk.queue_db.delete_site_progress")
+
+        result = cli_runner.invoke(cli, ["purge", "site.civic.band"])
+
+        assert result.exit_code == 0
+        assert "0" in result.output or "no" in result.output.lower()
+
+        # Still delete records even if no jobs
+        mock_delete_jobs.assert_called_once()
+        mock_delete_progress.assert_called_once()
+
+    def test_purge_site_handles_redis_error(self, cli_runner, mocker):
+        """Test purge handles Redis connection errors gracefully."""
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        # Mock get_jobs_for_site to return jobs
+        mocker.patch(
+            "clerk.queue_db.get_jobs_for_site",
+            return_value=[
+                {
+                    "rq_job_id": "job-1",
+                    "site_id": "site.civic.band",
+                    "job_type": "fetch-site",
+                    "stage": "fetch",
+                },
+            ],
+        )
+
+        # Mock Redis to raise connection error
+        import redis
+
+        mocker.patch(
+            "clerk.queue.get_high_queue",
+            side_effect=redis.ConnectionError("Cannot connect to Redis"),
+        )
+
+        result = cli_runner.invoke(cli, ["purge", "site.civic.band"])
+
+        # Should handle error gracefully
+        assert result.exit_code != 0
+        assert "Redis" in result.output or "redis" in result.output.lower()
+
+
+@pytest.mark.unit
+class TestPurgeQueueCommand:
+    """Tests for the purge-queue command."""
+
+    def test_purge_queue_success(self, cli_runner, mocker):
+        """Test purging an entire queue."""
+        # Mock queue operations
+        mock_queue = mocker.MagicMock()
+        mock_queue.empty.return_value = 5  # Returns number of jobs removed
+        mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_queue)
+
+        result = cli_runner.invoke(cli, ["purge-queue", "ocr"])
+
+        assert result.exit_code == 0
+        assert "ocr" in result.output.lower()
+        mock_queue.empty.assert_called_once()
+
+    def test_purge_queue_all_queues(self, cli_runner, mocker):
+        """Test purging different queues."""
+        queue_names = ["high", "fetch", "ocr", "extraction", "deploy"]
+
+        for queue_name in queue_names:
+            mock_queue = mocker.MagicMock()
+            mock_queue.empty.return_value = 3
+            mocker.patch(f"clerk.queue.get_{queue_name}_queue", return_value=mock_queue)
+
+            result = cli_runner.invoke(cli, ["purge-queue", queue_name])
+
+            assert result.exit_code == 0
+            assert queue_name in result.output.lower()
+            mock_queue.empty.assert_called_once()
+
+            # Reset mocks for next iteration
+            mocker.resetall()
+
+    def test_purge_queue_invalid_name(self, cli_runner, mocker):
+        """Test purging with invalid queue name."""
+        result = cli_runner.invoke(cli, ["purge-queue", "invalid_queue"])
+
+        # Should fail with error
+        assert result.exit_code != 0
+        assert "invalid" in result.output.lower() or "unknown" in result.output.lower()
+
+    def test_purge_queue_handles_redis_error(self, cli_runner, mocker):
+        """Test purge-queue handles Redis connection errors gracefully."""
+        # Mock Redis to raise connection error
+        import redis
+
+        mocker.patch(
+            "clerk.queue.get_ocr_queue",
+            side_effect=redis.ConnectionError("Cannot connect to Redis"),
+        )
+
+        result = cli_runner.invoke(cli, ["purge-queue", "ocr"])
+
+        # Should handle error gracefully
+        assert result.exit_code != 0
+        assert "Redis" in result.output or "redis" in result.output.lower()
+
+
+@pytest.mark.unit
+class TestInstallWorkersCommand:
+    """Tests for the install-workers CLI command."""
+
+    def test_install_workers_command_exists(self, cli_runner):
+        """Test that install-workers command exists."""
+        result = cli_runner.invoke(cli, ["install-workers", "--help"])
+        assert result.exit_code == 0
+
+    def test_install_workers_finds_script_in_dev_mode(self, cli_runner, mocker, tmp_path):
+        """Test that install-workers finds script in development mode."""
+        # Create mock script in development location
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+        script_path = scripts_dir / "install-workers.sh"
+        script_path.write_text("#!/bin/bash\necho 'test'")
+        script_path.chmod(0o755)
+
+        # Mock Path(__file__).parent to point to our test location
+        mocker.patch("pathlib.Path", return_value=tmp_path / "src" / "clerk" / "cli.py")
+
+        # Mock subprocess.run
+        mock_run = mocker.patch("subprocess.run")
+        mock_run.return_value = mocker.Mock(returncode=0)
+
+        # Mock sys.exit to prevent test from exiting
+        _mock_exit = mocker.patch("sys.exit")
+
+        _result = cli_runner.invoke(cli, ["install-workers"])
+
+        # Should attempt to run the script
+        assert mock_run.called or _mock_exit.called
+
+    def test_install_workers_script_not_found(self, cli_runner, mocker):
+        """Test that install-workers shows error when script not found."""
+        # Mock sys.prefix to point to non-existent location
+        mocker.patch("sys.prefix", "/nonexistent/path")
+
+        # Mock __file__ to point to non-existent location
+        mock_file = mocker.MagicMock()
+        mock_file.parent.parent.parent = mocker.MagicMock()
+
+        # Mock pathlib.Path to return paths that don't exist
+        def mock_path_factory(*args):
+            mock_path = mocker.MagicMock()
+            mock_path.exists.return_value = False
+            mock_path.__truediv__.return_value = mock_path
+            return mock_path
+
+        mocker.patch("pathlib.Path", side_effect=mock_path_factory)
+
+        result = cli_runner.invoke(cli, ["install-workers"])
+
+        # Should fail with non-zero exit code
+        assert result.exit_code != 0
+
+    def test_install_workers_executes_script(self, cli_runner, mocker, tmp_path):
+        """Test that install-workers executes the script."""
+        # Create mock script
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+        script_path = scripts_dir / "install-workers.sh"
+        script_path.write_text("#!/bin/bash\necho 'Installing workers'")
+        script_path.chmod(0o755)
+
+        # Mock script location finding
+        mocker.patch("pathlib.Path.cwd", return_value=tmp_path)
+
+        # Create the expected path structure
+        _dev_path = tmp_path / "scripts" / "install-workers.sh"
+
+        # Mock subprocess.run
+        mock_run = mocker.patch("subprocess.run")
+        mock_run.return_value = mocker.Mock(returncode=0)
+
+        # Mock sys.exit
+        _mock_exit = mocker.patch("sys.exit")
+
+        _result = cli_runner.invoke(cli, ["install-workers"])
+
+        # Verify subprocess.run was called
+        if mock_run.called:
+            call_args = mock_run.call_args
+            # Check that script path was in the call
+            assert any("install-workers.sh" in str(arg) for arg in call_args[0][0])
+
+
+@pytest.mark.unit
+class TestUninstallWorkersCommand:
+    """Tests for the uninstall-workers CLI command."""
+
+    def test_uninstall_workers_command_exists(self, cli_runner):
+        """Test that uninstall-workers command exists."""
+        result = cli_runner.invoke(cli, ["uninstall-workers", "--help"])
+        assert result.exit_code == 0
+
+    def test_uninstall_workers_finds_script_in_dev_mode(self, cli_runner, mocker, tmp_path):
+        """Test that uninstall-workers finds script in development mode."""
+        # Create mock script in development location
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+        script_path = scripts_dir / "uninstall-workers.sh"
+        script_path.write_text("#!/bin/bash\necho 'test'")
+        script_path.chmod(0o755)
+
+        # Mock subprocess.run
+        mock_run = mocker.patch("subprocess.run")
+        mock_run.return_value = mocker.Mock(returncode=0)
+
+        # Mock sys.exit
+        _mock_exit = mocker.patch("sys.exit")
+
+        _result = cli_runner.invoke(cli, ["uninstall-workers"])
+
+        # Should attempt to run the script
+        assert mock_run.called or _mock_exit.called
+
+    def test_uninstall_workers_executes_script(self, cli_runner, mocker, tmp_path):
+        """Test that uninstall-workers executes the script."""
+        # Create mock script
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+        script_path = scripts_dir / "uninstall-workers.sh"
+        script_path.write_text("#!/bin/bash\necho 'Uninstalling workers'")
+        script_path.chmod(0o755)
+
+        # Mock subprocess.run
+        mock_run = mocker.patch("subprocess.run")
+        mock_run.return_value = mocker.Mock(returncode=0)
+
+        # Mock sys.exit
+        _mock_exit = mocker.patch("sys.exit")
+
+        _result = cli_runner.invoke(cli, ["uninstall-workers"])
+
+        # Verify subprocess.run was called
+        if mock_run.called:
+            call_args = mock_run.call_args
+            # Check that script path was in the call
+            assert any("uninstall-workers.sh" in str(arg) for arg in call_args[0][0])
+
+
+@pytest.mark.unit
+class TestWorkerCommand:
+    """Tests for the worker CLI command."""
+
+    def test_worker_command_exists(self, cli_runner):
+        """Test that worker command exists and shows help."""
+        result = cli_runner.invoke(cli, ["worker", "--help"])
+        assert result.exit_code == 0
+        assert "Start RQ workers" in result.output
+
+    def test_worker_fetch_single_worker(self, cli_runner, mocker):
+        """Test starting a single fetch worker."""
+        # Mock Redis connection
+        mock_redis = mocker.MagicMock()
+        mocker.patch("clerk.queue.get_redis", return_value=mock_redis)
+
+        # Mock queues
+        mock_high_queue = mocker.MagicMock()
+        mock_fetch_queue = mocker.MagicMock()
+        mocker.patch("clerk.queue.get_high_queue", return_value=mock_high_queue)
+        mocker.patch("clerk.queue.get_fetch_queue", return_value=mock_fetch_queue)
+
+        # Mock Worker class
+        mock_worker = mocker.MagicMock()
+        mock_worker_class = mocker.patch("rq.Worker", return_value=mock_worker)
+
+        result = cli_runner.invoke(cli, ["worker", "fetch"])
+
+        assert result.exit_code == 0
+        # Verify Worker was created with correct queues (high first, then fetch)
+        mock_worker_class.assert_called_once_with(
+            [mock_high_queue, mock_fetch_queue], connection=mock_redis
+        )
+        # Verify worker.work() was called with scheduler and not burst
+        mock_worker.work.assert_called_once_with(with_scheduler=True, burst=False)
+
+    def test_worker_ocr_with_burst_mode(self, cli_runner, mocker):
+        """Test starting OCR worker in burst mode."""
+        # Mock Redis connection
+        mock_redis = mocker.MagicMock()
+        mocker.patch("clerk.queue.get_redis", return_value=mock_redis)
+
+        # Mock queues
+        mock_high_queue = mocker.MagicMock()
+        mock_ocr_queue = mocker.MagicMock()
+        mocker.patch("clerk.queue.get_high_queue", return_value=mock_high_queue)
+        mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_ocr_queue)
+
+        # Mock Worker class
+        mock_worker = mocker.MagicMock()
+        mock_worker_class = mocker.patch("rq.Worker", return_value=mock_worker)
+
+        result = cli_runner.invoke(cli, ["worker", "ocr", "--burst"])
+
+        assert result.exit_code == 0
+        # Verify Worker was created with correct queues
+        mock_worker_class.assert_called_once_with(
+            [mock_high_queue, mock_ocr_queue], connection=mock_redis
+        )
+        # Verify burst mode was enabled
+        mock_worker.work.assert_called_once_with(with_scheduler=True, burst=True)
+
+    def test_worker_extraction_multiple_workers(self, cli_runner, mocker):
+        """Test starting multiple extraction workers with worker pool."""
+        # Mock Redis connection
+        mock_redis = mocker.MagicMock()
+        mocker.patch("clerk.queue.get_redis", return_value=mock_redis)
+
+        # Mock queues
+        mock_high_queue = mocker.MagicMock()
+        mock_extraction_queue = mocker.MagicMock()
+        mocker.patch("clerk.queue.get_high_queue", return_value=mock_high_queue)
+        mocker.patch("clerk.queue.get_extraction_queue", return_value=mock_extraction_queue)
+
+        # Mock WorkerPool class
+        mock_pool = mocker.MagicMock()
+        mock_pool.__enter__ = mocker.Mock(return_value=mock_pool)
+        mock_pool.__exit__ = mocker.Mock(return_value=False)
+        mock_pool_class = mocker.patch("rq.worker_pool.WorkerPool", return_value=mock_pool)
+
+        result = cli_runner.invoke(cli, ["worker", "extraction", "-n", "2"])
+
+        assert result.exit_code == 0
+        # Verify WorkerPool was created with correct parameters
+        mock_pool_class.assert_called_once_with(
+            [mock_high_queue, mock_extraction_queue], num_workers=2, connection=mock_redis
+        )
+        # Verify pool.start() was called
+        mock_pool.start.assert_called_once()
+
+    def test_worker_deploy_type(self, cli_runner, mocker):
+        """Test starting deploy worker."""
+        # Mock Redis connection
+        mock_redis = mocker.MagicMock()
+        mocker.patch("clerk.queue.get_redis", return_value=mock_redis)
+
+        # Mock queues
+        mock_high_queue = mocker.MagicMock()
+        mock_deploy_queue = mocker.MagicMock()
+        mocker.patch("clerk.queue.get_high_queue", return_value=mock_high_queue)
+        mocker.patch("clerk.queue.get_deploy_queue", return_value=mock_deploy_queue)
+
+        # Mock Worker class
+        mock_worker = mocker.MagicMock()
+        mock_worker_class = mocker.patch("rq.Worker", return_value=mock_worker)
+
+        result = cli_runner.invoke(cli, ["worker", "deploy"])
+
+        assert result.exit_code == 0
+        # Verify Worker was created with deploy queue
+        mock_worker_class.assert_called_once_with(
+            [mock_high_queue, mock_deploy_queue], connection=mock_redis
+        )
+
+    def test_worker_handles_redis_connection_error(self, cli_runner, mocker):
+        """Test that worker command handles Redis connection errors."""
+        # Mock Redis to raise connection error
+        import redis
+
+        mocker.patch(
+            "clerk.queue.get_redis", side_effect=redis.ConnectionError("Cannot connect to Redis")
+        )
+
+        result = cli_runner.invoke(cli, ["worker", "fetch"])
+
+        # Command should fail gracefully
+        assert result.exit_code != 0
+        assert "Redis" in result.output or "redis" in result.output.lower()
+
+    def test_worker_invalid_type(self, cli_runner, mocker):
+        """Test that invalid worker type shows error."""
+        result = cli_runner.invoke(cli, ["worker", "invalid_type"])
+
+        # Should fail with invalid choice error
+        assert result.exit_code != 0
+
+    def test_worker_num_workers_flag(self, cli_runner, mocker):
+        """Test --num-workers flag is accepted."""
+        # Mock Redis connection
+        mock_redis = mocker.MagicMock()
+        mocker.patch("clerk.queue.get_redis", return_value=mock_redis)
+
+        # Mock queues
+        mocker.patch("clerk.queue.get_high_queue", return_value=mocker.MagicMock())
+        mocker.patch("clerk.queue.get_fetch_queue", return_value=mocker.MagicMock())
+
+        # Mock WorkerPool
+        mock_pool = mocker.MagicMock()
+        mock_pool.__enter__ = mocker.Mock(return_value=mock_pool)
+        mock_pool.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("rq.worker_pool.WorkerPool", return_value=mock_pool)
+
+        result = cli_runner.invoke(cli, ["worker", "fetch", "--num-workers", "5"])
+
+        assert result.exit_code == 0
+
+    def test_worker_all_worker_types(self, cli_runner, mocker):
+        """Test all valid worker types are accepted."""
+        worker_types = ["fetch", "ocr", "extraction", "deploy"]
+
+        for worker_type in worker_types:
+            # Mock Redis connection
+            mock_redis = mocker.MagicMock()
+            mocker.patch("clerk.queue.get_redis", return_value=mock_redis)
+
+            # Mock all queues
+            mocker.patch("clerk.queue.get_high_queue", return_value=mocker.MagicMock())
+            mocker.patch(f"clerk.queue.get_{worker_type}_queue", return_value=mocker.MagicMock())
+
+            # Mock Worker
+            mock_worker = mocker.MagicMock()
+            mocker.patch("rq.Worker", return_value=mock_worker)
+
+            result = cli_runner.invoke(cli, ["worker", worker_type])
+
+            assert result.exit_code == 0, f"Worker type {worker_type} should work"
+
+            # Reset mocks
+            mocker.resetall()

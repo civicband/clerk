@@ -953,6 +953,440 @@ def uninstall_launchd():
     click.echo("=" * 60)
 
 
+def _find_alembic_ini():
+    """Find alembic.ini file in current directory or package location.
+
+    Returns:
+        Path to alembic.ini file
+
+    Raises:
+        click.Abort: If alembic.ini is not found
+    """
+    import sys
+    from pathlib import Path
+
+    # Try current directory first
+    cwd_ini = Path.cwd() / "alembic.ini"
+    if cwd_ini.exists():
+        return cwd_ini
+
+    # Try package location (for installed package)
+    package_ini = Path(sys.prefix) / "share" / "clerk" / "alembic.ini"
+    if package_ini.exists():
+        return package_ini
+
+    click.secho(
+        "Error: alembic.ini not found. Please run this command from the project root directory.",
+        fg="red",
+    )
+    raise click.Abort()
+
+
+def _run_alembic_command(*args):
+    """Run an alembic command and display output.
+
+    Args:
+        *args: Arguments to pass to alembic command
+
+    Raises:
+        click.Abort: If alembic command fails
+    """
+    import subprocess
+
+    alembic_ini = _find_alembic_ini()
+
+    result = subprocess.run(
+        ["alembic", "-c", str(alembic_ini), *args],
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        click.secho(f"Error running alembic {args[0]}: {result.stderr}", fg="red")
+        raise click.Abort()
+
+    click.echo(result.stdout)
+    if result.stderr:
+        click.echo(result.stderr, err=True)
+
+
+@cli.group()
+def db():
+    """Database migration commands"""
+    pass
+
+
+@db.command()
+def upgrade():
+    """Run database migrations to latest version"""
+    _run_alembic_command("upgrade", "head")
+
+
+@db.command()
+def current():
+    """Show current database migration version"""
+    _run_alembic_command("current")
+
+
+@db.command()
+def history():
+    """Show database migration history"""
+    _run_alembic_command("history")
+
+
+@cli.command()
+@click.argument("subdomains", nargs=-1, required=True)
+@click.option(
+    "--priority",
+    type=click.Choice(["high", "normal", "low"], case_sensitive=False),
+    default="normal",
+    help="Job priority (default: normal)",
+)
+def enqueue(subdomains, priority):
+    """Enqueue sites for processing"""
+    import redis
+
+    from .db import civic_db_connection
+    from .queue import enqueue_job, get_redis
+    from .queue_db import create_site_progress, track_job
+
+    # Validate Redis connection
+    try:
+        get_redis()
+    except (redis.ConnectionError, redis.TimeoutError, SystemExit) as e:
+        click.secho(f"Error: Cannot connect to Redis: {e}", fg="red")
+        raise click.Abort() from e
+
+    # Process each site
+    for subdomain in subdomains:
+        # Enqueue the job
+        try:
+            job_id = enqueue_job("fetch-site", subdomain, priority=priority)
+        except Exception as e:
+            click.secho(f"Error enqueueing {subdomain}: {e}", fg="red")
+            continue
+
+        # Track in PostgreSQL
+        try:
+            with civic_db_connection() as conn:
+                track_job(conn, job_id, subdomain, "fetch-site", "fetch")
+                create_site_progress(conn, subdomain, "fetch")
+        except Exception as e:
+            click.secho(f"Warning: Failed to track job in database: {e}", fg="yellow")
+
+        # Display confirmation
+        click.echo(f"Enqueued {subdomain} (job: {job_id}, priority: {priority})")
+
+
+@cli.command()
+@click.option("--subdomain", help="Show detailed progress for specific site")
+def status(subdomain=None):
+    """Show queue status and site progress"""
+    import redis
+    from sqlalchemy import select
+    from sqlalchemy.exc import OperationalError
+
+    from .db import civic_db_connection
+    from .models import site_progress_table
+    from .queue import (
+        get_deploy_queue,
+        get_extraction_queue,
+        get_fetch_queue,
+        get_high_queue,
+        get_ocr_queue,
+    )
+
+    # Handle Redis connection errors
+    try:
+        # Show queue status if not querying specific site
+        if not subdomain:
+            click.echo()
+            click.echo("=== Queue Status ===")
+
+            queues = {
+                "High priority": get_high_queue(),
+                "Fetch": get_fetch_queue(),
+                "OCR": get_ocr_queue(),
+                "Extraction": get_extraction_queue(),
+                "Deploy": get_deploy_queue(),
+            }
+
+            for name, queue in queues.items():
+                job_count = len(queue)
+                click.echo(f"{name:15} {job_count} jobs")
+    except (redis.ConnectionError, redis.TimeoutError) as e:
+        click.secho(f"Error: Cannot connect to Redis: {e}", fg="red")
+        raise click.Abort() from e
+
+    # Handle database connection errors
+    try:
+        with civic_db_connection() as conn:
+            if subdomain:
+                # Query for specific site
+                stmt = select(site_progress_table).where(
+                    site_progress_table.c.subdomain == subdomain
+                )
+                result = conn.execute(stmt).fetchone()
+
+                if result:
+                    # Display detailed site progress
+                    percentage = (
+                        (result.stage_completed / result.stage_total * 100)
+                        if result.stage_total > 0
+                        else 0
+                    )
+                    click.echo(f"Site: {result.subdomain}")
+                    click.echo(f"Current stage: {result.current_stage}")
+                    click.echo(
+                        f"Progress: {result.stage_completed}/{result.stage_total} ({percentage:.1f}%)"
+                    )
+                    click.echo(f"Started: {result.started_at}")
+                    click.echo(f"Updated: {result.updated_at}")
+                else:
+                    click.echo(f"No progress tracking found for site: {subdomain}")
+            else:
+                # Query all active sites
+                click.echo()
+                click.echo("=== Active Sites ===")
+
+                stmt = select(site_progress_table).where(
+                    site_progress_table.c.current_stage != "completed"
+                )
+                results = conn.execute(stmt).fetchall()
+
+                if results:
+                    for row in results:
+                        if row.stage_total > 0:
+                            percentage = row.stage_completed / row.stage_total * 100
+                            click.echo(
+                                f"  {row.subdomain}: {row.current_stage} ({row.stage_completed}/{row.stage_total}, {percentage:.1f}%)"
+                            )
+                        else:
+                            click.echo(f"  {row.subdomain}: {row.current_stage}")
+    except OperationalError as e:
+        click.secho(f"Error: Cannot connect to database: {e}", fg="red")
+        raise click.Abort() from e
+
+
+@cli.command()
+@click.argument("subdomain")
+def purge(subdomain):
+    """Remove all jobs for a specific site"""
+    import redis
+
+    from .db import civic_db_connection
+    from .queue import (
+        get_deploy_queue,
+        get_extraction_queue,
+        get_fetch_queue,
+        get_high_queue,
+        get_ocr_queue,
+    )
+    from .queue_db import delete_jobs_for_site, delete_site_progress, get_jobs_for_site
+
+    # Handle Redis connection errors
+    try:
+        # Use single database transaction to prevent race conditions
+        with civic_db_connection() as conn:
+            # Get all jobs for the site from database
+            jobs = get_jobs_for_site(conn, subdomain)
+            click.echo(f"Found {len(jobs)} job(s) for site {subdomain}")
+
+            deleted_count = 0
+
+            # Only connect to Redis if there are jobs to purge
+            if jobs:
+                # Cancel and delete each job from RQ (outside transaction is OK)
+                queues = [
+                    get_high_queue(),
+                    get_fetch_queue(),
+                    get_ocr_queue(),
+                    get_extraction_queue(),
+                    get_deploy_queue(),
+                ]
+
+                for job_data in jobs:
+                    job_id = job_data["rq_job_id"]
+
+                    # Try all queues
+                    for queue in queues:
+                        try:
+                            job = queue.fetch_job(job_id)
+                            if job:
+                                job.cancel()
+                                job.delete()
+                                deleted_count += 1
+                                break  # Found and deleted, no need to check other queues
+                        except Exception:
+                            # Job might not be in this queue, or other transient error
+                            # Continue trying other queues
+                            continue
+
+            # Delete database records in same transaction
+            delete_site_progress(conn, subdomain)
+            delete_jobs_for_site(conn, subdomain)
+
+            click.echo(f"Purged {deleted_count} job(s) from queues for site {subdomain}")
+            click.echo(f"Deleted database records for site {subdomain}")
+
+    except (redis.ConnectionError, redis.TimeoutError) as e:
+        click.secho(f"Error: Cannot connect to Redis: {e}", fg="red")
+        raise click.Abort() from e
+    except Exception as e:
+        click.secho(f"Error purging site: {e}", fg="red")
+        raise click.Abort() from e
+
+
+@cli.command()
+@click.argument("queue_name")
+def purge_queue(queue_name):
+    """Clear an entire queue (emergency operation)"""
+    import redis
+
+    from .queue import (
+        get_deploy_queue,
+        get_extraction_queue,
+        get_fetch_queue,
+        get_high_queue,
+        get_ocr_queue,
+    )
+
+    queues = {
+        "high": get_high_queue,
+        "fetch": get_fetch_queue,
+        "ocr": get_ocr_queue,
+        "extraction": get_extraction_queue,
+        "deploy": get_deploy_queue,
+    }
+
+    if queue_name not in queues:
+        click.secho(
+            f"Error: Invalid queue name '{queue_name}'. Valid queues: {', '.join(queues.keys())}",
+            fg="red",
+        )
+        raise click.Abort()
+
+    # Handle Redis connection errors
+    try:
+        queue = queues[queue_name]()
+        count = queue.empty()
+
+        click.echo(f"Cleared {count} job(s) from '{queue_name}' queue")
+
+    except (redis.ConnectionError, redis.TimeoutError) as e:
+        click.secho(f"Error: Cannot connect to Redis: {e}", fg="red")
+        raise click.Abort() from e
+    except Exception as e:
+        click.secho(f"Error clearing queue: {e}", fg="red")
+        raise click.Abort() from e
+
+
+@cli.command()
+@click.argument("worker_type", type=click.Choice(["fetch", "ocr", "extraction", "deploy"]))
+@click.option("--num-workers", "-n", type=int, default=1, help="Number of workers to start")
+@click.option("--burst", is_flag=True, help="Exit when queue empty (for testing)")
+def worker(worker_type, num_workers, burst):
+    """Start RQ workers."""
+    import redis
+    from rq import Worker
+    from rq.worker_pool import WorkerPool
+
+    from .queue import (
+        get_deploy_queue,
+        get_extraction_queue,
+        get_fetch_queue,
+        get_high_queue,
+        get_ocr_queue,
+        get_redis,
+    )
+
+    # Validate Redis connection before starting workers
+    try:
+        get_redis()
+    except (redis.ConnectionError, redis.TimeoutError) as e:
+        click.secho(f"Error: Cannot connect to Redis: {e}", fg="red")
+        raise click.Abort() from e
+
+    # Map worker types to queue lists (each worker checks high priority first)
+    queue_map = {
+        "fetch": [get_high_queue(), get_fetch_queue()],
+        "ocr": [get_high_queue(), get_ocr_queue()],
+        "extraction": [get_high_queue(), get_extraction_queue()],
+        "deploy": [get_high_queue(), get_deploy_queue()],
+    }
+
+    queues = queue_map[worker_type]
+
+    if num_workers == 1:
+        # Single worker
+        worker_instance = Worker(queues, connection=get_redis())
+        worker_instance.work(with_scheduler=True, burst=burst)
+    else:
+        # Worker pool for multiple workers
+        with WorkerPool(queues, num_workers=num_workers, connection=get_redis()) as pool:
+            pool.start()
+
+
+@cli.command()
+def install_workers():
+    """Install RQ workers as background services (macOS/Linux)."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    # Try package location first (installed)
+    package_scripts = Path(sys.prefix) / "share" / "clerk" / "scripts"
+
+    # Try relative to this file (development)
+    dev_scripts = Path(__file__).parent.parent.parent / "scripts"
+
+    script_path = None
+    if (package_scripts / "install-workers.sh").exists():
+        script_path = package_scripts / "install-workers.sh"
+    elif (dev_scripts / "install-workers.sh").exists():
+        script_path = dev_scripts / "install-workers.sh"
+    else:
+        click.secho("Error: install-workers.sh script not found", fg="red")
+        raise click.Abort()
+
+    # Execute the script
+    result = subprocess.run(
+        [str(script_path)],
+        cwd=Path.cwd(),  # Run in current directory (where .env is)
+    )
+    sys.exit(result.returncode)
+
+
+@cli.command()
+def uninstall_workers():
+    """Uninstall RQ worker background services (macOS/Linux)."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    # Try package location first (installed)
+    package_scripts = Path(sys.prefix) / "share" / "clerk" / "scripts"
+
+    # Try relative to this file (development)
+    dev_scripts = Path(__file__).parent.parent.parent / "scripts"
+
+    script_path = None
+    if (package_scripts / "uninstall-workers.sh").exists():
+        script_path = package_scripts / "uninstall-workers.sh"
+    elif (dev_scripts / "uninstall-workers.sh").exists():
+        script_path = dev_scripts / "uninstall-workers.sh"
+    else:
+        click.secho("Error: uninstall-workers.sh script not found", fg="red")
+        raise click.Abort()
+
+    # Execute the script
+    result = subprocess.run(
+        [str(script_path)],
+        cwd=Path.cwd(),  # Run in current directory (where .env is)
+    )
+    sys.exit(result.returncode)
+
+
 cli.add_command(new)
 cli.add_command(update)
 cli.add_command(build_full_db)
@@ -961,3 +1395,4 @@ cli.add_command(migrate_extraction_schema)
 cli.add_command(extract_entities)
 cli.add_command(install_launchd)
 cli.add_command(uninstall_launchd)
+cli.add_command(db)

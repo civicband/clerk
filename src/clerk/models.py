@@ -1,6 +1,7 @@
 """SQLAlchemy table definitions for civic.db schema."""
 
-from sqlalchemy import Column, Integer, MetaData, String, Table
+from sqlalchemy import Column, DateTime, Integer, MetaData, String, Table
+from sqlalchemy.sql import func
 
 metadata = MetaData()
 
@@ -23,4 +24,25 @@ sites_table = Table(
     Column("lng", String),
     Column("extraction_status", String, server_default="pending"),
     Column("last_extracted", String),
+)
+
+job_tracking_table = Table(
+    "job_tracking",
+    metadata,
+    Column("rq_job_id", String, primary_key=True),
+    Column("subdomain", String, nullable=False, index=True),
+    Column("job_type", String, nullable=False),
+    Column("stage", String, nullable=True),
+    Column("created_at", DateTime(timezone=True), server_default=func.now()),
+)
+
+site_progress_table = Table(
+    "site_progress",
+    metadata,
+    Column("subdomain", String, primary_key=True),
+    Column("current_stage", String, nullable=True),
+    Column("stage_total", Integer, server_default="0"),
+    Column("stage_completed", Integer, server_default="0"),
+    Column("started_at", DateTime(timezone=True)),
+    Column("updated_at", DateTime(timezone=True)),
 )
