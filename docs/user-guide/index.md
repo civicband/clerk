@@ -2,9 +2,29 @@
 
 The User Guide provides comprehensive information about clerk's features and workflows.
 
-## Status
+```{toctree}
+:maxdepth: 2
+:caption: User Guide
 
-This section is currently being developed. For now, please refer to:
+task-queue
+```
+
+## Available Documentation
+
+### Task Queue System
+
+The [Task Queue System](task-queue.md) provides distributed processing capabilities for clerk, allowing you to:
+
+- Scale workers horizontally across multiple machines
+- Process hundreds of PDFs in parallel using OCR
+- Monitor site progress through the pipeline in real-time
+- Manage job priorities and handle failures
+
+See the [complete task queue documentation](task-queue.md) for installation, configuration, and usage.
+
+## Additional Topics
+
+For other documentation, please refer to:
 
 - [Getting Started](../getting-started/index.md) - Installation and tutorials
 - [Basic Usage](../getting-started/basic-usage.md) - Common CLI commands
@@ -26,8 +46,6 @@ The following topics will be added to this section:
 - Setting up automated updates
 - Batch processing multiple sites
 - Troubleshooting common issues
-- Monitoring and observability
-- Backup and recovery
 
 ### CLI Reference
 - Complete command reference
