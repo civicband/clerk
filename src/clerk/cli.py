@@ -140,7 +140,13 @@ def cli(ctx, plugins_dir, quiet):
 
 
 @cli.command()
-def new():
+@click.option(
+    "--ocr-backend",
+    type=click.Choice(["tesseract", "vision"], case_sensitive=False),
+    default="tesseract",
+    help="OCR backend to use (tesseract or vision). Defaults to tesseract.",
+)
+def new(ocr_backend="tesseract"):
     """Create a new site"""
     from .db import civic_db_connection, get_site_by_subdomain
 
@@ -193,7 +199,9 @@ def new():
         )
 
     click.echo(f"Site {subdomain} created")
-    update_site_internal(subdomain, all_years=True, all_agendas=all_agendas)
+    update_site_internal(
+        subdomain, all_years=True, all_agendas=all_agendas, ocr_backend=ocr_backend
+    )
     pm.hook.post_create(subdomain=subdomain)
 
 
@@ -1385,6 +1393,183 @@ def uninstall_workers():
         cwd=Path.cwd(),  # Run in current directory (where .env is)
     )
     sys.exit(result.returncode)
+
+
+@cli.command()
+def diagnose_workers():
+    """Diagnose worker installation and connection issues."""
+    import subprocess
+    from pathlib import Path
+
+    def print_section(title):
+        click.secho(f"\n=== {title} ===", fg="blue", bold=True)
+
+    def print_success(msg):
+        click.secho(f"✓ {msg}", fg="green")
+
+    def print_error(msg):
+        click.secho(f"✗ {msg}", fg="red")
+
+    def print_warning(msg):
+        click.secho(f"⚠ {msg}", fg="yellow")
+
+    # 1. Check .env file
+    print_section("1. Checking .env file")
+    env_path = Path.cwd() / ".env"
+    if env_path.exists():
+        print_success(f".env file exists at {env_path}")
+    else:
+        print_error(f".env file not found at {env_path}")
+        click.echo("   Workers need .env file in the working directory")
+
+    # 2. Check clerk executable
+    print_section("2. Checking clerk executable")
+    clerk_path = shutil.which("clerk")
+    if not clerk_path:
+        if (Path.cwd() / ".venv" / "bin" / "clerk").exists():
+            clerk_path = str(Path.cwd() / ".venv" / "bin" / "clerk")
+        elif (Path.cwd() / "venv" / "bin" / "clerk").exists():
+            clerk_path = str(Path.cwd() / "venv" / "bin" / "clerk")
+
+    if clerk_path and Path(clerk_path).exists():
+        print_success(f"Clerk found at {clerk_path}")
+        try:
+            result = subprocess.run([clerk_path, "--version"], capture_output=True, text=True)
+            click.echo(f"   Version: {result.stdout.strip()}")
+        except Exception:
+            pass
+    else:
+        print_error("Clerk executable not found")
+
+    # 3. Check Redis connection
+    print_section("3. Checking Redis connection")
+    if env_path.exists():
+        load_dotenv()
+        redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+        click.echo(f"   Redis URL: {redis_url}")
+
+        try:
+            import redis as redis_module
+
+            r = redis_module.from_url(redis_url)
+            r.ping()
+            print_success("Redis is running and accessible")
+        except ImportError:
+            print_warning("redis package not installed, cannot test connection")
+        except Exception as e:
+            print_error(f"Cannot connect to Redis: {e}")
+            click.echo("   This is likely why workers are failing!")
+            click.echo("   Fix: brew services start redis")
+    else:
+        print_warning("Skipping (no .env file)")
+
+    # 4. Check log directory
+    print_section("4. Checking log directory")
+    log_dir = Path.home() / ".clerk" / "logs"
+    if log_dir.exists():
+        print_success(f"Log directory exists at {log_dir}")
+
+        # Show recent errors
+        error_logs = list(log_dir.glob("clerk-worker-*.error.log"))
+        if error_logs:
+            click.echo("\n   Recent worker error logs:")
+            for log_file in error_logs[:5]:  # Show first 5
+                size = log_file.stat().st_size
+                if size > 0:
+                    print_warning(f"→ {log_file.name} ({size} bytes)")
+                    click.echo("      Last 3 lines:")
+                    try:
+                        lines = log_file.read_text().strip().split("\n")
+                        for line in lines[-3:]:
+                            click.echo(f"        {line}")
+                    except Exception:
+                        pass
+    else:
+        print_warning(f"Log directory doesn't exist: {log_dir}")
+
+    # 5. Check plist files
+    print_section("5. Checking LaunchAgent plists")
+    launchagents_dir = Path.home() / "Library" / "LaunchAgents"
+    plist_files = list(launchagents_dir.glob("com.civicband.clerk.worker.*.plist"))
+
+    if plist_files:
+        print_success(f"Found {len(plist_files)} worker plist files")
+
+        # Validate one plist
+        sample_plist = plist_files[0]
+        click.echo(f"   Sample plist: {sample_plist.name}")
+
+        try:
+            subprocess.run(
+                ["plutil", "-lint", str(sample_plist)],
+                capture_output=True,
+                check=True,
+            )
+            print_success("Plist XML is valid")
+        except subprocess.CalledProcessError:
+            print_error("Plist XML is invalid!")
+
+        # Check worker status
+        click.echo("\n   Worker status:")
+        try:
+            result = subprocess.run(
+                ["launchctl", "list"],
+                capture_output=True,
+                text=True,
+            )
+            for line in result.stdout.split("\n"):
+                if "com.civicband.clerk.worker" in line:
+                    parts = line.split()
+                    if len(parts) >= 3:
+                        pid, status, label = parts[0], parts[1], parts[2]
+                        if pid == "-":
+                            print_error(f"{label} (not running, exit code: {status})")
+                        else:
+                            print_success(f"{label} (PID: {pid})")
+        except Exception:
+            print_warning("Could not check worker status")
+    else:
+        print_error("No worker plist files found")
+
+    # 6. Try manual worker execution
+    print_section("6. Testing manual worker execution")
+    if clerk_path:
+        click.echo(f"   Running: {clerk_path} worker fetch --burst")
+        click.echo("   (This will exit immediately if queue is empty)\n")
+
+        result = subprocess.run(
+            [clerk_path, "worker", "fetch", "--burst"],
+            cwd=Path.cwd(),
+        )
+
+        if result.returncode == 0:
+            click.echo("")
+            print_success("Worker can run manually")
+        else:
+            click.echo("")
+            print_error("Worker failed when run manually")
+            click.echo("   This is likely the same error preventing LaunchAgents from loading")
+    else:
+        print_warning("Cannot test (clerk not found)")
+
+    # 7. Summary
+    print_section("Summary and Recommendations")
+    click.echo("")
+
+    if not env_path.exists():
+        print_error(f"Create a .env file in {Path.cwd()}")
+
+    # Check for Redis errors in logs
+    if log_dir.exists():
+        for log_file in log_dir.glob("*.error.log"):
+            try:
+                if "Cannot connect to Redis" in log_file.read_text():
+                    print_error("Start Redis server: brew services start redis")
+                    break
+            except Exception:
+                pass
+
+    click.echo(f"\nFor more details, check logs in: {log_dir}")
 
 
 cli.add_command(new)

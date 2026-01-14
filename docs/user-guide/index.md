@@ -7,6 +7,7 @@ The User Guide provides comprehensive information about clerk's features and wor
 :caption: User Guide
 
 task-queue
+troubleshooting-workers
 ```
 
 ## Available Documentation
