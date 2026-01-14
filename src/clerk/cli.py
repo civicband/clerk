@@ -199,7 +199,9 @@ def new(ocr_backend="tesseract"):
         )
 
     click.echo(f"Site {subdomain} created")
-    update_site_internal(subdomain, all_years=True, all_agendas=all_agendas, ocr_backend=ocr_backend)
+    update_site_internal(
+        subdomain, all_years=True, all_agendas=all_agendas, ocr_backend=ocr_backend
+    )
     pm.hook.post_create(subdomain=subdomain)
 
 
