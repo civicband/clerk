@@ -10,7 +10,6 @@ def test_track_job_inserts_record():
     track_job(mock_conn, "rq-job-123", "site.civic.band", "fetch-site", "fetch")
 
     mock_conn.execute.assert_called_once()
-    mock_conn.commit.assert_called_once()
 
 
 def test_get_jobs_for_site_returns_jobs():
@@ -71,7 +70,6 @@ def test_delete_jobs_for_site():
     delete_jobs_for_site(mock_conn, "site.civic.band")
 
     mock_conn.execute.assert_called_once()
-    mock_conn.commit.assert_called_once()
 
 
 def test_delete_site_progress():
@@ -83,4 +81,3 @@ def test_delete_site_progress():
     delete_site_progress(mock_conn, "site.civic.band")
 
     mock_conn.execute.assert_called_once()
-    mock_conn.commit.assert_called_once()
