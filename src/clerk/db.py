@@ -227,3 +227,37 @@ def get_sites_where(conn, **filters):
 
     result = conn.execute(stmt)
     return [dict(row._mapping) for row in result]
+
+
+def get_oldest_site(lookback_hours=23):
+    """Find site with oldest last_updated timestamp.
+
+    Args:
+        lookback_hours: Skip sites updated within this many hours (default: 23)
+
+    Returns:
+        Subdomain string or None if no eligible sites
+    """
+    from datetime import datetime, timedelta
+
+    from sqlalchemy import or_
+
+    from .models import sites_table
+
+    cutoff = datetime.now() - timedelta(hours=lookback_hours)
+
+    stmt = (
+        select(sites_table.c.subdomain)
+        .where(
+            or_(
+                sites_table.c.last_updated.is_(None),
+                sites_table.c.last_updated < cutoff,
+            )
+        )
+        .order_by(sites_table.c.last_updated.asc().nulls_first())
+        .limit(1)
+    )
+
+    with civic_db_connection() as conn:
+        result = conn.execute(stmt).fetchone()
+        return result[0] if result else None

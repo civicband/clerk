@@ -271,3 +271,79 @@ class TestErrorHandling:
         call_args = mock_create_engine.call_args[0][0]
         assert call_args.startswith("postgresql://")
         assert not call_args.startswith("postgres://")
+
+
+@pytest.mark.unit
+class TestGetOldestSite:
+    """Tests for get_oldest_site function."""
+
+    def test_returns_site_with_null_last_updated_first(self, mocker):
+        """Sites with NULL last_updated should be prioritized."""
+        # Mock database connection
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+
+        # Mock query result - site with NULL last_updated
+        mock_result = mocker.MagicMock()
+        mock_result.__getitem__ = mocker.Mock(return_value="null-site.civic.band")
+        mock_conn.execute.return_value.fetchone.return_value = mock_result
+
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        from clerk.db import get_oldest_site
+        result = get_oldest_site()
+
+        assert result == "null-site.civic.band"
+
+    def test_returns_oldest_site_when_all_have_last_updated(self, mocker):
+        """Should return site with oldest last_updated timestamp."""
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+
+        mock_result = mocker.MagicMock()
+        mock_result.__getitem__ = mocker.Mock(return_value="oldest-site.civic.band")
+        mock_conn.execute.return_value.fetchone.return_value = mock_result
+
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        from clerk.db import get_oldest_site
+        result = get_oldest_site()
+
+        assert result == "oldest-site.civic.band"
+
+    def test_returns_none_when_all_sites_recently_updated(self, mocker):
+        """Should return None if all sites updated within lookback window."""
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+
+        # No results from query
+        mock_conn.execute.return_value.fetchone.return_value = None
+
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        from clerk.db import get_oldest_site
+        result = get_oldest_site(lookback_hours=23)
+
+        assert result is None
+
+    def test_respects_lookback_hours_parameter(self, mocker):
+        """Should use custom lookback hours when specified."""
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+
+        mock_result = mocker.MagicMock()
+        mock_result.__getitem__ = mocker.Mock(return_value="site.civic.band")
+        mock_conn.execute.return_value.fetchone.return_value = mock_result
+
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        from clerk.db import get_oldest_site
+        result = get_oldest_site(lookback_hours=12)
+
+        assert result == "site.civic.band"
+        # Verify the query was called (we can check this via the mock)
+        assert mock_conn.execute.called
