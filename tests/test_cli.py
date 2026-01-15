@@ -101,23 +101,23 @@ class TestNewCommand:
         mock_conn = mocker.MagicMock()
         mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
         mock_conn.__exit__ = mocker.Mock(return_value=False)
-        mocker.patch("clerk.cli.civic_db_connection", return_value=mock_conn)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
 
         # Mock get_site_by_subdomain to return None (site doesn't exist)
-        mocker.patch("clerk.cli.get_site_by_subdomain", return_value=None)
+        mocker.patch("clerk.db.get_site_by_subdomain", return_value=None)
 
         # Mock upsert_site
-        mocker.patch("clerk.cli.upsert_site")
+        mocker.patch("clerk.db.upsert_site")
 
         # Mock assert_db_exists
-        mocker.patch("clerk.cli.assert_db_exists")
+        mocker.patch("clerk.utils.assert_db_exists")
 
         # Mock pm.hook for plugin hooks
         mocker.patch("clerk.cli.pm.hook.fetcher_extra", return_value=[])
         mocker.patch("clerk.cli.pm.hook.post_create")
 
         # Mock enqueue_job
-        mock_enqueue = mocker.patch("clerk.cli.enqueue_job")
+        mock_enqueue = mocker.patch("clerk.queue.enqueue_job")
 
         # Provide interactive prompts as input
         result = cli_runner.invoke(
@@ -2400,19 +2400,19 @@ class TestAutoEnqueueIntegration:
         mock_conn = mocker.MagicMock()
         mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
         mock_conn.__exit__ = mocker.Mock(return_value=False)
-        mocker.patch("clerk.cli.civic_db_connection", return_value=mock_conn)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
 
-        mock_enqueue = mocker.patch("clerk.cli.enqueue_job")
+        mock_enqueue = mocker.patch("clerk.queue.enqueue_job")
 
         # Additional mocks needed for clerk new
-        mocker.patch("clerk.cli.upsert_site")
-        mocker.patch("clerk.cli.assert_db_exists")
+        mocker.patch("clerk.db.upsert_site")
+        mocker.patch("clerk.utils.assert_db_exists")
         mocker.patch("clerk.cli.pm.hook.fetcher_extra", return_value=[])
         mocker.patch("clerk.cli.pm.hook.post_create")
 
         # Step 1: Create new site - should enqueue with high priority
         mocker.patch(
-            "clerk.cli.get_site_by_subdomain",
+            "clerk.db.get_site_by_subdomain",
             return_value=None,  # Site doesn't exist yet
         )
 

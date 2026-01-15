@@ -48,8 +48,8 @@ class TestEndToEndWorkflow:
         site = civic_db["sites"].get("test.civic.band")
         assert site["name"] == "Test City"
         assert site["state"] == "CA"
-        # After full new workflow (create + update), status should be "deployed"
-        assert site["status"] == "deployed"
+        # After clerk new, status should be "new" (job is enqueued, not processed yet)
+        assert site["status"] == "new"
 
     def test_database_build_workflow(
         self, tmp_path, tmp_storage_dir, sample_text_files, monkeypatch, cli_module, utils_module
