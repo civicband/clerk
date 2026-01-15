@@ -23,6 +23,7 @@ class TestEndToEndWorkflow:
 
         # Mock enqueue_job since Redis won't be available in test environment
         from unittest.mock import Mock
+
         mock_enqueue = Mock(return_value="job123")
         monkeypatch.setattr("clerk.queue.enqueue_job", mock_enqueue)
 
