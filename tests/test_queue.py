@@ -30,6 +30,35 @@ def test_get_redis_returns_client(reset_redis_singleton):
         mock_client.ping.assert_called_once()
 
 
+def test_get_redis_no_decode_responses(reset_redis_singleton):
+    """Test that get_redis does NOT use decode_responses=True.
+
+    RQ is incompatible with decode_responses=True because it stores
+    pickled binary data in Redis. Enabling decode_responses causes
+    UnicodeDecodeError when workers try to fetch jobs.
+    """
+    with patch("clerk.queue.redis.from_url") as mock_redis:
+        mock_client = MagicMock()
+        mock_client.ping.return_value = True
+        mock_redis.return_value = mock_client
+
+        from clerk.queue import get_redis
+
+        get_redis()
+
+        # Verify redis.from_url was called WITHOUT decode_responses=True
+        mock_redis.assert_called_once()
+        call_args = mock_redis.call_args
+
+        # Check that decode_responses is either not present or explicitly False
+        if len(call_args.args) > 1:
+            # Positional args - should not have decode_responses
+            assert len(call_args.args) == 1  # Only redis_url
+
+        # Check keyword arguments
+        assert call_args.kwargs.get("decode_responses") is not True
+
+
 def test_get_redis_singleton_behavior(reset_redis_singleton):
     """Test that get_redis returns the same instance on multiple calls."""
     with patch("clerk.queue.redis.from_url") as mock_redis:
