@@ -207,7 +207,7 @@ def new(ocr_backend="tesseract"):
         priority="high",
         all_years=True,
         all_agendas=all_agendas,
-        ocr_backend=ocr_backend
+        ocr_backend=ocr_backend,
     )
     pm.hook.post_create(subdomain=subdomain)
 

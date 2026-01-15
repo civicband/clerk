@@ -292,6 +292,7 @@ class TestGetOldestSite:
         mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
 
         from clerk.db import get_oldest_site
+
         result = get_oldest_site()
 
         assert result == "null-site.civic.band"
@@ -309,6 +310,7 @@ class TestGetOldestSite:
         mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
 
         from clerk.db import get_oldest_site
+
         result = get_oldest_site()
 
         assert result == "oldest-site.civic.band"
@@ -325,6 +327,7 @@ class TestGetOldestSite:
         mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
 
         from clerk.db import get_oldest_site
+
         result = get_oldest_site(lookback_hours=23)
 
         assert result is None
@@ -342,6 +345,7 @@ class TestGetOldestSite:
         mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
 
         from clerk.db import get_oldest_site
+
         result = get_oldest_site(lookback_hours=12)
 
         assert result == "site.civic.band"

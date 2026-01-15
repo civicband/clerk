@@ -39,11 +39,7 @@ class TestAutoEnqueueScheduler:
         assert "Auto-enqueueing old-site.civic.band" in result.output
 
         # Verify enqueued with normal priority
-        mock_enqueue.assert_called_once_with(
-            "fetch-site",
-            "old-site.civic.band",
-            priority="normal"
-        )
+        mock_enqueue.assert_called_once_with("fetch-site", "old-site.civic.band", priority="normal")
 
     def test_update_next_exits_silently_when_no_eligible_sites(self, cli_runner, mocker):
         """clerk update --next should exit gracefully if all sites recently updated."""
@@ -71,8 +67,7 @@ class TestAutoEnqueueScheduler:
 
         # Mock get_site_by_subdomain to return site
         mocker.patch(
-            "clerk.db.get_site_by_subdomain",
-            return_value={"subdomain": "test-site.civic.band"}
+            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "test-site.civic.band"}
         )
 
         # Mock enqueue_job
@@ -85,10 +80,7 @@ class TestAutoEnqueueScheduler:
 
         # Verify enqueued with high priority (includes default ocr_backend)
         mock_enqueue.assert_called_once_with(
-            "fetch-site",
-            "test-site.civic.band",
-            priority="high",
-            ocr_backend="tesseract"
+            "fetch-site", "test-site.civic.band", priority="high", ocr_backend="tesseract"
         )
 
     def test_update_requires_subdomain_or_next_flag(self, cli_runner):
@@ -131,7 +123,7 @@ class TestNewCommand:
         result = cli_runner.invoke(
             cli,
             ["new"],
-            input="new-city.civic.band\nNew City\nCA\nUS\ncity\n2020\nFalse\n34.05,-118.25\ngranicus\n"
+            input="new-city.civic.band\nNew City\nCA\nUS\ncity\n2020\nFalse\n34.05,-118.25\ngranicus\n",
         )
 
         assert result.exit_code == 0
@@ -144,7 +136,7 @@ class TestNewCommand:
             priority="high",
             all_years=True,
             all_agendas=False,  # from the test input
-            ocr_backend="tesseract"  # default value
+            ocr_backend="tesseract",  # default value
         )
 
 
@@ -1305,8 +1297,7 @@ class TestOCRBackendCLIFlag:
         mock_conn.__exit__ = mocker.Mock(return_value=False)
         mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
         mocker.patch(
-            "clerk.db.get_site_by_subdomain",
-            return_value={"subdomain": "test.example.com"}
+            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "test.example.com"}
         )
 
         # Mock enqueue_job
@@ -1321,10 +1312,7 @@ class TestOCRBackendCLIFlag:
         assert result.exit_code == 0
         # Verify enqueue_job was called with the ocr_backend parameter
         mock_enqueue.assert_called_once_with(
-            "fetch-site",
-            "test.example.com",
-            priority="high",
-            ocr_backend="vision"
+            "fetch-site", "test.example.com", priority="high", ocr_backend="vision"
         )
 
     def test_ocr_backend_defaults_to_tesseract(self, cli_runner, mocker):
@@ -1335,8 +1323,7 @@ class TestOCRBackendCLIFlag:
         mock_conn.__exit__ = mocker.Mock(return_value=False)
         mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
         mocker.patch(
-            "clerk.db.get_site_by_subdomain",
-            return_value={"subdomain": "test.example.com"}
+            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "test.example.com"}
         )
 
         # Mock enqueue_job
@@ -1350,10 +1337,7 @@ class TestOCRBackendCLIFlag:
         # Verify enqueue_job was called with default backend="tesseract"
         assert result.exit_code == 0
         mock_enqueue.assert_called_once_with(
-            "fetch-site",
-            "test.example.com",
-            priority="high",
-            ocr_backend="tesseract"
+            "fetch-site", "test.example.com", priority="high", ocr_backend="tesseract"
         )
 
     def test_ocr_backend_vision_passed_to_fetcher(self, cli_runner, mocker):
@@ -1364,8 +1348,7 @@ class TestOCRBackendCLIFlag:
         mock_conn.__exit__ = mocker.Mock(return_value=False)
         mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
         mocker.patch(
-            "clerk.db.get_site_by_subdomain",
-            return_value={"subdomain": "test.example.com"}
+            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "test.example.com"}
         )
 
         # Mock enqueue_job
@@ -1379,10 +1362,7 @@ class TestOCRBackendCLIFlag:
         # Verify enqueue_job was called with backend="vision"
         assert result.exit_code == 0
         mock_enqueue.assert_called_once_with(
-            "fetch-site",
-            "test.example.com",
-            priority="high",
-            ocr_backend="vision"
+            "fetch-site", "test.example.com", priority="high", ocr_backend="vision"
         )
 
 
@@ -1867,8 +1847,7 @@ class TestEnqueueCommand:
         mock_conn.__exit__ = mocker.Mock(return_value=False)
         mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
         mocker.patch(
-            "clerk.db.get_site_by_subdomain",
-            return_value={"subdomain": "test-site.civic.band"}
+            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "test-site.civic.band"}
         )
         mocker.patch("clerk.queue_db.track_job")
         mocker.patch("clerk.queue_db.create_site_progress")
@@ -1882,9 +1861,7 @@ class TestEnqueueCommand:
 
         # Should use normal priority by default
         mock_enqueue.assert_called_once_with(
-            "fetch-site",
-            "test-site.civic.band",
-            priority="normal"
+            "fetch-site", "test-site.civic.band", priority="normal"
         )
 
     def test_enqueue_respects_priority_override(self, cli_runner, mocker):
@@ -1898,8 +1875,7 @@ class TestEnqueueCommand:
         mock_conn.__exit__ = mocker.Mock(return_value=False)
         mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
         mocker.patch(
-            "clerk.db.get_site_by_subdomain",
-            return_value={"subdomain": "test-site.civic.band"}
+            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "test-site.civic.band"}
         )
         mocker.patch("clerk.queue_db.track_job")
         mocker.patch("clerk.queue_db.create_site_progress")
@@ -1907,20 +1883,12 @@ class TestEnqueueCommand:
         # Mock Redis connection test
         mocker.patch("clerk.queue.get_redis")
 
-        result = cli_runner.invoke(
-            cli,
-            ["enqueue", "--priority", "high", "test-site.civic.band"]
-        )
+        result = cli_runner.invoke(cli, ["enqueue", "--priority", "high", "test-site.civic.band"])
 
         assert result.exit_code == 0
 
         # Should use high priority when specified
-        mock_enqueue.assert_called_once_with(
-            "fetch-site",
-            "test-site.civic.band",
-            priority="high"
-        )
-
+        mock_enqueue.assert_called_once_with("fetch-site", "test-site.civic.band", priority="high")
 
 
 @pytest.mark.unit
@@ -2445,13 +2413,13 @@ class TestAutoEnqueueIntegration:
         # Step 1: Create new site - should enqueue with high priority
         mocker.patch(
             "clerk.cli.get_site_by_subdomain",
-            return_value=None  # Site doesn't exist yet
+            return_value=None,  # Site doesn't exist yet
         )
 
         result = cli_runner.invoke(
             cli,
             ["new"],
-            input="new-site.civic.band\nNew Site\nCA\nUS\ncity\n2020\nFalse\n34.05,-118.25\ngranicus\n"
+            input="new-site.civic.band\nNew Site\nCA\nUS\ncity\n2020\nFalse\n34.05,-118.25\ngranicus\n",
         )
         assert result.exit_code == 0
 
@@ -2477,8 +2445,7 @@ class TestAutoEnqueueIntegration:
         # Step 3: Manual update - should use high priority
         mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
         mocker.patch(
-            "clerk.db.get_site_by_subdomain",
-            return_value={"subdomain": "urgent-site.civic.band"}
+            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "urgent-site.civic.band"}
         )
 
         result = cli_runner.invoke(cli, ["update", "-s", "urgent-site.civic.band"])
