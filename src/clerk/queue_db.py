@@ -25,7 +25,6 @@ def track_job(conn, rq_job_id, subdomain, job_type, stage):
         created_at=datetime.now(UTC),
     )
     conn.execute(stmt)
-    conn.commit()
 
 
 def create_site_progress(conn, subdomain, stage):
@@ -55,7 +54,6 @@ def create_site_progress(conn, subdomain, stage):
         stmt = stmt.on_conflict_do_update(index_elements=["subdomain"], set_=data)
 
     conn.execute(stmt)
-    conn.commit()
 
 
 def update_site_progress(conn, subdomain, stage=None, stage_total=None):
@@ -80,7 +78,6 @@ def update_site_progress(conn, subdomain, stage=None, stage_total=None):
         .values(**updates)
     )
     conn.execute(stmt)
-    conn.commit()
 
 
 def increment_stage_progress(conn, subdomain):
@@ -98,7 +95,6 @@ def increment_stage_progress(conn, subdomain):
         )
     )
     conn.execute(stmt)
-    conn.commit()
 
 
 def get_jobs_for_site(conn, subdomain):
@@ -125,7 +121,6 @@ def delete_jobs_for_site(conn, subdomain):
     """
     stmt = delete(job_tracking_table).where(job_tracking_table.c.subdomain == subdomain)
     conn.execute(stmt)
-    conn.commit()
 
 
 def delete_site_progress(conn, subdomain):
@@ -137,4 +132,3 @@ def delete_site_progress(conn, subdomain):
     """
     stmt = delete(site_progress_table).where(site_progress_table.c.subdomain == subdomain)
     conn.execute(stmt)
-    conn.commit()
