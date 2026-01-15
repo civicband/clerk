@@ -21,6 +21,11 @@ class TestEndToEndWorkflow:
         monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
         monkeypatch.setattr(cli_module, "pm", mock_plugin_manager)
 
+        # Mock enqueue_job since Redis won't be available in test environment
+        from unittest.mock import Mock
+        mock_enqueue = Mock(return_value="job123")
+        monkeypatch.setattr("clerk.queue.enqueue_job", mock_enqueue)
+
         runner = CliRunner()
 
         # Run migration to add extraction columns
