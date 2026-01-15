@@ -1856,6 +1856,72 @@ class TestEnqueueCommand:
         assert result.exit_code != 0
         assert "Redis" in result.output or "redis" in result.output.lower()
 
+    def test_enqueue_defaults_to_normal_priority(self, cli_runner, mocker):
+        """clerk enqueue should default to normal priority."""
+        # Mock Redis and queue operations
+        mock_enqueue = mocker.patch("clerk.queue.enqueue_job", return_value="job123")
+
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+        mocker.patch(
+            "clerk.db.get_site_by_subdomain",
+            return_value={"subdomain": "test-site.civic.band"}
+        )
+        mocker.patch("clerk.queue_db.track_job")
+        mocker.patch("clerk.queue_db.create_site_progress")
+
+        # Mock Redis connection test
+        mocker.patch("clerk.queue.get_redis")
+
+        result = cli_runner.invoke(cli, ["enqueue", "test-site.civic.band"])
+
+        assert result.exit_code == 0
+
+        # Should use normal priority by default
+        mock_enqueue.assert_called_once_with(
+            "fetch-site",
+            "test-site.civic.band",
+            priority="normal"
+        )
+
+    def test_enqueue_respects_priority_override(self, cli_runner, mocker):
+        """clerk enqueue --priority high should use high priority."""
+        # Mock Redis and queue operations
+        mock_enqueue = mocker.patch("clerk.queue.enqueue_job", return_value="job123")
+
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+        mocker.patch(
+            "clerk.db.get_site_by_subdomain",
+            return_value={"subdomain": "test-site.civic.band"}
+        )
+        mocker.patch("clerk.queue_db.track_job")
+        mocker.patch("clerk.queue_db.create_site_progress")
+
+        # Mock Redis connection test
+        mocker.patch("clerk.queue.get_redis")
+
+        result = cli_runner.invoke(
+            cli,
+            ["enqueue", "--priority", "high", "test-site.civic.band"]
+        )
+
+        assert result.exit_code == 0
+
+        # Should use high priority when specified
+        mock_enqueue.assert_called_once_with(
+            "fetch-site",
+            "test-site.civic.band",
+            priority="high"
+        )
+
+
 
 @pytest.mark.unit
 class TestPurgeCommand:
