@@ -100,6 +100,55 @@ class TestAutoEnqueueScheduler:
 
 
 @pytest.mark.unit
+class TestNewCommand:
+    """Tests for the new command."""
+
+    def test_new_creates_site_and_enqueues_with_high_priority(self, cli_runner, mocker):
+        """clerk new should create site and enqueue with high priority."""
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.cli.civic_db_connection", return_value=mock_conn)
+
+        # Mock get_site_by_subdomain to return None (site doesn't exist)
+        mocker.patch("clerk.cli.get_site_by_subdomain", return_value=None)
+
+        # Mock upsert_site
+        mocker.patch("clerk.cli.upsert_site")
+
+        # Mock assert_db_exists
+        mocker.patch("clerk.cli.assert_db_exists")
+
+        # Mock pm.hook for plugin hooks
+        mocker.patch("clerk.cli.pm.hook.fetcher_extra", return_value=[])
+        mocker.patch("clerk.cli.pm.hook.post_create")
+
+        # Mock enqueue_job
+        mock_enqueue = mocker.patch("clerk.cli.enqueue_job")
+
+        # Provide interactive prompts as input
+        result = cli_runner.invoke(
+            cli,
+            ["new"],
+            input="new-city.civic.band\nNew City\nCA\nUS\ncity\n2020\nFalse\n34.05,-118.25\ngranicus\n"
+        )
+
+        assert result.exit_code == 0
+        assert "Enqueueing new site new-city.civic.band with high priority" in result.output
+
+        # Verify enqueued with high priority
+        mock_enqueue.assert_called_once_with(
+            "fetch-site",
+            "new-city.civic.band",
+            priority="high",
+            all_years=True,
+            all_agendas=False,  # from the test input
+            ocr_backend="tesseract"  # default value
+        )
+
+
+@pytest.mark.unit
 class TestBuildTableFromText:
     """Unit tests for build_table_from_text function."""
 

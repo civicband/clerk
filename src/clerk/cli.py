@@ -149,6 +149,7 @@ def cli(ctx, plugins_dir, quiet):
 def new(ocr_backend="tesseract"):
     """Create a new site"""
     from .db import civic_db_connection, get_site_by_subdomain
+    from .queue import enqueue_job
 
     assert_db_exists()
 
@@ -199,8 +200,14 @@ def new(ocr_backend="tesseract"):
         )
 
     click.echo(f"Site {subdomain} created")
-    update_site_internal(
-        subdomain, all_years=True, all_agendas=all_agendas, ocr_backend=ocr_backend
+    click.echo(f"Enqueueing new site {subdomain} with high priority")
+    enqueue_job(
+        "fetch-site",
+        subdomain,
+        priority="high",
+        all_years=True,
+        all_agendas=all_agendas,
+        ocr_backend=ocr_backend
     )
     pm.hook.post_create(subdomain=subdomain)
 
