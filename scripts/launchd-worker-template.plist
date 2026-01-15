@@ -22,6 +22,8 @@
         <string>{{STORAGE_DIR}}</string>
         <key>DEFAULT_OCR_BACKEND</key>
         <string>{{DEFAULT_OCR_BACKEND}}</string>
+        <key>PATH</key>
+        <string>{{PATH}}</string>
     </dict>
     <key>StandardOutPath</key>
     <string>{{LOG_DIR}}/clerk-worker-{{WORKER_TYPE}}-{{WORKER_NUM}}.log</string>

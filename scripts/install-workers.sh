@@ -62,6 +62,17 @@ DATABASE_URL="${DATABASE_URL:-sqlite:///civic.db}"
 STORAGE_DIR="${STORAGE_DIR:-../sites}"
 DEFAULT_OCR_BACKEND="${DEFAULT_OCR_BACKEND:-tesseract}"
 
+# Detect architecture and set PATH for Homebrew + system binaries
+# LaunchAgents run with minimal PATH, need to include Homebrew paths for tools like pdfinfo
+ARCH=$(uname -m)
+if [ "$ARCH" = "arm64" ]; then
+    # Apple Silicon: Homebrew is in /opt/homebrew
+    PATH_VAR="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+else
+    # Intel: Homebrew is in /usr/local
+    PATH_VAR="/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
+fi
+
 # Get clerk executable path
 CLERK_PATH=$(which clerk || echo "")
 if [ -z "${CLERK_PATH}" ]; then
@@ -101,6 +112,7 @@ echo "  Redis URL: ${REDIS_URL}"
 echo "  Database URL: ${DATABASE_URL}"
 echo "  Storage dir: ${STORAGE_DIR}"
 echo "  OCR backend: ${DEFAULT_OCR_BACKEND}"
+echo "  PATH: ${PATH_VAR}"
 echo ""
 echo "Worker counts:"
 echo "  FETCH_WORKERS: ${FETCH_WORKERS}"
@@ -130,6 +142,7 @@ create_worker() {
         sed "s|{{DATABASE_URL}}|${DATABASE_URL}|g" | \
         sed "s|{{STORAGE_DIR}}|${STORAGE_DIR}|g" | \
         sed "s|{{DEFAULT_OCR_BACKEND}}|${DEFAULT_OCR_BACKEND}|g" | \
+        sed "s|{{PATH}}|${PATH_VAR}|g" | \
         sed "s|{{LOG_DIR}}|${LOG_DIR}|g" \
         > "${plist_file}"
 
