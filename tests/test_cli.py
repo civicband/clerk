@@ -22,6 +22,125 @@ from clerk.utils import (
 
 
 @pytest.mark.unit
+class TestAutoEnqueueScheduler:
+    """Tests for auto-enqueue scheduler functionality."""
+
+    def test_update_next_enqueues_oldest_site(self, cli_runner, mocker):
+        """clerk update --next should enqueue the oldest site with normal priority."""
+        # Mock get_oldest_site to return a site
+        mocker.patch("clerk.db.get_oldest_site", return_value="old-site.civic.band")
+
+        # Mock enqueue_job
+        mock_enqueue = mocker.patch("clerk.queue.enqueue_job")
+
+        result = cli_runner.invoke(cli, ["update", "--next-site"])
+
+        assert result.exit_code == 0
+        assert "Auto-enqueueing old-site.civic.band" in result.output
+
+        # Verify enqueued with normal priority
+        mock_enqueue.assert_called_once_with("fetch-site", "old-site.civic.band", priority="normal")
+
+    def test_update_next_exits_silently_when_no_eligible_sites(self, cli_runner, mocker):
+        """clerk update --next should exit gracefully if all sites recently updated."""
+        # Mock get_oldest_site to return None
+        mocker.patch("clerk.db.get_oldest_site", return_value=None)
+
+        # Mock enqueue_job - should NOT be called
+        mock_enqueue = mocker.patch("clerk.queue.enqueue_job")
+
+        result = cli_runner.invoke(cli, ["update", "--next-site"])
+
+        assert result.exit_code == 0
+        assert "No sites eligible for auto-enqueue" in result.output
+
+        # Verify enqueue was NOT called
+        mock_enqueue.assert_not_called()
+
+    def test_update_subdomain_enqueues_with_high_priority(self, cli_runner, mocker):
+        """clerk update -s should enqueue specific site with high priority."""
+        # Mock database check
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        # Mock get_site_by_subdomain to return site
+        mocker.patch(
+            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "test-site.civic.band"}
+        )
+
+        # Mock enqueue_job
+        mock_enqueue = mocker.patch("clerk.queue.enqueue_job")
+
+        result = cli_runner.invoke(cli, ["update", "-s", "test-site.civic.band"])
+
+        assert result.exit_code == 0
+        assert "Enqueueing test-site.civic.band with high priority" in result.output
+
+        # Verify enqueued with high priority (includes default ocr_backend)
+        mock_enqueue.assert_called_once_with(
+            "fetch-site", "test-site.civic.band", priority="high", ocr_backend="tesseract"
+        )
+
+    def test_update_requires_subdomain_or_next_flag(self, cli_runner):
+        """clerk update without flags should show usage error."""
+        result = cli_runner.invoke(cli, ["update"])
+
+        assert result.exit_code != 0
+        assert "Must specify --subdomain or --next-site" in result.output
+
+
+@pytest.mark.unit
+class TestNewCommand:
+    """Tests for the new command."""
+
+    def test_new_creates_site_and_enqueues_with_high_priority(self, cli_runner, mocker):
+        """clerk new should create site and enqueue with high priority."""
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        # Mock get_site_by_subdomain to return None (site doesn't exist)
+        mocker.patch("clerk.db.get_site_by_subdomain", return_value=None)
+
+        # Mock upsert_site
+        mocker.patch("clerk.db.upsert_site")
+
+        # Mock assert_db_exists
+        mocker.patch("clerk.utils.assert_db_exists")
+
+        # Mock pm.hook for plugin hooks
+        mocker.patch("clerk.cli.pm.hook.fetcher_extra", return_value=[])
+        mocker.patch("clerk.cli.pm.hook.post_create")
+
+        # Mock enqueue_job
+        mock_enqueue = mocker.patch("clerk.queue.enqueue_job")
+
+        # Provide interactive prompts as input
+        result = cli_runner.invoke(
+            cli,
+            ["new"],
+            input="new-city.civic.band\nNew City\nCA\nUS\ncity\n2020\nFalse\n34.05,-118.25\ngranicus\n",
+        )
+
+        assert result.exit_code == 0
+        assert "Enqueueing new site new-city.civic.band with high priority" in result.output
+
+        # Verify enqueued with high priority
+        mock_enqueue.assert_called_once_with(
+            "fetch-site",
+            "new-city.civic.band",
+            priority="high",
+            all_years=True,
+            all_agendas=False,  # from the test input
+            ocr_backend="tesseract",  # default value
+        )
+
+
+@pytest.mark.unit
 class TestBuildTableFromText:
     """Unit tests for build_table_from_text function."""
 
@@ -1172,8 +1291,17 @@ class TestOCRBackendCLIFlag:
 
     def test_update_command_accepts_ocr_backend_flag(self, cli_runner, mocker):
         """Test that update command accepts --ocr-backend flag without error."""
-        # Mock the update_site_internal function to avoid needing a database
-        mock_update = mocker.patch("clerk.cli.update_site_internal")
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+        mocker.patch(
+            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "test.example.com"}
+        )
+
+        # Mock enqueue_job
+        mock_enqueue = mocker.patch("clerk.queue.enqueue_job")
 
         result = cli_runner.invoke(
             cli,
@@ -1182,68 +1310,60 @@ class TestOCRBackendCLIFlag:
 
         # Command should succeed (not fail due to unknown option)
         assert result.exit_code == 0
-        # Verify update_site_internal was called with the ocr_backend parameter
-        mock_update.assert_called_once()
-        call_kwargs = mock_update.call_args.kwargs
-        assert call_kwargs["ocr_backend"] == "vision"
+        # Verify enqueue_job was called with the ocr_backend parameter
+        mock_enqueue.assert_called_once_with(
+            "fetch-site", "test.example.com", priority="high", ocr_backend="vision"
+        )
 
     def test_ocr_backend_defaults_to_tesseract(self, cli_runner, mocker):
         """Test that OCR backend defaults to tesseract when not specified."""
-        # Mock the entire update flow
-        mock_get_fetcher = mocker.patch("clerk.cli.get_fetcher")
-        mock_fetcher_instance = mocker.Mock()
-        mock_get_fetcher.return_value = mock_fetcher_instance
-
-        # Mock database operations (note: these are imported inside the function)
-        mocker.patch("clerk.cli.assert_db_exists")
+        # Mock database operations
         mock_conn = mocker.MagicMock()
         mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
         mock_conn.__exit__ = mocker.Mock(return_value=False)
         mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
         mocker.patch(
-            "clerk.db.get_site_by_subdomain",
-            return_value={"subdomain": "test.example.com", "start_year": 2020},
+            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "test.example.com"}
         )
-        mocker.patch("clerk.db.update_site")
-        mocker.patch("clerk.cli.fetch_internal")
-        mocker.patch("clerk.cli.update_page_count")
 
-        cli_runner.invoke(
+        # Mock enqueue_job
+        mock_enqueue = mocker.patch("clerk.queue.enqueue_job")
+
+        result = cli_runner.invoke(
             cli,
             ["update", "--subdomain", "test.example.com"],
         )
 
-        # Verify ocr() was called with default backend="tesseract"
-        mock_fetcher_instance.ocr.assert_called_once_with(backend="tesseract")
+        # Verify enqueue_job was called with default backend="tesseract"
+        assert result.exit_code == 0
+        mock_enqueue.assert_called_once_with(
+            "fetch-site", "test.example.com", priority="high", ocr_backend="tesseract"
+        )
 
     def test_ocr_backend_vision_passed_to_fetcher(self, cli_runner, mocker):
-        """Test that --ocr-backend=vision is correctly passed to Fetcher.ocr()."""
-        # Mock the entire update flow
-        mock_get_fetcher = mocker.patch("clerk.cli.get_fetcher")
-        mock_fetcher_instance = mocker.Mock()
-        mock_get_fetcher.return_value = mock_fetcher_instance
-
-        # Mock database operations (note: these are imported inside the function)
-        mocker.patch("clerk.cli.assert_db_exists")
+        """Test that --ocr-backend=vision is correctly passed to enqueue_job."""
+        # Mock database operations
         mock_conn = mocker.MagicMock()
         mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
         mock_conn.__exit__ = mocker.Mock(return_value=False)
         mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
         mocker.patch(
-            "clerk.db.get_site_by_subdomain",
-            return_value={"subdomain": "test.example.com", "start_year": 2020},
+            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "test.example.com"}
         )
-        mocker.patch("clerk.db.update_site")
-        mocker.patch("clerk.cli.fetch_internal")
-        mocker.patch("clerk.cli.update_page_count")
 
-        cli_runner.invoke(
+        # Mock enqueue_job
+        mock_enqueue = mocker.patch("clerk.queue.enqueue_job")
+
+        result = cli_runner.invoke(
             cli,
             ["update", "--subdomain", "test.example.com", "--ocr-backend", "vision"],
         )
 
-        # Verify ocr() was called with backend="vision"
-        mock_fetcher_instance.ocr.assert_called_once_with(backend="vision")
+        # Verify enqueue_job was called with backend="vision"
+        assert result.exit_code == 0
+        mock_enqueue.assert_called_once_with(
+            "fetch-site", "test.example.com", priority="high", ocr_backend="vision"
+        )
 
 
 @pytest.mark.unit
@@ -1715,6 +1835,60 @@ class TestEnqueueCommand:
         # Command should fail gracefully
         assert result.exit_code != 0
         assert "Redis" in result.output or "redis" in result.output.lower()
+
+    def test_enqueue_defaults_to_normal_priority(self, cli_runner, mocker):
+        """clerk enqueue should default to normal priority."""
+        # Mock Redis and queue operations
+        mock_enqueue = mocker.patch("clerk.queue.enqueue_job", return_value="job123")
+
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+        mocker.patch(
+            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "test-site.civic.band"}
+        )
+        mocker.patch("clerk.queue_db.track_job")
+        mocker.patch("clerk.queue_db.create_site_progress")
+
+        # Mock Redis connection test
+        mocker.patch("clerk.queue.get_redis")
+
+        result = cli_runner.invoke(cli, ["enqueue", "test-site.civic.band"])
+
+        assert result.exit_code == 0
+
+        # Should use normal priority by default
+        mock_enqueue.assert_called_once_with(
+            "fetch-site", "test-site.civic.band", priority="normal"
+        )
+
+    def test_enqueue_respects_priority_override(self, cli_runner, mocker):
+        """clerk enqueue --priority high should use high priority."""
+        # Mock Redis and queue operations
+        mock_enqueue = mocker.patch("clerk.queue.enqueue_job", return_value="job123")
+
+        # Mock database operations
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+        mocker.patch(
+            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "test-site.civic.band"}
+        )
+        mocker.patch("clerk.queue_db.track_job")
+        mocker.patch("clerk.queue_db.create_site_progress")
+
+        # Mock Redis connection test
+        mocker.patch("clerk.queue.get_redis")
+
+        result = cli_runner.invoke(cli, ["enqueue", "--priority", "high", "test-site.civic.band"])
+
+        assert result.exit_code == 0
+
+        # Should use high priority when specified
+        mock_enqueue.assert_called_once_with("fetch-site", "test-site.civic.band", priority="high")
 
 
 @pytest.mark.unit
@@ -2214,3 +2388,69 @@ class TestWorkerCommand:
 
             # Reset mocks
             mocker.resetall()
+
+
+@pytest.mark.integration
+class TestAutoEnqueueIntegration:
+    """Integration tests for auto-enqueue workflow."""
+
+    def test_full_auto_enqueue_workflow(self, cli_runner, mocker):
+        """Test complete workflow: new -> auto-enqueue -> manual update."""
+        # Mock database and queue
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+
+        mock_enqueue = mocker.patch("clerk.queue.enqueue_job")
+
+        # Additional mocks needed for clerk new
+        mocker.patch("clerk.db.upsert_site")
+        mocker.patch("clerk.utils.assert_db_exists")
+        mocker.patch("clerk.cli.pm.hook.fetcher_extra", return_value=[])
+        mocker.patch("clerk.cli.pm.hook.post_create")
+
+        # Step 1: Create new site - should enqueue with high priority
+        mocker.patch(
+            "clerk.db.get_site_by_subdomain",
+            return_value=None,  # Site doesn't exist yet
+        )
+
+        result = cli_runner.invoke(
+            cli,
+            ["new"],
+            input="new-site.civic.band\nNew Site\nCA\nUS\ncity\n2020\nFalse\n34.05,-118.25\ngranicus\n",
+        )
+        assert result.exit_code == 0
+
+        call_args = mock_enqueue.call_args_list[-1]
+        assert call_args[0][0] == "fetch-site"
+        assert call_args[0][1] == "new-site.civic.band"
+        assert call_args[1]["priority"] == "high"
+
+        mock_enqueue.reset_mock()
+
+        # Step 2: Auto-scheduler picks oldest site - should use normal priority
+        mocker.patch("clerk.db.get_oldest_site", return_value="old-site.civic.band")
+
+        result = cli_runner.invoke(cli, ["update", "--next-site"])
+        assert result.exit_code == 0
+
+        call_args = mock_enqueue.call_args_list[-1]
+        assert call_args[0][1] == "old-site.civic.band"
+        assert call_args[1]["priority"] == "normal"
+
+        mock_enqueue.reset_mock()
+
+        # Step 3: Manual update - should use high priority
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+        mocker.patch(
+            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "urgent-site.civic.band"}
+        )
+
+        result = cli_runner.invoke(cli, ["update", "-s", "urgent-site.civic.band"])
+        assert result.exit_code == 0
+
+        call_args = mock_enqueue.call_args_list[-1]
+        assert call_args[0][1] == "urgent-site.civic.band"
+        assert call_args[1]["priority"] == "high"

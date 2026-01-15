@@ -149,6 +149,7 @@ def cli(ctx, plugins_dir, quiet):
 def new(ocr_backend="tesseract"):
     """Create a new site"""
     from .db import civic_db_connection, get_site_by_subdomain
+    from .queue import enqueue_job
 
     assert_db_exists()
 
@@ -199,18 +200,21 @@ def new(ocr_backend="tesseract"):
         )
 
     click.echo(f"Site {subdomain} created")
-    update_site_internal(
-        subdomain, all_years=True, all_agendas=all_agendas, ocr_backend=ocr_backend
+    click.echo(f"Enqueueing new site {subdomain} with high priority")
+    enqueue_job(
+        "fetch-site",
+        subdomain,
+        priority="high",
+        all_years=True,
+        all_agendas=all_agendas,
+        ocr_backend=ocr_backend,
     )
     pm.hook.post_create(subdomain=subdomain)
 
 
 @cli.command()
-@click.option(
-    "-s",
-    "--subdomain",
-)
-@click.option("-n", "--next-site", is_flag=True)
+@click.option("-s", "--subdomain", help="Specific site subdomain")
+@click.option("-n", "--next-site", is_flag=True, help="Enqueue oldest site (for auto-scheduler)")
 @click.option("-a", "--all-years", is_flag=True)
 @click.option("--skip-fetch", is_flag=True)
 @click.option("--all-agendas", is_flag=True)
@@ -221,25 +225,50 @@ def new(ocr_backend="tesseract"):
     default="tesseract",
     help="OCR backend to use (tesseract or vision). Defaults to tesseract.",
 )
-def update(
-    subdomain,
-    next_site=False,
-    all_years=False,
-    skip_fetch=False,
-    all_agendas=False,
-    backfill=False,
-    ocr_backend="tesseract",
-):
-    """Update a site"""
-    update_site_internal(
-        subdomain,
-        next_site,
-        all_years=all_years,
-        skip_fetch=skip_fetch,
-        all_agendas=all_agendas,
-        backfill=backfill,
-        ocr_backend=ocr_backend,
-    )
+def update(subdomain, next_site, all_years, skip_fetch, all_agendas, backfill, ocr_backend):
+    """Update a site."""
+    from .db import civic_db_connection, get_oldest_site, get_site_by_subdomain
+    from .queue import enqueue_job
+
+    if next_site:
+        # Auto-scheduler mode: enqueue oldest site with normal priority
+        oldest_subdomain = get_oldest_site(lookback_hours=23)
+        if not oldest_subdomain:
+            click.echo("No sites eligible for auto-enqueue")
+            return
+
+        click.echo(f"Auto-enqueueing {oldest_subdomain}")
+        enqueue_job("fetch-site", oldest_subdomain, priority="normal")
+        return
+
+    if subdomain:
+        # Manual update mode: enqueue specific site with high priority
+        with civic_db_connection() as conn:
+            site = get_site_by_subdomain(conn, subdomain)
+            if not site:
+                click.secho(f"Error: Site '{subdomain}' not found", fg="red")
+                raise click.Abort()
+
+        click.echo(f"Enqueueing {subdomain} with high priority")
+
+        # Build kwargs for job
+        job_kwargs = {}
+        if all_years:
+            job_kwargs["all_years"] = True
+        if all_agendas:
+            job_kwargs["all_agendas"] = True
+        if backfill:
+            job_kwargs["backfill"] = True
+        if ocr_backend:
+            job_kwargs["ocr_backend"] = ocr_backend
+        if skip_fetch:
+            job_kwargs["skip_fetch"] = True
+
+        enqueue_job("fetch-site", subdomain, priority="high", **job_kwargs)
+        return
+
+    # Error: must specify --subdomain or --next-site
+    raise click.UsageError("Must specify --subdomain or --next-site")
 
 
 def update_site_internal(

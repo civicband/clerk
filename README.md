@@ -128,6 +128,28 @@ Combine all sites into a single searchable database:
 clerk build-full-db
 ```
 
+## Automatic Scheduling
+
+Set up a cron job to automatically update all sites:
+
+```bash
+# Run every minute to enqueue oldest site
+* * * * * cd /path/to/clerk && uv run clerk update --next-site
+```
+
+Manual operations use high priority and jump to the front of the queue:
+
+```bash
+# New site - high priority
+clerk new new-city.civic.band
+
+# Manual update - high priority
+clerk update -s important-city.civic.band
+
+# Bulk enqueue - normal priority
+clerk enqueue site1 site2 site3
+```
+
 ## OCR Processing
 
 ### Progress Tracking

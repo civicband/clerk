@@ -21,6 +21,12 @@ class TestEndToEndWorkflow:
         monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
         monkeypatch.setattr(cli_module, "pm", mock_plugin_manager)
 
+        # Mock enqueue_job since Redis won't be available in test environment
+        from unittest.mock import Mock
+
+        mock_enqueue = Mock(return_value="job123")
+        monkeypatch.setattr("clerk.queue.enqueue_job", mock_enqueue)
+
         runner = CliRunner()
 
         # Run migration to add extraction columns
@@ -48,8 +54,8 @@ class TestEndToEndWorkflow:
         site = civic_db["sites"].get("test.civic.band")
         assert site["name"] == "Test City"
         assert site["state"] == "CA"
-        # After full new workflow (create + update), status should be "deployed"
-        assert site["status"] == "deployed"
+        # After clerk new, status should be "new" (job is enqueued, not processed yet)
+        assert site["status"] == "new"
 
     def test_database_build_workflow(
         self, tmp_path, tmp_storage_dir, sample_text_files, monkeypatch, cli_module, utils_module
