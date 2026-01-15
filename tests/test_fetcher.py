@@ -360,6 +360,7 @@ class TestDoOCRJobEnhanced:
             patch("clerk.fetcher.log") as mock_log,
             patch("builtins.open", mock_open()),
             patch("os.path.exists", return_value=True),
+            patch("os.makedirs"),
             patch("os.listdir", return_value=["1.png"]),
             patch("os.remove"),
             patch("os.utime"),
@@ -706,6 +707,7 @@ def test_do_ocr_job_uses_tesseract_backend(tmp_path, mocker, monkeypatch):
     mocker.patch("builtins.open", mocker.mock_open())
     # Mock os.path.exists to return False for .txt files (so OCR runs), True for others
     mocker.patch("os.path.exists", side_effect=lambda path: not str(path).endswith(".txt"))
+    mocker.patch("os.makedirs")
     mocker.patch("os.remove")
     mocker.patch("os.utime")
     mocker.patch("shutil.rmtree")
@@ -773,6 +775,7 @@ def test_do_ocr_job_uses_vision_backend(tmp_path, mocker, monkeypatch):
     mocker.patch("builtins.open", mocker.mock_open())
     # Mock os.path.exists to return False for .txt files (so OCR runs), True for others
     mocker.patch("os.path.exists", side_effect=lambda path: not str(path).endswith(".txt"))
+    mocker.patch("os.makedirs")
     mocker.patch("os.remove")
     mocker.patch("os.utime")
     mocker.patch("shutil.rmtree")
@@ -844,6 +847,7 @@ def test_do_ocr_job_falls_back_to_tesseract_on_vision_error(tmp_path, mocker, mo
     mocker.patch("builtins.open", mocker.mock_open())
     # Mock os.path.exists to return False for .txt files (so OCR runs), True for others
     mocker.patch("os.path.exists", side_effect=lambda path: not str(path).endswith(".txt"))
+    mocker.patch("os.makedirs")
     mocker.patch("os.remove")
     mocker.patch("os.utime")
     mocker.patch("shutil.rmtree")
