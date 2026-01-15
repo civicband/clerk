@@ -25,6 +25,31 @@ clerk update --next-site
 clerk update --subdomain example.civic.band --all-years
 ```
 
+### Auto-Scheduling Sites
+
+The auto-scheduler ensures all sites update approximately once per day:
+
+```bash
+# Run via cron every minute to auto-enqueue oldest site
+clerk update --next-site
+```
+
+This command:
+- Finds the site with the oldest `last_updated` timestamp
+- Skips sites updated within the last 23 hours
+- Enqueues the oldest eligible site with normal priority
+- Exits silently if all sites are recently updated
+
+### Manual vs Auto Priority
+
+**High priority** (processed first):
+- New sites: `clerk new <subdomain>`
+- Manual updates: `clerk update -s <subdomain>`
+
+**Normal priority** (processed after high queue empty):
+- Auto-scheduler: `clerk update --next-site`
+- Bulk operations: `clerk enqueue site1 site2 site3`
+
 ## Database Operations
 
 ### Build from Text

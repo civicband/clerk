@@ -294,6 +294,34 @@ If you're migrating from cron:
    - Check that sites are being updated
    - Verify no errors in logs
 
+## Auto-Scheduler Setup
+
+To automatically update all sites once per day, set up a cron job:
+
+```bash
+# Edit crontab
+crontab -e
+
+# Add this line to run every minute:
+* * * * * cd /path/to/clerk && /path/to/uv run clerk update --next-site >> /var/log/clerk/auto-enqueue.log 2>&1
+```
+
+**Monitoring:**
+
+```bash
+# View auto-enqueue log
+tail -f /var/log/clerk/auto-enqueue.log
+
+# Check queue status
+clerk status
+```
+
+The auto-scheduler:
+- Enqueues 1 site per minute (1440 sites/day capacity)
+- Uses normal priority (manual updates jump ahead)
+- Skips recently-updated sites automatically
+- Self-heals if cron misses runs
+
 ## Related Documentation
 
 - [Development Setup](DEVELOPMENT.md) - Setting up clerk for development
