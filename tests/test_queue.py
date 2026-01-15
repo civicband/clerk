@@ -56,7 +56,7 @@ def test_get_redis_no_decode_responses(reset_redis_singleton):
             assert len(call_args.args) == 1  # Only redis_url
 
         # Check keyword arguments
-        assert call_args.kwargs.get('decode_responses') is not True
+        assert call_args.kwargs.get("decode_responses") is not True
 
 
 def test_get_redis_singleton_behavior(reset_redis_singleton):
