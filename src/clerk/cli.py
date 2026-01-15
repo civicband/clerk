@@ -1433,11 +1433,23 @@ def diagnose_workers():
 
     if clerk_path and Path(clerk_path).exists():
         print_success(f"Clerk found at {clerk_path}")
+
+        # Check execute permissions
+        clerk_file = Path(clerk_path)
+        is_executable = os.access(clerk_path, os.X_OK)
+        perms = oct(clerk_file.stat().st_mode)[-3:]
+
+        if is_executable:
+            print_success(f"Clerk is executable (permissions: {perms})")
+        else:
+            print_error(f"Clerk is NOT executable (permissions: {perms})")
+            click.echo(f"   Fix: chmod +x {clerk_path}")
+
         try:
             result = subprocess.run([clerk_path, "--version"], capture_output=True, text=True)
             click.echo(f"   Version: {result.stdout.strip()}")
-        except Exception:
-            pass
+        except Exception as e:
+            print_error(f"Could not run clerk: {e}")
     else:
         print_error("Clerk executable not found")
 
@@ -1468,6 +1480,14 @@ def diagnose_workers():
     log_dir = Path.home() / ".clerk" / "logs"
     if log_dir.exists():
         print_success(f"Log directory exists at {log_dir}")
+
+        # Check write permissions
+        if os.access(log_dir, os.W_OK):
+            print_success("Log directory is writable")
+        else:
+            print_error("Log directory is NOT writable")
+            click.echo(f"   Permissions: {oct(log_dir.stat().st_mode)[-3:]}")
+            click.echo(f"   Fix: chmod u+w {log_dir}")
 
         # Show recent errors
         error_logs = sorted(
@@ -1511,6 +1531,14 @@ def diagnose_workers():
         sample_plist = plist_files[0]
         click.echo(f"\n   Sample plist: {sample_plist.name}")
 
+        # Check plist permissions
+        plist_perms = oct(sample_plist.stat().st_mode)[-3:]
+        if os.access(sample_plist, os.R_OK):
+            print_success(f"Plist is readable (permissions: {plist_perms})")
+        else:
+            print_error(f"Plist is NOT readable (permissions: {plist_perms})")
+            click.echo(f"   Fix: chmod 644 {sample_plist}")
+
         try:
             subprocess.run(
                 ["plutil", "-lint", str(sample_plist)],
@@ -1530,10 +1558,48 @@ def diagnose_workers():
 
             with open(sample_plist, "rb") as f:
                 plist_data = plistlib.load(f)
-                click.echo(f"      Program: {' '.join(plist_data.get('ProgramArguments', []))}")
-                click.echo(
-                    f"      WorkingDirectory: {plist_data.get('WorkingDirectory', 'NOT SET')}"
-                )
+                prog_args = plist_data.get("ProgramArguments", [])
+                click.echo(f"      Program: {' '.join(prog_args)}")
+
+                # Check if the program executable exists and is executable
+                if prog_args:
+                    plist_clerk_path = Path(prog_args[0])
+                    if plist_clerk_path.exists():
+                        if os.access(plist_clerk_path, os.X_OK):
+                            print_success("      Program executable is valid")
+                        else:
+                            print_error("      Program exists but is NOT executable")
+                            click.echo(
+                                f"        Permissions: {oct(plist_clerk_path.stat().st_mode)[-3:]}"
+                            )
+                            click.echo(f"        Fix: chmod +x {plist_clerk_path}")
+                    else:
+                        print_error(f"      Program does NOT exist: {plist_clerk_path}")
+
+                working_dir = plist_data.get("WorkingDirectory", "NOT SET")
+                click.echo(f"      WorkingDirectory: {working_dir}")
+
+                # Check if working directory exists and is accessible
+                if working_dir != "NOT SET":
+                    working_path = Path(working_dir)
+                    if working_path.exists():
+                        if os.access(working_path, os.R_OK | os.X_OK):
+                            print_success("      WorkingDirectory is accessible")
+
+                            # Check if .env exists in working directory
+                            env_file = working_path / ".env"
+                            if env_file.exists():
+                                print_success("      .env exists in WorkingDirectory")
+                            else:
+                                print_error("      .env NOT found in WorkingDirectory")
+                        else:
+                            print_error("      WorkingDirectory is NOT accessible")
+                            click.echo(
+                                f"        Permissions: {oct(working_path.stat().st_mode)[-3:]}"
+                            )
+                    else:
+                        print_error("      WorkingDirectory does NOT exist")
+
                 env_vars = plist_data.get("EnvironmentVariables", {})
                 if env_vars:
                     click.echo(f"      Environment variables: {len(env_vars)} set")
