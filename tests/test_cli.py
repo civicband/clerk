@@ -1735,13 +1735,13 @@ class TestPurgeCommand:
             return_value=[
                 {
                     "rq_job_id": "job-1",
-                    "site_id": "site.civic.band",
+                    "subdomain": "site.civic.band",
                     "job_type": "fetch-site",
                     "stage": "fetch",
                 },
                 {
                     "rq_job_id": "job-2",
-                    "site_id": "site.civic.band",
+                    "subdomain": "site.civic.band",
                     "job_type": "ocr-page",
                     "stage": "ocr",
                 },
@@ -1811,7 +1811,7 @@ class TestPurgeCommand:
             return_value=[
                 {
                     "rq_job_id": "job-1",
-                    "site_id": "site.civic.band",
+                    "subdomain": "site.civic.band",
                     "job_type": "fetch-site",
                     "stage": "fetch",
                 },
