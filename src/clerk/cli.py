@@ -1566,9 +1566,9 @@ def diagnose_workers():
                     plist_clerk_path = Path(prog_args[0])
                     if plist_clerk_path.exists():
                         if os.access(plist_clerk_path, os.X_OK):
-                            print_success(f"      Program executable is valid")
+                            print_success("      Program executable is valid")
                         else:
-                            print_error(f"      Program exists but is NOT executable")
+                            print_error("      Program exists but is NOT executable")
                             click.echo(
                                 f"        Permissions: {oct(plist_clerk_path.stat().st_mode)[-3:]}"
                             )
@@ -1584,21 +1584,21 @@ def diagnose_workers():
                     working_path = Path(working_dir)
                     if working_path.exists():
                         if os.access(working_path, os.R_OK | os.X_OK):
-                            print_success(f"      WorkingDirectory is accessible")
+                            print_success("      WorkingDirectory is accessible")
 
                             # Check if .env exists in working directory
                             env_file = working_path / ".env"
                             if env_file.exists():
-                                print_success(f"      .env exists in WorkingDirectory")
+                                print_success("      .env exists in WorkingDirectory")
                             else:
-                                print_error(f"      .env NOT found in WorkingDirectory")
+                                print_error("      .env NOT found in WorkingDirectory")
                         else:
-                            print_error(f"      WorkingDirectory is NOT accessible")
+                            print_error("      WorkingDirectory is NOT accessible")
                             click.echo(
                                 f"        Permissions: {oct(working_path.stat().st_mode)[-3:]}"
                             )
                     else:
-                        print_error(f"      WorkingDirectory does NOT exist")
+                        print_error("      WorkingDirectory does NOT exist")
 
                 env_vars = plist_data.get("EnvironmentVariables", {})
                 if env_vars:
