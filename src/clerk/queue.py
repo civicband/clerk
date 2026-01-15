@@ -33,7 +33,10 @@ def get_redis():
             if _redis_client is None:
                 redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
                 try:
-                    client = redis.from_url(redis_url, decode_responses=True)
+                    # NOTE: Do NOT use decode_responses=True - RQ is incompatible
+                    # RQ stores pickled binary data, which causes UnicodeDecodeError
+                    # when Redis tries to decode it as UTF-8
+                    client = redis.from_url(redis_url)
                     client.ping()  # Test connection
                     _redis_client = client
                 except (redis.ConnectionError, redis.TimeoutError) as e:
