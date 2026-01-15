@@ -9,7 +9,6 @@
         <string>{{CLERK_PATH}}</string>
         <string>worker</string>
         <string>{{WORKER_TYPE}}</string>
-        <string>--burst</string>
     </array>
     <key>WorkingDirectory</key>
     <string>{{WORKING_DIR}}</string>
