@@ -2420,3 +2420,70 @@ class TestWorkerCommand:
 
             # Reset mocks
             mocker.resetall()
+
+
+@pytest.mark.integration
+class TestAutoEnqueueIntegration:
+    """Integration tests for auto-enqueue workflow."""
+
+    def test_full_auto_enqueue_workflow(self, cli_runner, mocker):
+        """Test complete workflow: new -> auto-enqueue -> manual update."""
+        # Mock database and queue
+        mock_conn = mocker.MagicMock()
+        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_conn.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.cli.civic_db_connection", return_value=mock_conn)
+
+        mock_enqueue = mocker.patch("clerk.cli.enqueue_job")
+
+        # Additional mocks needed for clerk new
+        mocker.patch("clerk.cli.upsert_site")
+        mocker.patch("clerk.cli.assert_db_exists")
+        mocker.patch("clerk.cli.pm.hook.fetcher_extra", return_value=[])
+        mocker.patch("clerk.cli.pm.hook.post_create")
+
+        # Step 1: Create new site - should enqueue with high priority
+        mocker.patch(
+            "clerk.cli.get_site_by_subdomain",
+            return_value=None  # Site doesn't exist yet
+        )
+
+        result = cli_runner.invoke(
+            cli,
+            ["new"],
+            input="new-site.civic.band\nNew Site\nCA\nUS\ncity\n2020\nFalse\n34.05,-118.25\ngranicus\n"
+        )
+        assert result.exit_code == 0
+
+        call_args = mock_enqueue.call_args_list[-1]
+        assert call_args[0][0] == "fetch-site"
+        assert call_args[0][1] == "new-site.civic.band"
+        assert call_args[1]["priority"] == "high"
+
+        mock_enqueue.reset_mock()
+
+        # Step 2: Auto-scheduler picks oldest site - should use normal priority
+        mocker.patch("clerk.db.get_oldest_site", return_value="old-site.civic.band")
+
+        result = cli_runner.invoke(cli, ["update", "--next-site"])
+        assert result.exit_code == 0
+
+        call_args = mock_enqueue.call_args_list[-1]
+        assert call_args[0][1] == "old-site.civic.band"
+        assert call_args[1]["priority"] == "normal"
+
+        mock_enqueue.reset_mock()
+
+        # Step 3: Manual update - should use high priority
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+        mocker.patch(
+            "clerk.db.get_site_by_subdomain",
+            return_value={"subdomain": "urgent-site.civic.band"}
+        )
+
+        result = cli_runner.invoke(cli, ["update", "-s", "urgent-site.civic.band"])
+        assert result.exit_code == 0
+
+        call_args = mock_enqueue.call_args_list[-1]
+        assert call_args[0][1] == "urgent-site.civic.band"
+        assert call_args[1]["priority"] == "high"
