@@ -1470,20 +1470,32 @@ def diagnose_workers():
         print_success(f"Log directory exists at {log_dir}")
 
         # Show recent errors
-        error_logs = list(log_dir.glob("clerk-worker-*.error.log"))
+        error_logs = sorted(
+            log_dir.glob("clerk-worker-*.error.log"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
         if error_logs:
             click.echo("\n   Recent worker error logs:")
+            has_errors = False
             for log_file in error_logs[:5]:  # Show first 5
                 size = log_file.stat().st_size
                 if size > 0:
+                    has_errors = True
                     print_warning(f"→ {log_file.name} ({size} bytes)")
-                    click.echo("      Last 3 lines:")
+                    click.echo("      Last 5 lines:")
                     try:
                         lines = log_file.read_text().strip().split("\n")
-                        for line in lines[-3:]:
+                        for line in lines[-5:]:
                             click.echo(f"        {line}")
                     except Exception:
                         pass
+                    click.echo("")
+
+            if not has_errors:
+                print_success("No errors in recent logs (all 0 bytes)")
+        else:
+            click.echo("   No error logs found")
     else:
         print_warning(f"Log directory doesn't exist: {log_dir}")
 
@@ -1497,7 +1509,7 @@ def diagnose_workers():
 
         # Validate one plist
         sample_plist = plist_files[0]
-        click.echo(f"   Sample plist: {sample_plist.name}")
+        click.echo(f"\n   Sample plist: {sample_plist.name}")
 
         try:
             subprocess.run(
@@ -1506,11 +1518,34 @@ def diagnose_workers():
                 check=True,
             )
             print_success("Plist XML is valid")
-        except subprocess.CalledProcessError:
+        except subprocess.CalledProcessError as e:
             print_error("Plist XML is invalid!")
+            if e.stderr:
+                click.echo(f"   Error: {e.stderr.decode()}")
+
+        # Show plist content (key parts)
+        click.echo("\n   Sample plist configuration:")
+        try:
+            import plistlib
+
+            with open(sample_plist, "rb") as f:
+                plist_data = plistlib.load(f)
+                click.echo(f"      Program: {' '.join(plist_data.get('ProgramArguments', []))}")
+                click.echo(
+                    f"      WorkingDirectory: {plist_data.get('WorkingDirectory', 'NOT SET')}"
+                )
+                env_vars = plist_data.get("EnvironmentVariables", {})
+                if env_vars:
+                    click.echo(f"      Environment variables: {len(env_vars)} set")
+                    for key in ["REDIS_URL", "DATABASE_URL"]:
+                        if key in env_vars:
+                            click.echo(f"        {key}: {env_vars[key]}")
+        except Exception as e:
+            print_warning(f"Could not parse plist: {e}")
 
         # Check worker status
         click.echo("\n   Worker status:")
+        failed_workers = []
         try:
             result = subprocess.run(
                 ["launchctl", "list"],
@@ -1524,10 +1559,41 @@ def diagnose_workers():
                         pid, status, label = parts[0], parts[1], parts[2]
                         if pid == "-":
                             print_error(f"{label} (not running, exit code: {status})")
+                            failed_workers.append(label)
                         else:
                             print_success(f"{label} (PID: {pid})")
-        except Exception:
-            print_warning("Could not check worker status")
+
+            # If workers failed, try to get error details
+            if failed_workers:
+                click.echo("\n   Attempting to get error details for failed workers:")
+                for label in failed_workers[:3]:  # Show first 3 failures
+                    click.echo(f"\n   Checking {label}:")
+
+                    # Try to get print info from launchctl
+                    result = subprocess.run(
+                        ["launchctl", "print", f"gui/{os.getuid()}/{label}"],
+                        capture_output=True,
+                        text=True,
+                    )
+                    if result.returncode == 0:
+                        # Look for error info in output
+                        for line in result.stdout.split("\n"):
+                            if "last exit code" in line.lower() or "error" in line.lower():
+                                click.echo(f"      {line.strip()}")
+                    else:
+                        # Try to load manually to see error
+                        plist_file = launchagents_dir / f"{label}.plist"
+                        if plist_file.exists():
+                            load_result = subprocess.run(
+                                ["launchctl", "load", "-w", str(plist_file)],
+                                capture_output=True,
+                                text=True,
+                            )
+                            if load_result.returncode != 0:
+                                click.echo(f"      Load error: {load_result.stderr.strip()}")
+
+        except Exception as e:
+            print_warning(f"Could not check worker status: {e}")
     else:
         print_error("No worker plist files found")
 
