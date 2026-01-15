@@ -660,6 +660,11 @@ class Fetcher:
 
             # Image conversion with timing
             conv_st = time.time()
+
+            # Create images directory if it doesn't exist
+            # Handles both minutes (no prefix) and agendas (prefix="/_agendas")
+            os.makedirs(doc_image_dir_path, exist_ok=True)
+
             try:
                 for chunk_start in range(1, total_pages + 1, PDF_CHUNK_SIZE):
                     chunk_end = min(chunk_start + PDF_CHUNK_SIZE - 1, total_pages)
