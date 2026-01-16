@@ -3,10 +3,15 @@
 import datetime
 import json
 import sys
+from unittest.mock import MagicMock
 
 import pluggy
 import pytest
 import sqlite_utils
+
+# Mock WeasyPrint before any imports to avoid architecture issues
+# WeasyPrint requires native libraries that may not be available or compatible
+sys.modules["weasyprint"] = MagicMock()
 
 from clerk.hookspecs import ClerkSpec
 from tests.mocks.mock_plugins import TestPlugin
