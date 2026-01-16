@@ -631,6 +631,7 @@ class Fetcher:
         try:
             doc_path = f"{self.dir_prefix}{prefix}/pdfs/{meeting}/{date}.pdf"
             doc_image_dir_path = f"{self.dir_prefix}{prefix}/images/{meeting}/{date}"
+            doc_txt_dir_path = f"{self.dir_prefix}{prefix}/txt/{meeting}/{date}"
 
             # Backend tracking at start of processing
             log(
@@ -664,6 +665,10 @@ class Fetcher:
             # Create images directory if it doesn't exist
             # Handles both minutes (no prefix) and agendas (prefix="/_agendas")
             os.makedirs(doc_image_dir_path, exist_ok=True)
+
+            # Create txt directory if it doesn't exist
+            # Handles both minutes (no prefix) and agendas (prefix="/_agendas")
+            os.makedirs(doc_txt_dir_path, exist_ok=True)
 
             try:
                 for chunk_start in range(1, total_pages + 1, PDF_CHUNK_SIZE):
@@ -703,7 +708,7 @@ class Fetcher:
                 page_image_path = f"{doc_image_dir_path}/{page_image}"
                 remote_storage_path = f"/{self.subdomain}{prefix}/{meeting}/{date}/{page_image}"
                 txt_filename = page_image.replace(".png", ".txt")
-                txt_filepath = f"{self.dir_prefix}{prefix}/txt/{meeting}/{date}/{txt_filename}"
+                txt_filepath = f"{doc_txt_dir_path}/{txt_filename}"
 
                 if not os.path.exists(txt_filepath):
                     try:
