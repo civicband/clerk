@@ -20,11 +20,12 @@ if [ ! -f ".env" ]; then
     echo "Please create a .env file with worker configuration."
     echo ""
     echo "Required variables:"
-    echo "  FETCH_WORKERS=10"
-    echo "  OCR_WORKERS=8"
-    echo "  EXTRACTION_WORKERS=2"
-    echo "  DEPLOY_WORKERS=2"
-    echo "  DEFAULT_OCR_BACKEND=vision"
+    echo "  FETCH_WORKERS=2"
+    echo "  OCR_WORKERS=4"
+    echo "  COMPILATION_WORKERS=2"
+    echo "  EXTRACTION_WORKERS=0  # Optional - set to 0 if running extraction on separate machine"
+    echo "  DEPLOY_WORKERS=1"
+    echo "  DEFAULT_OCR_BACKEND=tesseract"
     echo ""
     exit 1
 fi
@@ -39,7 +40,7 @@ fi
 source .env
 
 # Validate required environment variables
-REQUIRED_VARS=("FETCH_WORKERS" "OCR_WORKERS" "EXTRACTION_WORKERS" "DEPLOY_WORKERS")
+REQUIRED_VARS=("FETCH_WORKERS" "OCR_WORKERS" "COMPILATION_WORKERS" "EXTRACTION_WORKERS" "DEPLOY_WORKERS")
 MISSING_VARS=()
 
 for var in "${REQUIRED_VARS[@]}"; do
@@ -117,6 +118,7 @@ echo ""
 echo "Worker counts:"
 echo "  FETCH_WORKERS: ${FETCH_WORKERS}"
 echo "  OCR_WORKERS: ${OCR_WORKERS}"
+echo "  COMPILATION_WORKERS: ${COMPILATION_WORKERS}"
 echo "  EXTRACTION_WORKERS: ${EXTRACTION_WORKERS}"
 echo "  DEPLOY_WORKERS: ${DEPLOY_WORKERS}"
 echo ""
@@ -176,10 +178,17 @@ for ((i=1; i<=OCR_WORKERS; i++)); do
     create_worker "ocr" "$i"
 done
 
-# Extraction workers
-for ((i=1; i<=EXTRACTION_WORKERS; i++)); do
-    create_worker "extraction" "$i"
+# Compilation workers
+for ((i=1; i<=COMPILATION_WORKERS; i++)); do
+    create_worker "compilation" "$i"
 done
+
+# Extraction workers (optional - may be 0 if running on separate machine)
+if [ "${EXTRACTION_WORKERS}" -gt 0 ]; then
+    for ((i=1; i<=EXTRACTION_WORKERS; i++)); do
+        create_worker "extraction" "$i"
+    done
+fi
 
 # Deploy workers
 for ((i=1; i<=DEPLOY_WORKERS; i++)); do
@@ -193,6 +202,7 @@ echo "Summary:"
 echo "  Total workers created: ${TOTAL_WORKERS}"
 echo "  Fetch: ${FETCH_WORKERS}"
 echo "  OCR: ${OCR_WORKERS}"
+echo "  Compilation: ${COMPILATION_WORKERS}"
 echo "  Extraction: ${EXTRACTION_WORKERS}"
 echo "  Deploy: ${DEPLOY_WORKERS}"
 echo ""
