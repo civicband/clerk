@@ -1319,7 +1319,9 @@ def purge_queue(queue_name):
 
 
 @cli.command()
-@click.argument("worker_type", type=click.Choice(["fetch", "ocr", "compilation", "extraction", "deploy"]))
+@click.argument(
+    "worker_type", type=click.Choice(["fetch", "ocr", "compilation", "extraction", "deploy"])
+)
 @click.option("--num-workers", "-n", type=int, default=1, help="Number of workers to start")
 @click.option("--burst", is_flag=True, help="Exit when queue empty (for testing)")
 def worker(worker_type, num_workers, burst):
