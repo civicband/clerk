@@ -25,7 +25,7 @@ def fetch_site_job(subdomain, all_years=False, all_agendas=False):
         all_agendas: Fetch all agendas (default: False)
     """
     from .cli import fetch_internal, get_fetcher
-    from .queue import get_extraction_queue, get_ocr_queue
+    from .queue import get_ocr_queue
 
     logger.info(
         "Starting fetch_site_job subdomain=%s all_years=%s all_agendas=%s",
