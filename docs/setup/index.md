@@ -2,6 +2,19 @@
 
 Complete guides for installing and configuring Clerk on your platform.
 
+```{toctree}
+:maxdepth: 1
+:caption: Setup Guides
+
+prerequisites
+macos
+linux
+single-machine
+distributed
+verification
+troubleshooting
+```
+
 ## Quick Navigation
 
 **Choose your platform:**
