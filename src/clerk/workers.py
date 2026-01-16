@@ -49,166 +49,203 @@ def log_with_context(message, subdomain, run_id=None, stage=None, **kwargs):
         parent_job_id=parent_job_id,
         **kwargs
     )
-def fetch_site_job(subdomain, all_years=False, all_agendas=False):
+
+
+def fetch_site_job(subdomain, run_id, all_years=False, all_agendas=False):
     """RQ job: Fetch PDFs for a site then spawn OCR jobs.
 
     Args:
         subdomain: Site subdomain
+        run_id: Pipeline run identifier
         all_years: Fetch all years (default: False)
         all_agendas: Fetch all agendas (default: False)
     """
     from .cli import fetch_internal, get_fetcher
     from .queue import get_ocr_queue
 
+    stage = "fetch"
     start_time = time.time()
-    output_log(
-        "Starting fetch_site_job",
+
+    log_with_context(
+        "fetch_started",
         subdomain=subdomain,
-        job_type="fetch",
+        run_id=run_id,
+        stage=stage,
         all_years=all_years,
-        all_agendas=all_agendas,
+        all_agendas=all_agendas
     )
 
-    # Get site data
-    with civic_db_connection() as conn:
-        site = get_site_by_subdomain(conn, subdomain)
-
-    if not site:
-        output_log("Site not found", subdomain=subdomain, error=True)
-        raise ValueError(f"Site not found: {subdomain}")
-
-    output_log("Found site", subdomain=subdomain, scraper=site.get("scraper"))
-
-    # Update progress to fetch stage
-    with civic_db_connection() as conn:
-        create_site_progress(conn, subdomain, "fetch")
-    output_log("Created fetch progress", subdomain=subdomain, stage="fetch")
-
-    # Perform fetch using existing logic
-    fetcher = get_fetcher(site, all_years=all_years, all_agendas=all_agendas)
-    output_log("Starting PDF fetch", subdomain=subdomain)
-    fetch_internal(subdomain, fetcher)
-    output_log("Completed PDF fetch", subdomain=subdomain)
-
-    # Count PDFs that need OCR from both minutes and agendas directories
-    storage_dir = os.getenv("STORAGE_DIR", "../sites")
-    minutes_pdf_dir = Path(f"{storage_dir}/{subdomain}/pdfs")
-    agendas_pdf_dir = Path(f"{storage_dir}/{subdomain}/_agendas/pdfs")
-
-    pdf_files = []
-
-    # Collect minutes PDFs
-    if minutes_pdf_dir.exists():
-        minutes_pdfs = list(minutes_pdf_dir.glob("**/*.pdf"))
-        output_log(
-            "Found minutes PDFs",
-            subdomain=subdomain,
-            count=len(minutes_pdfs),
-            directory=str(minutes_pdf_dir),
-        )
-        pdf_files.extend(minutes_pdfs)
-    else:
-        logger.info("Minutes PDF directory does not exist: %s", minutes_pdf_dir)
-
-    # Collect agenda PDFs
-    if agendas_pdf_dir.exists():
-        agendas_pdfs = list(agendas_pdf_dir.glob("**/*.pdf"))
-        output_log(
-            "Found agenda PDFs",
-            subdomain=subdomain,
-            count=len(agendas_pdfs),
-            directory=str(agendas_pdf_dir),
-        )
-        pdf_files.extend(agendas_pdfs)
-    else:
-        logger.info("Agendas PDF directory does not exist: %s", agendas_pdf_dir)
-
-    output_log(
-        "Total PDFs found for OCR",
-        subdomain=subdomain,
-        total_pdfs=len(pdf_files),
-    )
-
-    # Update progress: moving to OCR stage
-    with civic_db_connection() as conn:
-        update_site_progress(conn, subdomain, stage="ocr", stage_total=len(pdf_files))
-    output_log(
-        "Updated progress to OCR stage",
-        subdomain=subdomain,
-        stage="ocr",
-        stage_total=len(pdf_files),
-    )
-
-    # Spawn OCR jobs (fan-out)
-    ocr_queue = get_ocr_queue()
-    ocr_job_ids = []
-
-    ocr_backend = os.getenv("DEFAULT_OCR_BACKEND", "tesseract")
-    output_log("Using OCR backend", subdomain=subdomain, backend=ocr_backend)
-
-    for pdf_path in pdf_files:
-        job = ocr_queue.enqueue(
-            ocr_page_job,
-            subdomain=subdomain,
-            pdf_path=str(pdf_path),
-            backend=ocr_backend,
-            job_timeout="10m",
-            description=f"OCR ({ocr_backend}): {pdf_path.name}",
-        )
-        ocr_job_ids.append(job.id)
-        logger.debug(
-            "Enqueued OCR job %s for PDF %s (subdomain=%s)",
-            job.id,
-            pdf_path.name,
-            subdomain,
-        )
-
-        # Track in PostgreSQL
+    try:
+        # Get site data
         with civic_db_connection() as conn:
-            track_job(conn, job.id, subdomain, "ocr-page", "ocr")
+            site = get_site_by_subdomain(conn, subdomain)
 
-    output_log(
-        "Enqueued OCR jobs",
-        subdomain=subdomain,
-        job_count=len(ocr_job_ids),
-    )
+        if not site:
+            log_with_context("Site not found", subdomain=subdomain, run_id=run_id, stage=stage, level="error")
+            raise ValueError(f"Site not found: {subdomain}")
 
-    # Spawn coordinator job that waits for ALL OCR jobs (fan-in)
-    if ocr_job_ids:
-        from .queue import get_compilation_queue
+        log_with_context("Found site", subdomain=subdomain, run_id=run_id, stage=stage, scraper=site.get("scraper"))
 
-        compilation_queue = get_compilation_queue()
-        coord_job = compilation_queue.enqueue(
-            ocr_complete_coordinator,
-            subdomain=subdomain,
-            depends_on=ocr_job_ids,  # RQ waits for ALL
-            job_timeout="5m",
-            description=f"OCR coordinator: {subdomain}",
-        )
-
-        # Track coordinator job
+        # Update progress to fetch stage
         with civic_db_connection() as conn:
-            track_job(conn, coord_job.id, subdomain, "ocr-coordinator", "ocr")
+            create_site_progress(conn, subdomain, "fetch")
+        log_with_context("Created fetch progress", subdomain=subdomain, run_id=run_id, stage=stage)
 
-        output_log(
-            "Enqueued OCR coordinator job",
+        # Perform fetch using existing logic
+        fetcher = get_fetcher(site, all_years=all_years, all_agendas=all_agendas)
+        log_with_context("Starting PDF fetch", subdomain=subdomain, run_id=run_id, stage=stage)
+        fetch_internal(subdomain, fetcher)
+        log_with_context("Completed PDF fetch", subdomain=subdomain, run_id=run_id, stage=stage)
+
+        # Count PDFs that need OCR from both minutes and agendas directories
+        storage_dir = os.getenv("STORAGE_DIR", "../sites")
+        minutes_pdf_dir = Path(f"{storage_dir}/{subdomain}/pdfs")
+        agendas_pdf_dir = Path(f"{storage_dir}/{subdomain}/_agendas/pdfs")
+
+        pdf_files = []
+
+        # Collect minutes PDFs
+        if minutes_pdf_dir.exists():
+            minutes_pdfs = list(minutes_pdf_dir.glob("**/*.pdf"))
+            log_with_context(
+                "Found minutes PDFs",
+                subdomain=subdomain,
+                run_id=run_id,
+                stage=stage,
+                count=len(minutes_pdfs),
+                directory=str(minutes_pdf_dir),
+            )
+            pdf_files.extend(minutes_pdfs)
+        else:
+            logger.info("Minutes PDF directory does not exist: %s", minutes_pdf_dir)
+
+        # Collect agenda PDFs
+        if agendas_pdf_dir.exists():
+            agendas_pdfs = list(agendas_pdf_dir.glob("**/*.pdf"))
+            log_with_context(
+                "Found agenda PDFs",
+                subdomain=subdomain,
+                run_id=run_id,
+                stage=stage,
+                count=len(agendas_pdfs),
+                directory=str(agendas_pdf_dir),
+            )
+            pdf_files.extend(agendas_pdfs)
+        else:
+            logger.info("Agendas PDF directory does not exist: %s", agendas_pdf_dir)
+
+        log_with_context(
+            "Total PDFs found for OCR",
             subdomain=subdomain,
-            coordinator_job_id=coord_job.id,
-            depends_on_count=len(ocr_job_ids),
-        )
-    else:
-        logger.warning(
-            "No OCR jobs to spawn for subdomain=%s - no PDFs found",
-            subdomain,
+            run_id=run_id,
+            stage=stage,
+            total_pdfs=len(pdf_files),
         )
 
-    duration = time.time() - start_time
-    output_log(
-        "Completed fetch_site_job",
-        subdomain=subdomain,
-        duration_seconds=round(duration, 2),
-        total_pdfs=len(pdf_files),
-    )
+        # Update progress: moving to OCR stage
+        with civic_db_connection() as conn:
+            update_site_progress(conn, subdomain, stage="ocr", stage_total=len(pdf_files))
+        log_with_context(
+            "Updated progress to OCR stage",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            ocr_stage_total=len(pdf_files),
+        )
+
+        # Spawn OCR jobs (fan-out)
+        ocr_queue = get_ocr_queue()
+        ocr_job_ids = []
+
+        ocr_backend = os.getenv("DEFAULT_OCR_BACKEND", "tesseract")
+        log_with_context("Using OCR backend", subdomain=subdomain, run_id=run_id, stage=stage, backend=ocr_backend)
+
+        for pdf_path in pdf_files:
+            job = ocr_queue.enqueue(
+                ocr_page_job,
+                subdomain=subdomain,
+                pdf_path=str(pdf_path),
+                backend=ocr_backend,
+                run_id=run_id,
+                job_timeout="10m",
+                description=f"OCR ({ocr_backend}): {pdf_path.name}",
+            )
+            ocr_job_ids.append(job.id)
+            logger.debug(
+                "Enqueued OCR job %s for PDF %s (subdomain=%s)",
+                job.id,
+                pdf_path.name,
+                subdomain,
+            )
+
+            # Track in PostgreSQL
+            with civic_db_connection() as conn:
+                track_job(conn, job.id, subdomain, "ocr-page", "ocr")
+
+        log_with_context(
+            "Enqueued OCR jobs",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            job_count=len(ocr_job_ids),
+        )
+
+        # Spawn coordinator job that waits for ALL OCR jobs (fan-in)
+        if ocr_job_ids:
+            from .queue import get_compilation_queue
+
+            compilation_queue = get_compilation_queue()
+            coord_job = compilation_queue.enqueue(
+                ocr_complete_coordinator,
+                subdomain=subdomain,
+                run_id=run_id,
+                depends_on=ocr_job_ids,  # RQ waits for ALL
+                job_timeout="5m",
+                description=f"OCR coordinator: {subdomain}",
+            )
+
+            # Track coordinator job
+            with civic_db_connection() as conn:
+                track_job(conn, coord_job.id, subdomain, "ocr-coordinator", "ocr")
+
+            log_with_context(
+                "Enqueued OCR coordinator job",
+                subdomain=subdomain,
+                run_id=run_id,
+                stage=stage,
+                coordinator_job_id=coord_job.id,
+                depends_on_count=len(ocr_job_ids),
+            )
+        else:
+            logger.warning(
+                "No OCR jobs to spawn for subdomain=%s - no PDFs found",
+                subdomain,
+            )
+
+        duration = time.time() - start_time
+        log_with_context(
+            "fetch_completed",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            duration_seconds=round(duration, 2),
+            total_pdfs=len(pdf_files)
+        )
+
+    except Exception as e:
+        duration = time.time() - start_time
+        log_with_context(
+            f"fetch_failed: {e}",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            level="error",
+            duration_seconds=round(duration, 2),
+            error_type=type(e).__name__,
+            error_message=str(e),
+            traceback=traceback.format_exc()
+        )
+        raise
 
 
 def ocr_page_job(subdomain, pdf_path, backend="tesseract"):

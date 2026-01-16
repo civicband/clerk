@@ -128,3 +128,137 @@ def test_db_compilation_job_passes_run_id_to_deploy(mocker):
 
     call_kwargs = mock_deploy_queue.enqueue.call_args[1]
     assert call_kwargs['run_id'] == "test_123_abc"
+
+
+def test_fetch_site_job_accepts_run_id_parameter(mocker):
+    """Test that fetch_site_job accepts run_id parameter."""
+    from clerk.workers import fetch_site_job
+
+    # Mock all dependencies
+    mocker.patch('clerk.workers.civic_db_connection')
+    mocker.patch('clerk.workers.get_site_by_subdomain', return_value={'subdomain': 'test', 'scraper': 'test'})
+    mocker.patch('clerk.workers.create_site_progress')
+    mocker.patch('clerk.cli.get_fetcher')
+    mocker.patch('clerk.cli.fetch_internal')
+    mocker.patch('clerk.workers.Path')
+    mocker.patch('clerk.queue.get_ocr_queue')
+    mocker.patch('clerk.queue.get_compilation_queue')
+    mock_log = mocker.patch('clerk.workers.log_with_context')
+
+    # Should not raise TypeError
+    fetch_site_job("test.civic.band", run_id="test_123_abc")
+
+    # Verify log_with_context was called with run_id
+    assert any(
+        call[1]['run_id'] == "test_123_abc"
+        for call in mock_log.call_args_list
+    )
+
+
+def test_fetch_site_job_logs_fetch_started_milestone(mocker):
+    """Test that fetch_site_job logs fetch_started milestone."""
+    from clerk.workers import fetch_site_job
+
+    # Mock dependencies
+    mocker.patch('clerk.workers.civic_db_connection')
+    mocker.patch('clerk.workers.get_site_by_subdomain', return_value={'subdomain': 'test', 'scraper': 'test'})
+    mocker.patch('clerk.workers.create_site_progress')
+    mocker.patch('clerk.cli.get_fetcher')
+    mocker.patch('clerk.cli.fetch_internal')
+    mocker.patch('clerk.workers.Path')
+    mocker.patch('clerk.queue.get_ocr_queue')
+    mocker.patch('clerk.queue.get_compilation_queue')
+    mock_log = mocker.patch('clerk.workers.log_with_context')
+
+    fetch_site_job("test.civic.band", run_id="test_123_abc")
+
+    # Verify fetch_started was logged
+    started_calls = [
+        call for call in mock_log.call_args_list
+        if call[0][0] == "fetch_started"
+    ]
+    assert len(started_calls) == 1
+
+    # Verify it has stage="fetch"
+    assert started_calls[0][1]['stage'] == "fetch"
+
+
+def test_fetch_site_job_logs_fetch_completed_with_metrics(mocker):
+    """Test that fetch_site_job logs fetch_completed with duration and count."""
+    from clerk.workers import fetch_site_job
+
+    # Mock dependencies to simulate successful completion
+    mocker.patch('clerk.workers.civic_db_connection')
+    mocker.patch('clerk.workers.get_site_by_subdomain', return_value={'subdomain': 'test', 'scraper': 'test'})
+    mocker.patch('clerk.workers.create_site_progress')
+    mocker.patch('clerk.cli.get_fetcher')
+    mocker.patch('clerk.cli.fetch_internal')
+    mocker.patch('clerk.workers.update_site_progress')
+    mocker.patch('clerk.workers.track_job')
+
+    # Mock Path to return no PDFs (simplest case)
+    mock_path_class = mocker.patch('clerk.workers.Path')
+    mock_path_instance = mocker.MagicMock()
+    mock_path_instance.exists.return_value = False
+    mock_path_class.return_value = mock_path_instance
+
+    mocker.patch('clerk.queue.get_ocr_queue')
+    mocker.patch('clerk.queue.get_compilation_queue')
+    mock_log = mocker.patch('clerk.workers.log_with_context')
+
+    fetch_site_job("test.civic.band", run_id="test_123_abc")
+
+    # Verify fetch_completed was logged
+    completed_calls = [
+        call for call in mock_log.call_args_list
+        if call[0][0] == "fetch_completed"
+    ]
+    assert len(completed_calls) == 1
+
+    # Verify it has duration_seconds and total_pdfs
+    call_kwargs = completed_calls[0][1]
+    assert 'duration_seconds' in call_kwargs
+    assert 'total_pdfs' in call_kwargs
+
+
+def test_fetch_site_job_passes_run_id_to_ocr_jobs(mocker):
+    """Test that fetch_site_job passes run_id to spawned OCR jobs."""
+    from clerk.workers import fetch_site_job
+
+    # Mock dependencies
+    mocker.patch('clerk.workers.civic_db_connection')
+    mocker.patch('clerk.workers.get_site_by_subdomain', return_value={'subdomain': 'test', 'scraper': 'test'})
+    mocker.patch('clerk.workers.create_site_progress')
+    mocker.patch('clerk.workers.update_site_progress')
+    mocker.patch('clerk.workers.track_job')
+    mocker.patch('clerk.cli.get_fetcher')
+    mocker.patch('clerk.cli.fetch_internal')
+    mocker.patch('clerk.workers.log_with_context')
+
+    # Mock Path to return some PDFs
+    mock_pdf = mocker.MagicMock()
+    mock_pdf.name = "test.pdf"
+    mock_path_class = mocker.patch('clerk.workers.Path')
+    mock_path_instance = mocker.MagicMock()
+    mock_path_instance.exists.return_value = True
+    mock_path_instance.glob.return_value = [mock_pdf]
+    mock_path_class.return_value = mock_path_instance
+
+    # Mock OCR queue
+    mock_ocr_queue = mocker.MagicMock()
+    mock_job = mocker.MagicMock(id="ocr-job-123")
+    mock_ocr_queue.enqueue.return_value = mock_job
+    mocker.patch('clerk.queue.get_ocr_queue', return_value=mock_ocr_queue)
+
+    # Mock compilation queue for coordinator
+    mock_compilation_queue = mocker.MagicMock()
+    mock_coord_job = mocker.MagicMock(id="coord-job-123")
+    mock_compilation_queue.enqueue.return_value = mock_coord_job
+    mocker.patch('clerk.queue.get_compilation_queue', return_value=mock_compilation_queue)
+
+    fetch_site_job("test.civic.band", run_id="test_123_abc")
+
+    # Verify OCR job was enqueued with run_id
+    mock_ocr_queue.enqueue.assert_called()
+    call_kwargs = mock_ocr_queue.enqueue.call_args[1]
+    assert call_kwargs['run_id'] == "test_123_abc"
