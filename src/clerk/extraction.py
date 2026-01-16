@@ -10,7 +10,10 @@ from __future__ import annotations
 import logging
 import os
 import re
+import time
 from typing import Any
+
+from .output import log as output_log
 
 logger = logging.getLogger(__name__)
 
@@ -41,15 +44,26 @@ def get_nlp():
     try:
         import spacy
     except ImportError:
-        logger.warning("spaCy not installed - entity extraction disabled")
+        output_log(
+            "spaCy not installed - entity extraction disabled",
+            operation="spacy_import_failed",
+            level="warning",
+        )
         return None
 
     try:
         _nlp = spacy.load("en_core_web_md")
-        logger.info("Loaded spaCy model en_core_web_md")
+        output_log(
+            "Loaded spaCy model",
+            operation="spacy_model_loaded",
+            model="en_core_web_md",
+        )
     except OSError:
-        logger.error(
-            "spaCy model en_core_web_md not found. Run: python -m spacy download en_core_web_md"
+        output_log(
+            "spaCy model not found. Run: python -m spacy download en_core_web_md",
+            operation="spacy_model_missing",
+            model="en_core_web_md",
+            level="error",
         )
         return None
 
@@ -58,7 +72,11 @@ def get_nlp():
     if "entity_ruler" not in _nlp.pipe_names:
         ruler = _nlp.add_pipe("entity_ruler", before="ner")
         _add_title_patterns(ruler)
-        logger.info("Added EntityRuler with title patterns")
+        output_log(
+            "Added EntityRuler with title patterns",
+            operation="entity_ruler_added",
+            pattern_count=len(CIVIC_TITLES) * 2,
+        )
 
     return _nlp
 
@@ -472,7 +490,12 @@ def _extract_vote_results_spacy(doc: Any) -> list[dict]:
 
                 if verb_lemma is None:
                     # No matching verb found, skip this match
-                    logger.warning("TALLY_VOTE match without recognized verb: %s", span.text)
+                    output_log(
+                        "TALLY_VOTE match without recognized verb",
+                        operation="vote_extraction_warning",
+                        span_text=span.text,
+                        level="warning",
+                    )
                     continue
 
                 result = "passed" if verb_lemma in PASS_LEMMAS else "failed"
@@ -528,7 +551,13 @@ def parse_text(text: str) -> Any:
     try:
         return nlp(text)
     except Exception as e:
-        logger.error(f"spaCy processing failed: {e}")
+        output_log(
+            "spaCy processing failed",
+            operation="spacy_parse_error",
+            error_message=str(e),
+            error_class=e.__class__.__name__,
+            level="error",
+        )
         return None
 
 
@@ -544,20 +573,53 @@ def parse_texts_batch(texts: list[str], batch_size: int = 500, n_process: int = 
     Returns:
         List of spaCy Doc objects (or None for each if unavailable)
     """
+    start_time = time.time()
+
     if not EXTRACTION_ENABLED:
         return [None] * len(texts)
     nlp = get_nlp()
     if nlp is None:
         return [None] * len(texts)
+
+    output_log(
+        "Starting batch text parsing",
+        operation="batch_parse_start",
+        text_count=len(texts),
+        batch_size=batch_size,
+        n_process=n_process,
+    )
+
     try:
         # nlp.pipe() is much more efficient than calling nlp() repeatedly
         # n_process > 1 enables multiprocessing for additional speedup
         if n_process > 1:
-            return list(nlp.pipe(texts, batch_size=batch_size, n_process=n_process))
+            result = list(nlp.pipe(texts, batch_size=batch_size, n_process=n_process))
         else:
-            return list(nlp.pipe(texts, batch_size=batch_size))
+            result = list(nlp.pipe(texts, batch_size=batch_size))
+
+        duration = time.time() - start_time
+        output_log(
+            "Batch text parsing completed",
+            operation="batch_parse_complete",
+            text_count=len(texts),
+            batch_size=batch_size,
+            n_process=n_process,
+            duration_seconds=round(duration, 2),
+        )
+        return result
     except Exception as e:
-        logger.error(f"spaCy batch processing failed: {e}")
+        duration = time.time() - start_time
+        output_log(
+            "spaCy batch processing failed",
+            operation="spacy_batch_parse_error",
+            error_message=str(e),
+            error_class=e.__class__.__name__,
+            text_count=len(texts),
+            batch_size=batch_size,
+            n_process=n_process,
+            duration_seconds=round(duration, 2),
+            level="error",
+        )
         return [None] * len(texts)
 
 
@@ -573,6 +635,7 @@ def extract_entities(text: str, doc: Any = None, threshold: float | None = None)
         Dict with keys 'persons', 'orgs', 'locations', each containing
         list of {'text': str, 'confidence': float} dicts
     """
+    start_time = time.time()
     empty_result: dict[str, list] = {"persons": [], "orgs": [], "locations": []}
 
     if not EXTRACTION_ENABLED:
@@ -628,6 +691,18 @@ def extract_entities(text: str, doc: Any = None, threshold: float | None = None)
             if cleaned_text not in seen_locations:
                 seen_locations.add(cleaned_text)
                 locations.append(entity_data)
+
+    duration = time.time() - start_time
+    output_log(
+        "Entity extraction completed",
+        operation="extract_entities",
+        persons_count=len(persons),
+        orgs_count=len(orgs),
+        locations_count=len(locations),
+        total_entities=len(persons) + len(orgs) + len(locations),
+        duration_seconds=round(duration, 3),
+        threshold=threshold,
+    )
 
     return {"persons": persons, "orgs": orgs, "locations": locations}
 
@@ -714,6 +789,8 @@ def extract_votes(text: str, doc: Any = None, meeting_context: dict | None = Non
     Returns:
         Dict with 'votes' key containing list of vote records
     """
+    start_time = time.time()
+
     if not EXTRACTION_ENABLED:
         return {"votes": []}
 
@@ -725,9 +802,22 @@ def extract_votes(text: str, doc: Any = None, meeting_context: dict | None = Non
         doc = parse_text(text)
 
     if doc is not None:
-        return _extract_votes_spacy(doc, text, meeting_context)
+        result = _extract_votes_spacy(doc, text, meeting_context)
+        extraction_method = "spacy"
     else:
-        return _extract_votes_regex(text, meeting_context)
+        result = _extract_votes_regex(text, meeting_context)
+        extraction_method = "regex"
+
+    duration = time.time() - start_time
+    output_log(
+        "Vote extraction completed",
+        operation="extract_votes",
+        vote_count=len(result.get("votes", [])),
+        extraction_method=extraction_method,
+        duration_seconds=round(duration, 3),
+    )
+
+    return result
 
 
 def _extract_rollcall_votes_spacy(doc: Any) -> list[dict]:

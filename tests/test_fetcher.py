@@ -357,7 +357,7 @@ class TestDoOCRJobEnhanced:
             patch("clerk.fetcher.PdfReader") as mock_reader,
             patch("clerk.fetcher.convert_from_path") as mock_convert,
             patch("subprocess.check_output") as mock_tesseract,
-            patch("clerk.fetcher.log") as mock_log,
+            patch("clerk.fetcher.output_log") as mock_log,
             patch("builtins.open", mock_open()),
             patch("os.path.exists", return_value=True),
             patch("os.makedirs"),
@@ -412,7 +412,7 @@ class TestDoOCRJobEnhanced:
             patch("clerk.fetcher.PDF_SUPPORT", True),
             patch("clerk.fetcher.PdfReader", side_effect=MockPdfReadError("corrupted")),
             patch("clerk.fetcher.PERMANENT_ERRORS", (MockPdfReadError,)),
-            patch("clerk.fetcher.log") as mock_log,
+            patch("clerk.fetcher.output_log") as mock_log,
         ):
             # Create necessary directories
             pdf_dir = Path(tmp_path) / "test" / "pdfs" / "Meeting"
@@ -457,7 +457,7 @@ class TestDoOCRJobEnhanced:
         with (
             patch("clerk.fetcher.PDF_SUPPORT", True),
             patch("clerk.fetcher.PdfReader", side_effect=FileNotFoundError("missing")),
-            patch("clerk.fetcher.log"),
+            patch("clerk.fetcher.output_log"),
         ):
             job = ("", "Meeting", "2024-01-01")
 
@@ -510,7 +510,7 @@ class TestDoOCRIntegration:
         with (
             patch("os.path.exists", return_value=False),
             patch("os.makedirs"),
-            patch("clerk.fetcher.log") as mock_log,
+            patch("clerk.fetcher.output_log") as mock_log,
         ):
             fetcher.do_ocr()
 
@@ -837,7 +837,7 @@ def test_do_ocr_job_falls_back_to_tesseract_on_vision_error(tmp_path, mocker, mo
     )
 
     # Mock log to verify fallback warning
-    mock_log = mocker.patch("clerk.fetcher.log")
+    mock_log = mocker.patch("clerk.fetcher.output_log")
 
     # Mock PDF processing and file I/O
     mocker.patch("clerk.fetcher.PdfReader")
