@@ -316,7 +316,7 @@ class Fetcher:
                     f"Unknown content type {doc_response.headers['content-type']}, meeting: {meeting}",
                     subdomain=self.subdomain,
                     level="warning",
-                    content_type=doc_response.headers['content-type'],
+                    content_type=doc_response.headers["content-type"],
                     meeting=meeting,
                 )
             except KeyError:
