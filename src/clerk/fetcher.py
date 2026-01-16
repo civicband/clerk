@@ -33,7 +33,7 @@ from clerk.ocr_utils import (
     print_progress,
     retry_on_transient,
 )
-from clerk.output import log
+from clerk.output import log as output_log
 from clerk.utils import STORAGE_DIR, build_db_from_text_internal, pm
 
 logger = logging.getLogger(__name__)
@@ -176,27 +176,30 @@ class Fetcher:
                 start_time = time.time()
                 response = httpx.request(**args_dict)  # type: ignore[arg-type]
                 elapsed_ms = int((time.time() - start_time) * 1000)
-                logger.info(
-                    "HTTP %s %s status=%d time_ms=%d",
-                    method,
-                    url,
-                    response.status_code,
-                    elapsed_ms,
+                output_log(
+                    f"HTTP {method} {url}",
+                    subdomain=self.subdomain,
+                    method=method,
+                    url=url,
+                    status_code=response.status_code,
+                    duration_ms=elapsed_ms,
                 )
                 return response
             except httpx.ConnectTimeout:
-                log(
+                output_log(
                     f"Timeout fetching url, trying again {i - 1} more times",
                     subdomain=self.subdomain,
                     level="warning",
                     url=url,
+                    retries_remaining=i - 1,
                 )
             except httpx.RemoteProtocolError:
-                log(
+                output_log(
                     f"Remote error fetching url, trying again {i - 1} more times",
                     subdomain=self.subdomain,
                     level="warning",
                     url=url,
+                    retries_remaining=i - 1,
                 )
         return None
 
@@ -247,60 +250,108 @@ class Fetcher:
         try:
             doc_response = self.request("GET", url, headers)
         except httpx.ReadTimeout:
-            log(f"Timeout fetching {url} for {meeting}", subdomain=self.subdomain, level="error")
+            output_log(
+                f"Timeout fetching {url} for {meeting}",
+                subdomain=self.subdomain,
+                level="error",
+                url=url,
+                meeting=meeting,
+                kind=kind,
+            )
             return
         if not doc_response or doc_response.status_code != 200:
-            log(f"Error fetching {url} for {meeting}", subdomain=self.subdomain, level="error")
+            output_log(
+                f"Error fetching {url} for {meeting}",
+                subdomain=self.subdomain,
+                level="error",
+                url=url,
+                meeting=meeting,
+                kind=kind,
+                status_code=doc_response.status_code if doc_response else None,
+            )
             return
         if "pdf" in doc_response.headers.get("content-type", "").lower():
-            log(f"Writing file {output_path}, meeting: {meeting}", subdomain=self.subdomain)
+            output_log(
+                "Writing PDF file",
+                subdomain=self.subdomain,
+                operation="write_pdf",
+                meeting=meeting,
+                date=date,
+                kind=kind,
+                output_path=output_path,
+            )
             with open(output_path, "wb") as doc_pdf:
                 doc_pdf.write(doc_response.content)
         elif "html" in doc_response.headers.get("content-type", "").lower():
-            log(f"HTML -> PDF: {output_path}, meeting: {meeting}", subdomain=self.subdomain)
+            output_log(
+                "Converting HTML to PDF",
+                subdomain=self.subdomain,
+                operation="html_to_pdf",
+                meeting=meeting,
+                date=date,
+                kind=kind,
+                output_path=output_path,
+            )
             try:
                 HTML(string=doc_response.content).write_pdf(output_path)
             except ParseError:
-                log(
+                output_log(
                     f"WeasyPrint HTML->PDF error for {url}, trying pdfkit",
                     subdomain=self.subdomain,
                     level="warning",
+                    url=url,
+                    meeting=meeting,
                 )
                 pdfkit.from_string(doc_response.content, output_path)
-                log(f"Wrote file {output_path}, meeting: {meeting}", subdomain=self.subdomain)
+                output_log(
+                    "Wrote file using pdfkit",
+                    subdomain=self.subdomain,
+                    operation="pdfkit_conversion",
+                    meeting=meeting,
+                    output_path=output_path,
+                )
         else:
             try:
-                log(
+                output_log(
                     f"Unknown content type {doc_response.headers['content-type']}, meeting: {meeting}",
                     subdomain=self.subdomain,
                     level="warning",
+                    content_type=doc_response.headers["content-type"],
+                    meeting=meeting,
                 )
             except KeyError:
-                log(
+                output_log(
                     f"Couldn't find content-type headers for {url}",
                     subdomain=self.subdomain,
                     level="error",
+                    url=url,
                 )
         try:
             PdfReader(output_path)
         except PdfReadError:
-            log(
+            output_log(
                 f"PDF downloaded from {url} errored on read, removing {output_path}",
                 subdomain=self.subdomain,
                 level="error",
+                url=url,
+                output_path=output_path,
             )
             os.remove(output_path)
         except FileNotFoundError:
-            log(
+            output_log(
                 f"PDF from {url} not found at {output_path}",
                 subdomain=self.subdomain,
                 level="error",
+                url=url,
+                output_path=output_path,
             )
         except ValueError:
-            log(
+            output_log(
                 f"PDF downloaded from {url} errored on read, removing {output_path}",
                 subdomain=self.subdomain,
                 level="error",
+                url=url,
+                output_path=output_path,
             )
 
     def fetch_docs_from_page(
@@ -332,7 +383,14 @@ class Fetcher:
                     ).hexdigest()
                     doc_id = doc_id[:12]
                     output_path = os.path.join(self.docs_output_dir, f"{doc_id}.pdf")
-                    log(f"Writing file {output_path}", subdomain=self.subdomain)
+                    output_log(
+                        "Writing document file",
+                        subdomain=self.subdomain,
+                        operation="write_document",
+                        doc_id=doc_id,
+                        filename=filename_from_resp,
+                        output_path=output_path,
+                    )
 
                     with open(output_path, "wb") as doc_pdf:
                         doc_pdf.write(doc_response.content)
@@ -362,14 +420,22 @@ class Fetcher:
             backend: OCR backend to use ('tesseract' or 'vision')
         """
         st = time.time()
+        output_log(
+            "Starting OCR for all documents",
+            subdomain=self.subdomain,
+            operation="ocr_start",
+            backend=backend,
+        )
         self.do_ocr(backend=backend)
         self.do_ocr(prefix="/_agendas", backend=backend)
         et = time.time()
         elapsed_time = et - st
-        log(
+        output_log(
             f"Total OCR execution time: {elapsed_time:.2f} seconds",
             subdomain=self.subdomain,
-            elapsed_time=f"{elapsed_time:.2f}",
+            operation="ocr_complete",
+            backend=backend,
+            duration_seconds=round(elapsed_time, 2),
         )
 
     def transform(self) -> None:
@@ -381,12 +447,14 @@ class Fetcher:
             agendas_count = 0
         minutes_count = self.db["minutes"].count
         page_count = agendas_count + minutes_count
-        log(
+        output_log(
             f"Processed {page_count} pages, {agendas_count} agendas, {minutes_count} minutes. Formerly {self.previous_page_count} pages processed.",
             subdomain=self.subdomain,
+            operation="transform_complete",
             pages=page_count,
             agendas=agendas_count,
             minutes=minutes_count,
+            previous_pages=self.previous_page_count,
         )
 
     def do_ocr(self, prefix: str = "", backend: str = "tesseract") -> None:
@@ -409,7 +477,13 @@ class Fetcher:
             os.makedirs(processed_dir)
 
         if not os.path.exists(f"{pdf_dir}"):
-            log(f"No PDFs found in {pdf_dir}", subdomain=self.subdomain)
+            output_log(
+                f"No PDFs found in {pdf_dir}",
+                subdomain=self.subdomain,
+                operation="ocr_skip",
+                pdf_dir=pdf_dir,
+                prefix=prefix,
+            )
             return
 
         # Build job list
@@ -438,7 +512,13 @@ class Fetcher:
                 jobs.append((prefix, meeting, date))
 
         if not jobs:
-            log(f"No PDF documents to process in {pdf_dir}", subdomain=self.subdomain)
+            output_log(
+                f"No PDF documents to process in {pdf_dir}",
+                subdomain=self.subdomain,
+                operation="ocr_skip",
+                pdf_dir=pdf_dir,
+                prefix=prefix,
+            )
             return
 
         # Initialize job state and failure manifest
@@ -446,12 +526,14 @@ class Fetcher:
         manifest_path = f"{self.dir_prefix}/ocr_failures_{job_id}.jsonl"
         manifest = FailureManifest(manifest_path)
 
-        log(
+        output_log(
             "OCR job started",
             subdomain=self.subdomain,
+            operation="ocr_job_start",
             job_id=job_id,
             total_documents=len(jobs),
             prefix=prefix,
+            backend=backend,
         )
 
         # Process jobs with thread pool
@@ -470,9 +552,10 @@ class Fetcher:
                     state.failed += 1
                 except CRITICAL_ERRORS as e:
                     manifest.close()
-                    log(
+                    output_log(
                         "Critical error, halting OCR job",
                         subdomain=self.subdomain,
+                        operation="ocr_critical_error",
                         job_id=job_id,
                         error_class=e.__class__.__name__,
                         error_message=str(e),
@@ -481,10 +564,12 @@ class Fetcher:
                     raise
                 except Exception as exc:
                     # Catch-all for unexpected errors
-                    log(
+                    output_log(
                         f"{job!r} generated an exception: {exc}",
                         subdomain=self.subdomain,
+                        operation="ocr_unexpected_error",
                         job_id=job_id,
+                        error_message=str(exc),
                         level="error",
                     )
                     state.failed += 1
@@ -498,18 +583,22 @@ class Fetcher:
 
         # Log job completion
         elapsed = time.time() - state.start_time
-        log(
+        output_log(
             "OCR job completed",
             subdomain=self.subdomain,
+            operation="ocr_job_complete",
             job_id=job_id,
+            backend=backend,
             completed=state.completed,
             failed=state.failed,
             skipped=state.skipped,
-            duration_seconds=int(elapsed),
+            total_documents=state.total_documents,
+            duration_seconds=round(elapsed, 2),
+            prefix=prefix,
         )
 
         # Print final summary
-        log(
+        output_log(
             f"OCR job {job_id} completed: {state.completed} succeeded, "
             f"{state.failed} failed, {state.skipped} skipped "
             f"(total: {state.total_documents} documents in {elapsed:.1f}s)",
@@ -517,7 +606,12 @@ class Fetcher:
         )
 
         if state.failed > 0:
-            log(f"Failure manifest written to: {manifest_path}", subdomain=self.subdomain)
+            output_log(
+                f"Failure manifest written to: {manifest_path}",
+                subdomain=self.subdomain,
+                manifest_path=manifest_path,
+                failed_count=state.failed,
+            )
 
     def _ocr_with_tesseract(self, image_path: Path) -> str:
         """Extract text from image using Tesseract OCR.
@@ -620,12 +714,15 @@ class Fetcher:
         meeting = job[1]
         date = job[2]
 
-        log(
+        output_log(
             "Processing document",
             subdomain=self.subdomain,
+            operation="document_start",
             job_id=job_id,
             meeting=meeting,
             date=date,
+            backend=backend,
+            prefix=prefix,
         )
 
         try:
@@ -633,29 +730,29 @@ class Fetcher:
             doc_image_dir_path = f"{self.dir_prefix}{prefix}/images/{meeting}/{date}"
             doc_txt_dir_path = f"{self.dir_prefix}{prefix}/txt/{meeting}/{date}"
 
-            # Backend tracking at start of processing
-            log(
-                f"Processing {doc_path} with {backend} backend",
-                subdomain=self.subdomain,
-                backend=backend,
-            )
-
             # PDF reading with timing
             read_st = time.time()
             try:
                 reader = PdfReader(doc_path)
                 total_pages = len(reader.pages)
             except Exception as e:
-                log(f"{doc_path} failed to read: {e}", subdomain=self.subdomain, level="error")
+                output_log(
+                    f"{doc_path} failed to read: {e}",
+                    subdomain=self.subdomain,
+                    level="error",
+                    doc_path=doc_path,
+                    error_message=str(e),
+                )
                 raise
 
-            log(
+            output_log(
                 "PDF read",
                 subdomain=self.subdomain,
                 operation="pdf_read",
                 meeting=meeting,
                 date=date,
                 page_count=total_pages,
+                backend=backend,
                 duration_ms=int((time.time() - read_st) * 1000),
             )
 
@@ -690,15 +787,23 @@ class Fetcher:
                                 continue
                             page.save(page_image_path, "PNG")
             except Exception as e:
-                log(f"{doc_path} failed to process: {e}", subdomain=self.subdomain, level="error")
+                output_log(
+                    f"{doc_path} failed to process: {e}",
+                    subdomain=self.subdomain,
+                    level="error",
+                    doc_path=doc_path,
+                    error_message=str(e),
+                )
                 raise
 
-            log(
-                "Image conversion",
+            output_log(
+                "Image conversion completed",
                 subdomain=self.subdomain,
                 operation="pdf_to_images",
                 meeting=meeting,
                 date=date,
+                page_count=total_pages,
+                backend=backend,
                 duration_ms=int((time.time() - conv_st) * 1000),
             )
 
@@ -716,11 +821,13 @@ class Fetcher:
                             try:
                                 text = self._ocr_with_vision(Path(page_image_path))
                             except RuntimeError as e:
-                                log(
+                                output_log(
                                     f"Vision OCR failed for {page_image_path}, "
                                     f"falling back to Tesseract: {e}",
                                     subdomain=self.subdomain,
                                     level="warning",
+                                    page_image_path=page_image_path,
+                                    error_message=str(e),
                                 )
                                 text = self._ocr_with_tesseract(Path(page_image_path))
                         else:
@@ -729,10 +836,12 @@ class Fetcher:
                         with open(txt_filepath, "w", encoding="utf-8") as textfile:
                             textfile.write(text)
                     except Exception as e:
-                        log(
+                        output_log(
                             f"error processing {page_image_path}, {e}",
                             subdomain=self.subdomain,
                             level="error",
+                            page_image_path=page_image_path,
+                            error_message=str(e),
                         )
 
                     pm.hook.upload_static_file(
@@ -742,10 +851,11 @@ class Fetcher:
                 if page_image.endswith(".txt"):
                     continue
 
-            log(
+            output_log(
                 "OCR completed",
                 subdomain=self.subdomain,
-                operation=backend,
+                operation="ocr_complete",
+                backend=backend,
                 meeting=meeting,
                 date=date,
                 page_count=total_pages,
@@ -761,23 +871,19 @@ class Fetcher:
             os.remove(doc_path)
             shutil.rmtree(doc_image_dir_path)
 
-            # Completion logging with backend and processing stats
-            ocr_duration = time.time() - ocr_st
-            log(
-                f"Completed {doc_path} ({total_pages} pages in {ocr_duration:.2f}s)",
+            # Completion logging with full processing stats
+            total_duration = time.time() - st
+            output_log(
+                f"Document completed: {total_pages} pages in {total_duration:.2f}s",
                 subdomain=self.subdomain,
-                backend=backend,
-                page_count=total_pages,
-                duration_seconds=ocr_duration,
-            )
-
-            log(
-                "Document completed",
-                subdomain=self.subdomain,
+                operation="document_complete",
                 job_id=job_id,
+                backend=backend,
                 meeting=meeting,
                 date=date,
-                total_duration_ms=int((time.time() - st) * 1000),
+                page_count=total_pages,
+                duration_seconds=round(total_duration, 2),
+                prefix=prefix,
             )
 
         except PERMANENT_ERRORS as e:
@@ -792,10 +898,12 @@ class Fetcher:
                     error_message=str(e),
                     retry_count=0,  # Already retried by decorator if transient
                 )
-            log(
-                "Document failed",
+            output_log(
+                "Document failed with permanent error",
                 subdomain=self.subdomain,
+                operation="document_permanent_error",
                 job_id=job_id,
+                backend=backend,
                 meeting=meeting,
                 date=date,
                 error_class=e.__class__.__name__,
@@ -805,10 +913,12 @@ class Fetcher:
             return  # Skip and continue
 
         except CRITICAL_ERRORS as e:
-            log(
-                "Critical error",
+            output_log(
+                "Critical error in OCR job",
                 subdomain=self.subdomain,
+                operation="document_critical_error",
                 job_id=job_id,
+                backend=backend,
                 error_class=e.__class__.__name__,
                 error_message=str(e),
                 level="error",
