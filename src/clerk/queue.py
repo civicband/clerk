@@ -62,6 +62,11 @@ def get_ocr_queue():
     return Queue("ocr", connection=get_redis())
 
 
+def get_compilation_queue():
+    """Get compilation jobs queue (coordinator, db compilation)."""
+    return Queue("compilation", connection=get_redis())
+
+
 def get_extraction_queue():
     """Get extraction jobs queue."""
     return Queue("extraction", connection=get_redis())
@@ -93,6 +98,7 @@ def enqueue_job(job_type, site_id, priority="normal", **kwargs):
         queue_map = {
             "fetch": get_fetch_queue(),
             "ocr": get_ocr_queue(),
+            "compilation": get_compilation_queue(),
             "extraction": get_extraction_queue(),
             "deploy": get_deploy_queue(),
         }

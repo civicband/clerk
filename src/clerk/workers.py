@@ -139,8 +139,10 @@ def fetch_site_job(subdomain, all_years=False, all_agendas=False):
 
     # Spawn coordinator job that waits for ALL OCR jobs (fan-in)
     if ocr_job_ids:
-        extraction_queue = get_extraction_queue()
-        coord_job = extraction_queue.enqueue(
+        from .queue import get_compilation_queue
+
+        compilation_queue = get_compilation_queue()
+        coord_job = compilation_queue.enqueue(
             ocr_complete_coordinator,
             subdomain=subdomain,
             depends_on=ocr_job_ids,  # RQ waits for ALL
@@ -246,25 +248,26 @@ def ocr_complete_coordinator(subdomain):
     """RQ job: Runs after ALL OCR jobs complete, spawns two parallel paths.
 
     This coordinator spawns:
-    1. Database compilation WITHOUT entity extraction (fast path)
-    2. Entity extraction job (which spawns db compilation WITH entities after)
+    1. Database compilation WITHOUT entity extraction (fast path) - to compilation queue
+    2. Entity extraction job (which spawns db compilation WITH entities after) - to extraction queue
 
     Args:
         subdomain: Site subdomain
     """
-    from .queue import get_extraction_queue
+    from .queue import get_compilation_queue, get_extraction_queue
 
     logger.info("Starting ocr_complete_coordinator for subdomain=%s", subdomain)
 
-    # Update progress: moving to extraction stage
+    # Update progress: moving to compilation/extraction stage
     with civic_db_connection() as conn:
         update_site_progress(conn, subdomain, stage="extraction")
     logger.info("Updated progress to extraction stage for subdomain=%s", subdomain)
 
+    compilation_queue = get_compilation_queue()
     extraction_queue = get_extraction_queue()
 
-    # Path 1: Database compilation WITHOUT entity extraction (fast path)
-    db_job = extraction_queue.enqueue(
+    # Path 1: Database compilation WITHOUT entity extraction (fast path) - core pipeline
+    db_job = compilation_queue.enqueue(
         db_compilation_job,
         subdomain=subdomain,
         extract_entities=False,
@@ -382,7 +385,7 @@ def extraction_job(subdomain):
         subdomain: Site subdomain
     """
     from .extraction import extract_entities_from_text
-    from .queue import get_extraction_queue
+    from .queue import get_compilation_queue
 
     logger.info("Starting extraction_job for subdomain=%s", subdomain)
 
@@ -416,9 +419,9 @@ def extraction_job(subdomain):
     extract_entities_from_text(subdomain)
     logger.info("Completed entity extraction for subdomain=%s", subdomain)
 
-    # Spawn database compilation WITH entities
-    extraction_queue = get_extraction_queue()
-    job = extraction_queue.enqueue(
+    # Spawn database compilation WITH entities (to compilation queue, may run on different machine)
+    compilation_queue = get_compilation_queue()
+    job = compilation_queue.enqueue(
         db_compilation_job,
         subdomain=subdomain,
         extract_entities=True,
