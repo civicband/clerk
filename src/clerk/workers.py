@@ -248,88 +248,121 @@ def fetch_site_job(subdomain, run_id, all_years=False, all_agendas=False):
         raise
 
 
-def ocr_page_job(subdomain, pdf_path, backend="tesseract"):
+def ocr_page_job(subdomain, pdf_path, backend="tesseract", run_id=None):
     """RQ job: OCR a single PDF page.
 
     Args:
         subdomain: Site subdomain
         pdf_path: Path to PDF file
         backend: OCR backend (tesseract or vision)
+        run_id: Pipeline run identifier
     """
     from .cli import get_fetcher
 
+    stage = "ocr"
     start_time = time.time()
     path_obj = Path(pdf_path)
-    output_log(
-        "Starting ocr_page_job",
+
+    log_with_context(
+        "ocr_started",
         subdomain=subdomain,
-        job_type="ocr-page",
+        run_id=run_id,
+        stage=stage,
         pdf_name=path_obj.name,
         backend=backend,
     )
 
-    # Get site to create a fetcher instance
-    with civic_db_connection() as conn:
-        site = get_site_by_subdomain(conn, subdomain)
+    try:
+        # Get site to create a fetcher instance
+        with civic_db_connection() as conn:
+            site = get_site_by_subdomain(conn, subdomain)
 
-    if not site:
-        output_log("Site not found in ocr_page_job", subdomain=subdomain, error=True)
-        raise ValueError(f"Site not found: {subdomain}")
+        if not site:
+            log_with_context(
+                "Site not found in ocr_page_job",
+                subdomain=subdomain,
+                run_id=run_id,
+                stage=stage,
+                level="error",
+                pdf_path=pdf_path
+            )
+            raise ValueError(f"Site not found: {subdomain}")
 
-    # Create fetcher instance to use its OCR methods
-    fetcher = get_fetcher(site)
-    logger.debug("Created fetcher for subdomain=%s", subdomain)
+        # Create fetcher instance to use its OCR methods
+        fetcher = get_fetcher(site)
+        logger.debug("Created fetcher for subdomain=%s", subdomain)
 
-    # Parse PDF path to extract meeting and date
-    # Expected path format: {storage_dir}/{subdomain}/pdfs/{meeting}/{date}.pdf
-    date = path_obj.stem  # filename without .pdf
-    meeting = path_obj.parent.name
+        # Parse PDF path to extract meeting and date
+        # Expected path format: {storage_dir}/{subdomain}/pdfs/{meeting}/{date}.pdf
+        date = path_obj.stem  # filename without .pdf
+        meeting = path_obj.parent.name
 
-    # Determine prefix based on path
-    prefix = ""
-    if "/_agendas/" in str(pdf_path):
-        prefix = "/_agendas"
-        logger.debug("PDF is an agenda: %s", pdf_path)
-    else:
-        logger.debug("PDF is a minute: %s", pdf_path)
+        # Determine prefix based on path
+        prefix = ""
+        if "/_agendas/" in str(pdf_path):
+            prefix = "/_agendas"
+            logger.debug("PDF is an agenda: %s", pdf_path)
+        else:
+            logger.debug("PDF is a minute: %s", pdf_path)
 
-    # Create job tuple for do_ocr_job
-    job = (prefix, meeting, date)
-    logger.debug(
-        "OCR job tuple: prefix=%s meeting=%s date=%s (subdomain=%s)",
-        prefix,
-        meeting,
-        date,
-        subdomain,
-    )
+        # Create job tuple for do_ocr_job
+        job = (prefix, meeting, date)
+        logger.debug(
+            "OCR job tuple: prefix=%s meeting=%s date=%s (subdomain=%s)",
+            prefix,
+            meeting,
+            date,
+            subdomain,
+        )
 
-    # Run OCR job without manifest (RQ tracks job failures)
-    job_id = f"worker_ocr_{int(time.time())}"
-    output_log(
-        "Running OCR",
-        subdomain=subdomain,
-        ocr_job_id=job_id,
-        pdf_name=path_obj.name,
-        backend=backend,
-    )
-    fetcher.do_ocr_job(job, None, job_id, backend=backend)
+        # Run OCR job without manifest (RQ tracks job failures)
+        job_id = f"worker_ocr_{int(time.time())}"
+        log_with_context(
+            "Running OCR",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            ocr_job_id=job_id,
+            pdf_name=path_obj.name,
+            backend=backend,
+        )
+        fetcher.do_ocr_job(job, None, job_id, backend=backend)
 
-    duration = time.time() - start_time
-    output_log(
-        "Completed OCR",
-        subdomain=subdomain,
-        ocr_job_id=job_id,
-        pdf_name=path_obj.name,
-        duration_seconds=round(duration, 2),
-    )
+        duration = time.time() - start_time
+        log_with_context(
+            "ocr_completed",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            ocr_job_id=job_id,
+            pdf_name=path_obj.name,
+            duration_seconds=round(duration, 2),
+        )
 
-    # Increment progress counter
-    with civic_db_connection() as conn:
-        increment_stage_progress(conn, subdomain)
-    logger.debug("Incremented OCR progress for subdomain=%s", subdomain)
+        # Increment progress counter
+        with civic_db_connection() as conn:
+            increment_stage_progress(conn, subdomain)
+        logger.debug("Incremented OCR progress for subdomain=%s", subdomain)
+
+    except Exception as e:
+        duration = time.time() - start_time
+        log_with_context(
+            f"ocr_failed: {e}",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            level="error",
+            duration_seconds=round(duration, 2),
+            pdf_path=pdf_path,
+            backend=backend,
+            error_type=type(e).__name__,
+            error_message=str(e),
+            traceback=traceback.format_exc()
+        )
+        raise
 
 
-def ocr_complete_coordinator(subdomain):
+def ocr_complete_coordinator(subdomain, run_id):
     """RQ job: Runs after ALL OCR jobs complete, spawns two parallel paths.
 
     This coordinator spawns:
@@ -338,62 +371,100 @@ def ocr_complete_coordinator(subdomain):
 
     Args:
         subdomain: Site subdomain
+        run_id: Pipeline run identifier
     """
     from .queue import get_compilation_queue, get_extraction_queue
 
+    stage = "ocr"
     start_time = time.time()
-    output_log("Starting ocr_complete_coordinator", subdomain=subdomain, job_type="ocr-coordinator")
 
-    # Update progress: moving to compilation/extraction stage
-    with civic_db_connection() as conn:
-        update_site_progress(conn, subdomain, stage="extraction")
-    output_log("Updated progress to extraction stage", subdomain=subdomain, stage="extraction")
-
-    compilation_queue = get_compilation_queue()
-    extraction_queue = get_extraction_queue()
-
-    # Path 1: Database compilation WITHOUT entity extraction (fast path) - core pipeline
-    db_job = compilation_queue.enqueue(
-        db_compilation_job,
+    log_with_context(
+        "ocr_coordinator_started",
         subdomain=subdomain,
-        extract_entities=False,
-        job_timeout="30m",
-        description=f"DB compilation (no entities): {subdomain}",
+        run_id=run_id,
+        stage=stage
     )
 
-    # Track in PostgreSQL
-    with civic_db_connection() as conn:
-        track_job(conn, db_job.id, subdomain, "db-compilation-no-entities", "extraction")
-    output_log(
-        "Enqueued DB compilation job (no entities)",
-        subdomain=subdomain,
-        job_id=db_job.id,
-        extract_entities=False,
-    )
+    try:
+        # Update progress: moving to compilation/extraction stage
+        with civic_db_connection() as conn:
+            update_site_progress(conn, subdomain, stage="extraction")
+        log_with_context(
+            "Updated progress to extraction stage",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            next_stage="extraction"
+        )
 
-    # Path 2: Entity extraction job (which will spawn db compilation WITH entities)
-    extract_job = extraction_queue.enqueue(
-        extraction_job,
-        subdomain=subdomain,
-        job_timeout="2h",
-        description=f"Extract entities: {subdomain}",
-    )
+        compilation_queue = get_compilation_queue()
+        extraction_queue = get_extraction_queue()
 
-    # Track in PostgreSQL
-    with civic_db_connection() as conn:
-        track_job(conn, extract_job.id, subdomain, "extract-site", "extraction")
-    output_log(
-        "Enqueued entity extraction job",
-        subdomain=subdomain,
-        job_id=extract_job.id,
-    )
+        # Path 1: Database compilation WITHOUT entity extraction (fast path) - core pipeline
+        db_job = compilation_queue.enqueue(
+            db_compilation_job,
+            subdomain=subdomain,
+            run_id=run_id,
+            extract_entities=False,
+            job_timeout="30m",
+            description=f"DB compilation (no entities): {subdomain}",
+        )
 
-    duration = time.time() - start_time
-    output_log(
-        "Completed ocr_complete_coordinator",
-        subdomain=subdomain,
-        duration_seconds=round(duration, 2),
-    )
+        # Track in PostgreSQL
+        with civic_db_connection() as conn:
+            track_job(conn, db_job.id, subdomain, "db-compilation-no-entities", "extraction")
+        log_with_context(
+            "Enqueued DB compilation job (no entities)",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            job_id=db_job.id,
+            extract_entities=False,
+        )
+
+        # Path 2: Entity extraction job (which will spawn db compilation WITH entities)
+        extract_job = extraction_queue.enqueue(
+            extraction_job,
+            subdomain=subdomain,
+            run_id=run_id,
+            job_timeout="2h",
+            description=f"Extract entities: {subdomain}",
+        )
+
+        # Track in PostgreSQL
+        with civic_db_connection() as conn:
+            track_job(conn, extract_job.id, subdomain, "extract-site", "extraction")
+        log_with_context(
+            "Enqueued entity extraction job",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            job_id=extract_job.id,
+        )
+
+        duration = time.time() - start_time
+        log_with_context(
+            "ocr_coordinator_completed",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            duration_seconds=round(duration, 2),
+        )
+
+    except Exception as e:
+        duration = time.time() - start_time
+        log_with_context(
+            f"ocr_coordinator_failed: {e}",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            level="error",
+            duration_seconds=round(duration, 2),
+            error_type=type(e).__name__,
+            error_message=str(e),
+            traceback=traceback.format_exc()
+        )
+        raise
 
 
 def db_compilation_job(subdomain, run_id=None, extract_entities=False, ignore_cache=False):
@@ -593,31 +664,61 @@ def extraction_job(subdomain):
     )
 
 
-def deploy_job(subdomain):
+def deploy_job(subdomain, run_id=None):
     """RQ job: Deploy site.
 
     Args:
         subdomain: Site subdomain
+        run_id: Pipeline run identifier (optional, for logging context)
     """
     from .utils import pm
 
+    stage = "deploy"
     start_time = time.time()
-    output_log("Starting deploy_job", subdomain=subdomain, job_type="deploy")
 
-    # Use existing deploy logic
-    output_log("Running deploy hook", subdomain=subdomain)
-    pm.hook.deploy_municipality(subdomain=subdomain)
-    output_log("Completed deploy hook", subdomain=subdomain)
+    # Generate run_id if not provided (for backwards compatibility)
+    if run_id is None:
+        run_id = f"deploy_{subdomain}_{int(time.time())}"
 
-    # Mark complete
-    with civic_db_connection() as conn:
-        update_site_progress(conn, subdomain, stage="completed", stage_total=1)
-        increment_stage_progress(conn, subdomain)
-    output_log("Marked site as completed", subdomain=subdomain, stage="completed")
-
-    duration = time.time() - start_time
-    output_log(
-        "Completed deploy_job",
+    log_with_context(
+        "deploy_started",
         subdomain=subdomain,
-        duration_seconds=round(duration, 2),
+        run_id=run_id,
+        stage=stage
     )
+
+    try:
+        # Use existing deploy logic
+        log_with_context("Running deploy hook", subdomain=subdomain, run_id=run_id, stage=stage)
+        pm.hook.deploy_municipality(subdomain=subdomain)
+        log_with_context("Completed deploy hook", subdomain=subdomain, run_id=run_id, stage=stage)
+
+        # Mark complete
+        with civic_db_connection() as conn:
+            update_site_progress(conn, subdomain, stage="completed", stage_total=1)
+            increment_stage_progress(conn, subdomain)
+        log_with_context("Marked site as completed", subdomain=subdomain, run_id=run_id, stage=stage)
+
+        duration = time.time() - start_time
+        log_with_context(
+            "deploy_completed",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            duration_seconds=round(duration, 2),
+        )
+
+    except Exception as e:
+        duration = time.time() - start_time
+        log_with_context(
+            f"deploy_failed: {e}",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            level="error",
+            duration_seconds=round(duration, 2),
+            error_type=type(e).__name__,
+            error_message=str(e),
+            traceback=traceback.format_exc()
+        )
+        raise

@@ -262,3 +262,117 @@ def test_fetch_site_job_passes_run_id_to_ocr_jobs(mocker):
     mock_ocr_queue.enqueue.assert_called()
     call_kwargs = mock_ocr_queue.enqueue.call_args[1]
     assert call_kwargs['run_id'] == "test_123_abc"
+
+
+def test_deploy_job_accepts_run_id(mocker):
+    """Test that deploy_job accepts run_id parameter."""
+    from clerk.workers import deploy_job
+
+    mocker.patch('clerk.workers.civic_db_connection')
+    mocker.patch('clerk.workers.update_site_progress')
+    mocker.patch('clerk.workers.increment_stage_progress')
+    mocker.patch('clerk.utils.pm')
+    mock_log = mocker.patch('clerk.workers.log_with_context')
+
+    deploy_job("test.civic.band", run_id="test_123_abc")
+
+    assert any(call[1]['stage'] == 'deploy' for call in mock_log.call_args_list)
+
+
+def test_deploy_job_logs_deploy_completed(mocker):
+    """Test that deploy_job logs deploy_completed milestone."""
+    from clerk.workers import deploy_job
+
+    mocker.patch('clerk.workers.civic_db_connection')
+    mocker.patch('clerk.workers.update_site_progress')
+    mocker.patch('clerk.workers.increment_stage_progress')
+    mocker.patch('clerk.utils.pm')
+    mock_log = mocker.patch('clerk.workers.log_with_context')
+
+    deploy_job("test.civic.band", run_id="test_123_abc")
+
+    completed_calls = [call for call in mock_log.call_args_list if "deploy_completed" in call[0][0]]
+    assert len(completed_calls) == 1
+
+
+def test_ocr_complete_coordinator_accepts_run_id(mocker):
+    """Test that ocr_complete_coordinator accepts run_id parameter."""
+    from clerk.workers import ocr_complete_coordinator
+
+    mocker.patch('clerk.workers.civic_db_connection')
+    mocker.patch('clerk.workers.update_site_progress')
+    mocker.patch('clerk.workers.track_job')
+
+    mock_compilation_queue = mocker.MagicMock()
+    mock_compilation_queue.enqueue.return_value = mocker.MagicMock(id="comp-job")
+    mocker.patch('clerk.queue.get_compilation_queue', return_value=mock_compilation_queue)
+
+    mock_extraction_queue = mocker.MagicMock()
+    mock_extraction_queue.enqueue.return_value = mocker.MagicMock(id="ext-job")
+    mocker.patch('clerk.queue.get_extraction_queue', return_value=mock_extraction_queue)
+
+    mock_log = mocker.patch('clerk.workers.log_with_context')
+
+    ocr_complete_coordinator("test.civic.band", run_id="test_123_abc")
+
+    assert any(call[1]['run_id'] == "test_123_abc" and call[1]['stage'] == 'ocr' for call in mock_log.call_args_list)
+
+
+def test_ocr_complete_coordinator_passes_run_id_to_child_jobs(mocker):
+    """Test that coordinator passes run_id to compilation and extraction jobs."""
+    from clerk.workers import ocr_complete_coordinator
+
+    mocker.patch('clerk.workers.civic_db_connection')
+    mocker.patch('clerk.workers.update_site_progress')
+    mocker.patch('clerk.workers.track_job')
+    mocker.patch('clerk.workers.log_with_context')
+
+    mock_compilation_queue = mocker.MagicMock()
+    mock_compilation_job = mocker.MagicMock(id="comp-job-123")
+    mock_compilation_queue.enqueue.return_value = mock_compilation_job
+    mocker.patch('clerk.queue.get_compilation_queue', return_value=mock_compilation_queue)
+
+    mock_extraction_queue = mocker.MagicMock()
+    mock_extraction_job = mocker.MagicMock(id="ext-job-123")
+    mock_extraction_queue.enqueue.return_value = mock_extraction_job
+    mocker.patch('clerk.queue.get_extraction_queue', return_value=mock_extraction_queue)
+
+    ocr_complete_coordinator("test.civic.band", run_id="test_123_abc")
+
+    comp_call_kwargs = mock_compilation_queue.enqueue.call_args[1]
+    assert comp_call_kwargs['run_id'] == "test_123_abc"
+
+    ext_call_kwargs = mock_extraction_queue.enqueue.call_args[1]
+    assert ext_call_kwargs['run_id'] == "test_123_abc"
+
+
+def test_ocr_page_job_accepts_run_id_parameter(mocker):
+    """Test that ocr_page_job accepts run_id parameter."""
+    from clerk.workers import ocr_page_job
+
+    mocker.patch('clerk.workers.civic_db_connection')
+    mocker.patch('clerk.workers.get_site_by_subdomain', return_value={'subdomain': 'test'})
+    mock_fetcher = mocker.MagicMock()
+    mocker.patch('clerk.cli.get_fetcher', return_value=mock_fetcher)
+    mocker.patch('clerk.workers.increment_stage_progress')
+    mock_log = mocker.patch('clerk.workers.log_with_context')
+
+    ocr_page_job("test.civic.band", "/path/to/test.pdf", "tesseract", run_id="test_123_abc")
+
+    assert any(call[1]['run_id'] == "test_123_abc" for call in mock_log.call_args_list)
+
+
+def test_ocr_page_job_logs_with_stage_ocr(mocker):
+    """Test that ocr_page_job logs with stage=ocr."""
+    from clerk.workers import ocr_page_job
+
+    mocker.patch('clerk.workers.civic_db_connection')
+    mocker.patch('clerk.workers.get_site_by_subdomain', return_value={'subdomain': 'test'})
+    mock_fetcher = mocker.MagicMock()
+    mocker.patch('clerk.cli.get_fetcher', return_value=mock_fetcher)
+    mocker.patch('clerk.workers.increment_stage_progress')
+    mock_log = mocker.patch('clerk.workers.log_with_context')
+
+    ocr_page_job("test.civic.band", "/path/to/test.pdf", "tesseract", run_id="test_123_abc")
+
+    assert any(call[1].get('stage') == 'ocr' for call in mock_log.call_args_list)
