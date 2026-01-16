@@ -6,6 +6,8 @@ import time
 import traceback
 from pathlib import Path
 
+from rq import get_current_job
+
 from .db import civic_db_connection, get_site_by_subdomain
 from .output import log as output_log
 from .queue_db import (
@@ -21,6 +23,8 @@ logger = logging.getLogger(__name__)
 def log_with_context(message, subdomain, run_id=None, stage=None, **kwargs):
     """Log with automatic run_id, stage, job_id context.
 
+    Extracts job_id and parent_job_id from RQ job context automatically.
+
     Args:
         message: Log message
         subdomain: Site subdomain
@@ -28,8 +32,6 @@ def log_with_context(message, subdomain, run_id=None, stage=None, **kwargs):
         stage: Pipeline stage (fetch/ocr/compilation/extraction/deploy) (optional)
         **kwargs: Additional structured fields for logging
     """
-    from rq import get_current_job
-
     job = get_current_job()
     job_id = job.id if job else None
 
@@ -47,8 +49,6 @@ def log_with_context(message, subdomain, run_id=None, stage=None, **kwargs):
         parent_job_id=parent_job_id,
         **kwargs
     )
-
-
 def fetch_site_job(subdomain, all_years=False, all_agendas=False):
     """RQ job: Fetch PDFs for a site then spawn OCR jobs.
 
