@@ -13,8 +13,8 @@ import sqlite_utils
 # WeasyPrint requires native libraries that may not be available or compatible
 sys.modules["weasyprint"] = MagicMock()
 
-from clerk.hookspecs import ClerkSpec
-from tests.mocks.mock_plugins import TestPlugin
+from clerk.hookspecs import ClerkSpec  # noqa: E402
+from tests.mocks.mock_plugins import TestPlugin  # noqa: E402
 
 
 @pytest.fixture

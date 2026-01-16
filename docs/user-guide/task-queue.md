@@ -320,6 +320,49 @@ Sites are processed through the pipeline automatically:
 4. Compile database with full-text search
 5. Deploy to production
 
+### Automatic Scheduling
+
+Set up a cron job to automatically enqueue all sites for regular updates:
+
+```bash
+# Run every minute to enqueue oldest site
+* * * * * cd /path/to/clerk && uv run clerk update --next-site >> /var/log/clerk/auto-enqueue.log 2>&1
+```
+
+The auto-scheduler (`clerk update --next-site`):
+- Finds the site with the oldest `last_updated` timestamp
+- Skips sites updated within the last 23 hours
+- Enqueues with **normal priority** (one site per minute)
+- Exits silently if all sites recently updated
+- Self-heals: missed cron runs automatically catch up
+
+**Priority Model:**
+
+```bash
+# High priority (manual operations - jump to front)
+clerk new new-city.civic.band          # New site
+clerk update -s important-city         # Manual update
+
+# Normal priority (auto-scheduler and bulk - after high queue)
+clerk update --next-site               # Auto-scheduler
+clerk enqueue site1 site2 site3        # Bulk operations
+```
+
+With this setup:
+- All sites update approximately once per day (1440 sites/day capacity)
+- Manual updates jump ahead of auto-scheduled updates
+- Workers naturally distribute load across 24 hours
+
+**Monitoring:**
+
+```bash
+# View auto-enqueue log
+tail -f /var/log/clerk/auto-enqueue.log
+
+# Check which sites are in queues
+clerk status
+```
+
 ### Monitoring Progress
 
 #### Queue Status
