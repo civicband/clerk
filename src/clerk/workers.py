@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 from .db import civic_db_connection, get_site_by_subdomain
+from .output import log as output_log
 from .queue_db import (
     create_site_progress,
     increment_stage_progress,
@@ -27,11 +28,13 @@ def fetch_site_job(subdomain, all_years=False, all_agendas=False):
     from .cli import fetch_internal, get_fetcher
     from .queue import get_ocr_queue
 
-    logger.info(
-        "Starting fetch_site_job subdomain=%s all_years=%s all_agendas=%s",
-        subdomain,
-        all_years,
-        all_agendas,
+    start_time = time.time()
+    output_log(
+        "Starting fetch_site_job",
+        subdomain=subdomain,
+        job_type="fetch",
+        all_years=all_years,
+        all_agendas=all_agendas,
     )
 
     # Get site data
@@ -39,21 +42,21 @@ def fetch_site_job(subdomain, all_years=False, all_agendas=False):
         site = get_site_by_subdomain(conn, subdomain)
 
     if not site:
-        logger.error("Site not found: %s", subdomain)
+        output_log("Site not found", subdomain=subdomain, error=True)
         raise ValueError(f"Site not found: {subdomain}")
 
-    logger.info("Found site: %s (scraper=%s)", subdomain, site.get("scraper"))
+    output_log("Found site", subdomain=subdomain, scraper=site.get("scraper"))
 
     # Update progress to fetch stage
     with civic_db_connection() as conn:
         create_site_progress(conn, subdomain, "fetch")
-    logger.info("Created fetch progress for subdomain=%s", subdomain)
+    output_log("Created fetch progress", subdomain=subdomain, stage="fetch")
 
     # Perform fetch using existing logic
     fetcher = get_fetcher(site, all_years=all_years, all_agendas=all_agendas)
-    logger.info("Starting PDF fetch for subdomain=%s", subdomain)
+    output_log("Starting PDF fetch", subdomain=subdomain)
     fetch_internal(subdomain, fetcher)
-    logger.info("Completed PDF fetch for subdomain=%s", subdomain)
+    output_log("Completed PDF fetch", subdomain=subdomain)
 
     # Count PDFs that need OCR from both minutes and agendas directories
     storage_dir = os.getenv("STORAGE_DIR", "../sites")
@@ -65,11 +68,11 @@ def fetch_site_job(subdomain, all_years=False, all_agendas=False):
     # Collect minutes PDFs
     if minutes_pdf_dir.exists():
         minutes_pdfs = list(minutes_pdf_dir.glob("**/*.pdf"))
-        logger.info(
-            "Found %d minutes PDFs in %s for subdomain=%s",
-            len(minutes_pdfs),
-            minutes_pdf_dir,
-            subdomain,
+        output_log(
+            "Found minutes PDFs",
+            subdomain=subdomain,
+            count=len(minutes_pdfs),
+            directory=str(minutes_pdf_dir),
         )
         pdf_files.extend(minutes_pdfs)
     else:
@@ -78,29 +81,30 @@ def fetch_site_job(subdomain, all_years=False, all_agendas=False):
     # Collect agenda PDFs
     if agendas_pdf_dir.exists():
         agendas_pdfs = list(agendas_pdf_dir.glob("**/*.pdf"))
-        logger.info(
-            "Found %d agenda PDFs in %s for subdomain=%s",
-            len(agendas_pdfs),
-            agendas_pdf_dir,
-            subdomain,
+        output_log(
+            "Found agenda PDFs",
+            subdomain=subdomain,
+            count=len(agendas_pdfs),
+            directory=str(agendas_pdf_dir),
         )
         pdf_files.extend(agendas_pdfs)
     else:
         logger.info("Agendas PDF directory does not exist: %s", agendas_pdf_dir)
 
-    logger.info(
-        "Total PDFs found for OCR: %d (subdomain=%s)",
-        len(pdf_files),
-        subdomain,
+    output_log(
+        "Total PDFs found for OCR",
+        subdomain=subdomain,
+        total_pdfs=len(pdf_files),
     )
 
     # Update progress: moving to OCR stage
     with civic_db_connection() as conn:
         update_site_progress(conn, subdomain, stage="ocr", stage_total=len(pdf_files))
-    logger.info(
-        "Updated progress to OCR stage with %d total PDFs for subdomain=%s",
-        len(pdf_files),
-        subdomain,
+    output_log(
+        "Updated progress to OCR stage",
+        subdomain=subdomain,
+        stage="ocr",
+        stage_total=len(pdf_files),
     )
 
     # Spawn OCR jobs (fan-out)
@@ -108,7 +112,7 @@ def fetch_site_job(subdomain, all_years=False, all_agendas=False):
     ocr_job_ids = []
 
     ocr_backend = os.getenv("DEFAULT_OCR_BACKEND", "tesseract")
-    logger.info("Using OCR backend: %s for subdomain=%s", ocr_backend, subdomain)
+    output_log("Using OCR backend", subdomain=subdomain, backend=ocr_backend)
 
     for pdf_path in pdf_files:
         job = ocr_queue.enqueue(
@@ -131,10 +135,10 @@ def fetch_site_job(subdomain, all_years=False, all_agendas=False):
         with civic_db_connection() as conn:
             track_job(conn, job.id, subdomain, "ocr-page", "ocr")
 
-    logger.info(
-        "Enqueued %d OCR jobs for subdomain=%s",
-        len(ocr_job_ids),
-        subdomain,
+    output_log(
+        "Enqueued OCR jobs",
+        subdomain=subdomain,
+        job_count=len(ocr_job_ids),
     )
 
     # Spawn coordinator job that waits for ALL OCR jobs (fan-in)
@@ -154,11 +158,11 @@ def fetch_site_job(subdomain, all_years=False, all_agendas=False):
         with civic_db_connection() as conn:
             track_job(conn, coord_job.id, subdomain, "ocr-coordinator", "ocr")
 
-        logger.info(
-            "Enqueued OCR coordinator job %s for subdomain=%s (depends_on=%d OCR jobs)",
-            coord_job.id,
-            subdomain,
-            len(ocr_job_ids),
+        output_log(
+            "Enqueued OCR coordinator job",
+            subdomain=subdomain,
+            coordinator_job_id=coord_job.id,
+            depends_on_count=len(ocr_job_ids),
         )
     else:
         logger.warning(
@@ -166,7 +170,13 @@ def fetch_site_job(subdomain, all_years=False, all_agendas=False):
             subdomain,
         )
 
-    logger.info("Completed fetch_site_job for subdomain=%s", subdomain)
+    duration = time.time() - start_time
+    output_log(
+        "Completed fetch_site_job",
+        subdomain=subdomain,
+        duration_seconds=round(duration, 2),
+        total_pdfs=len(pdf_files),
+    )
 
 
 def ocr_page_job(subdomain, pdf_path, backend="tesseract"):
@@ -179,11 +189,14 @@ def ocr_page_job(subdomain, pdf_path, backend="tesseract"):
     """
     from .cli import get_fetcher
 
-    logger.info(
-        "Starting ocr_page_job subdomain=%s pdf=%s backend=%s",
-        subdomain,
-        pdf_path,
-        backend,
+    start_time = time.time()
+    path_obj = Path(pdf_path)
+    output_log(
+        "Starting ocr_page_job",
+        subdomain=subdomain,
+        job_type="ocr-page",
+        pdf_name=path_obj.name,
+        backend=backend,
     )
 
     # Get site to create a fetcher instance
@@ -191,7 +204,7 @@ def ocr_page_job(subdomain, pdf_path, backend="tesseract"):
         site = get_site_by_subdomain(conn, subdomain)
 
     if not site:
-        logger.error("Site not found: %s (in ocr_page_job)", subdomain)
+        output_log("Site not found in ocr_page_job", subdomain=subdomain, error=True)
         raise ValueError(f"Site not found: {subdomain}")
 
     # Create fetcher instance to use its OCR methods
@@ -200,7 +213,6 @@ def ocr_page_job(subdomain, pdf_path, backend="tesseract"):
 
     # Parse PDF path to extract meeting and date
     # Expected path format: {storage_dir}/{subdomain}/pdfs/{meeting}/{date}.pdf
-    path_obj = Path(pdf_path)
     date = path_obj.stem  # filename without .pdf
     meeting = path_obj.parent.name
 
@@ -224,18 +236,22 @@ def ocr_page_job(subdomain, pdf_path, backend="tesseract"):
 
     # Run OCR job without manifest (RQ tracks job failures)
     job_id = f"worker_ocr_{int(time.time())}"
-    logger.info(
-        "Running OCR job_id=%s for subdomain=%s pdf=%s",
-        job_id,
-        subdomain,
-        path_obj.name,
+    output_log(
+        "Running OCR",
+        subdomain=subdomain,
+        ocr_job_id=job_id,
+        pdf_name=path_obj.name,
+        backend=backend,
     )
     fetcher.do_ocr_job(job, None, job_id, backend=backend)
-    logger.info(
-        "Completed OCR job_id=%s for subdomain=%s pdf=%s",
-        job_id,
-        subdomain,
-        path_obj.name,
+
+    duration = time.time() - start_time
+    output_log(
+        "Completed OCR",
+        subdomain=subdomain,
+        ocr_job_id=job_id,
+        pdf_name=path_obj.name,
+        duration_seconds=round(duration, 2),
     )
 
     # Increment progress counter
@@ -256,12 +272,13 @@ def ocr_complete_coordinator(subdomain):
     """
     from .queue import get_compilation_queue, get_extraction_queue
 
-    logger.info("Starting ocr_complete_coordinator for subdomain=%s", subdomain)
+    start_time = time.time()
+    output_log("Starting ocr_complete_coordinator", subdomain=subdomain, job_type="ocr-coordinator")
 
     # Update progress: moving to compilation/extraction stage
     with civic_db_connection() as conn:
         update_site_progress(conn, subdomain, stage="extraction")
-    logger.info("Updated progress to extraction stage for subdomain=%s", subdomain)
+    output_log("Updated progress to extraction stage", subdomain=subdomain, stage="extraction")
 
     compilation_queue = get_compilation_queue()
     extraction_queue = get_extraction_queue()
@@ -278,10 +295,11 @@ def ocr_complete_coordinator(subdomain):
     # Track in PostgreSQL
     with civic_db_connection() as conn:
         track_job(conn, db_job.id, subdomain, "db-compilation-no-entities", "extraction")
-    logger.info(
-        "Enqueued DB compilation job (no entities) %s for subdomain=%s",
-        db_job.id,
-        subdomain,
+    output_log(
+        "Enqueued DB compilation job (no entities)",
+        subdomain=subdomain,
+        job_id=db_job.id,
+        extract_entities=False,
     )
 
     # Path 2: Entity extraction job (which will spawn db compilation WITH entities)
@@ -295,13 +313,18 @@ def ocr_complete_coordinator(subdomain):
     # Track in PostgreSQL
     with civic_db_connection() as conn:
         track_job(conn, extract_job.id, subdomain, "extract-site", "extraction")
-    logger.info(
-        "Enqueued entity extraction job %s for subdomain=%s",
-        extract_job.id,
-        subdomain,
+    output_log(
+        "Enqueued entity extraction job",
+        subdomain=subdomain,
+        job_id=extract_job.id,
     )
 
-    logger.info("Completed ocr_complete_coordinator for subdomain=%s", subdomain)
+    duration = time.time() - start_time
+    output_log(
+        "Completed ocr_complete_coordinator",
+        subdomain=subdomain,
+        duration_seconds=round(duration, 2),
+    )
 
 
 def db_compilation_job(subdomain, extract_entities):
@@ -314,10 +337,12 @@ def db_compilation_job(subdomain, extract_entities):
     from .queue import get_deploy_queue
     from .utils import build_db_from_text_internal
 
-    logger.info(
-        "Starting db_compilation_job subdomain=%s extract_entities=%s",
-        subdomain,
-        extract_entities,
+    start_time = time.time()
+    output_log(
+        "Starting db_compilation_job",
+        subdomain=subdomain,
+        job_type="db-compilation",
+        extract_entities=extract_entities,
     )
 
     # Count text files to process
@@ -326,11 +351,11 @@ def db_compilation_job(subdomain, extract_entities):
 
     if txt_dir.exists():
         txt_files = list(txt_dir.glob("**/*.txt"))
-        logger.info(
-            "Found %d text files in %s for subdomain=%s",
-            len(txt_files),
-            txt_dir,
-            subdomain,
+        output_log(
+            "Found text files for compilation",
+            subdomain=subdomain,
+            count=len(txt_files),
+            directory=str(txt_dir),
         )
     else:
         txt_files = []
@@ -342,23 +367,24 @@ def db_compilation_job(subdomain, extract_entities):
     logger.debug("Updated extraction progress with %d total files", len(txt_files))
 
     # Build database
-    logger.info(
-        "Building database for subdomain=%s (extract_entities=%s)",
-        subdomain,
-        extract_entities,
+    output_log(
+        "Building database",
+        subdomain=subdomain,
+        extract_entities=extract_entities,
+        text_file_count=len(txt_files),
     )
     build_db_from_text_internal(subdomain, extract_entities=extract_entities, ignore_cache=False)
-    logger.info(
-        "Completed database build for subdomain=%s (extract_entities=%s)",
-        subdomain,
-        extract_entities,
+    output_log(
+        "Completed database build",
+        subdomain=subdomain,
+        extract_entities=extract_entities,
     )
 
     # Both paths spawn deploy (may deploy twice - once for fast path, once for entities path)
     # Update progress: moving to deploy stage
     with civic_db_connection() as conn:
         update_site_progress(conn, subdomain, stage="deploy", stage_total=1)
-    logger.info("Updated progress to deploy stage for subdomain=%s", subdomain)
+    output_log("Updated progress to deploy stage", subdomain=subdomain, stage="deploy")
 
     # Spawn deploy job
     deploy_queue = get_deploy_queue()
@@ -369,12 +395,14 @@ def db_compilation_job(subdomain, extract_entities):
     # Track in PostgreSQL
     with civic_db_connection() as conn:
         track_job(conn, job.id, subdomain, "deploy-site", "deploy")
-    logger.info("Enqueued deploy job %s for subdomain=%s", job.id, subdomain)
+    output_log("Enqueued deploy job", subdomain=subdomain, job_id=job.id)
 
-    logger.info(
-        "Completed db_compilation_job for subdomain=%s (extract_entities=%s)",
-        subdomain,
-        extract_entities,
+    duration = time.time() - start_time
+    output_log(
+        "Completed db_compilation_job",
+        subdomain=subdomain,
+        extract_entities=extract_entities,
+        duration_seconds=round(duration, 2),
     )
 
 
@@ -387,7 +415,8 @@ def extraction_job(subdomain):
     from .extraction import extract_entities_from_text
     from .queue import get_compilation_queue
 
-    logger.info("Starting extraction_job for subdomain=%s", subdomain)
+    start_time = time.time()
+    output_log("Starting extraction_job", subdomain=subdomain, job_type="extraction")
 
     # Count text files to process
     storage_dir = os.getenv("STORAGE_DIR", "../sites")
@@ -395,11 +424,11 @@ def extraction_job(subdomain):
 
     if txt_dir.exists():
         txt_files = list(txt_dir.glob("**/*.txt"))
-        logger.info(
-            "Found %d text files in %s for extraction (subdomain=%s)",
-            len(txt_files),
-            txt_dir,
-            subdomain,
+        output_log(
+            "Found text files for extraction",
+            subdomain=subdomain,
+            count=len(txt_files),
+            directory=str(txt_dir),
         )
     else:
         txt_files = []
@@ -415,9 +444,9 @@ def extraction_job(subdomain):
     logger.debug("Updated extraction progress with %d total files", len(txt_files))
 
     # Extract entities (this caches them to disk)
-    logger.info("Extracting entities for subdomain=%s", subdomain)
+    output_log("Extracting entities", subdomain=subdomain, text_file_count=len(txt_files))
     extract_entities_from_text(subdomain)
-    logger.info("Completed entity extraction for subdomain=%s", subdomain)
+    output_log("Completed entity extraction", subdomain=subdomain)
 
     # Spawn database compilation WITH entities (to compilation queue, may run on different machine)
     compilation_queue = get_compilation_queue()
@@ -432,13 +461,18 @@ def extraction_job(subdomain):
     # Track in PostgreSQL
     with civic_db_connection() as conn:
         track_job(conn, job.id, subdomain, "db-compilation-with-entities", "extraction")
-    logger.info(
-        "Enqueued DB compilation job (with entities) %s for subdomain=%s",
-        job.id,
-        subdomain,
+    output_log(
+        "Enqueued DB compilation job (with entities)",
+        subdomain=subdomain,
+        job_id=job.id,
     )
 
-    logger.info("Completed extraction_job for subdomain=%s", subdomain)
+    duration = time.time() - start_time
+    output_log(
+        "Completed extraction_job",
+        subdomain=subdomain,
+        duration_seconds=round(duration, 2),
+    )
 
 
 def deploy_job(subdomain):
@@ -449,17 +483,23 @@ def deploy_job(subdomain):
     """
     from .utils import pm
 
-    logger.info("Starting deploy_job for subdomain=%s", subdomain)
+    start_time = time.time()
+    output_log("Starting deploy_job", subdomain=subdomain, job_type="deploy")
 
     # Use existing deploy logic
-    logger.info("Running deploy hook for subdomain=%s", subdomain)
+    output_log("Running deploy hook", subdomain=subdomain)
     pm.hook.deploy_municipality(subdomain=subdomain)
-    logger.info("Completed deploy hook for subdomain=%s", subdomain)
+    output_log("Completed deploy hook", subdomain=subdomain)
 
     # Mark complete
     with civic_db_connection() as conn:
         update_site_progress(conn, subdomain, stage="completed", stage_total=1)
         increment_stage_progress(conn, subdomain)
-    logger.info("Marked site as completed for subdomain=%s", subdomain)
+    output_log("Marked site as completed", subdomain=subdomain, stage="completed")
 
-    logger.info("Completed deploy_job for subdomain=%s", subdomain)
+    duration = time.time() - start_time
+    output_log(
+        "Completed deploy_job",
+        subdomain=subdomain,
+        duration_seconds=round(duration, 2),
+    )
