@@ -72,6 +72,44 @@ class TestLog:
         assert len(caplog.records) == 1
         assert caplog.records[0].levelname == "INFO"
 
+    def test_log_includes_run_id_in_extra(self, caplog):
+        """Test that run_id is passed to logger.info as extra field."""
+        with caplog.at_level(logging.INFO):
+            output.log("test message", subdomain="test", run_id="test_123_abc")
+
+        assert len(caplog.records) == 1
+        record = caplog.records[0]
+        assert record.run_id == "test_123_abc"
+
+    def test_log_includes_stage_in_extra(self, caplog):
+        """Test that stage is passed to logger.info as extra field."""
+        with caplog.at_level(logging.INFO):
+            output.log("test message", subdomain="test", stage="fetch")
+
+        assert len(caplog.records) == 1
+        record = caplog.records[0]
+        assert record.stage == "fetch"
+
+    def test_log_includes_job_ids_in_extra(self, caplog):
+        """Test that job_id and parent_job_id are passed as extra fields."""
+        with caplog.at_level(logging.INFO):
+            output.log("test message", subdomain="test", job_id="job-123", parent_job_id="job-456")
+
+        assert len(caplog.records) == 1
+        record = caplog.records[0]
+        assert record.job_id == "job-123"
+        assert record.parent_job_id == "job-456"
+
+    def test_log_excludes_none_values(self, caplog):
+        """Test that None values are not included in extra dict."""
+        with caplog.at_level(logging.INFO):
+            output.log("test message", subdomain="test", run_id=None, stage=None)
+
+        assert len(caplog.records) == 1
+        record = caplog.records[0]
+        assert not hasattr(record, 'run_id')
+        assert not hasattr(record, 'stage')
+
 
 class TestConfigure:
     """Tests for the configure() function."""

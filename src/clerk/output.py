@@ -27,7 +27,16 @@ def configure(quiet: bool | None = None, subdomain: str | None = None):
         _default_subdomain = subdomain
 
 
-def log(message: str, subdomain: str | None = None, level: str = "info", **kwargs):
+def log(
+    message: str,
+    subdomain: str | None = None,
+    level: str = "info",
+    run_id: str | None = None,
+    stage: str | None = None,
+    job_id: str | None = None,
+    parent_job_id: str | None = None,
+    **kwargs,
+):
     """Unified logging + click output.
 
     - Always logs to Python logging (-> Loki if configured)
@@ -37,6 +46,10 @@ def log(message: str, subdomain: str | None = None, level: str = "info", **kwarg
         message: The message to log/display
         subdomain: Optional subdomain prefix (uses default if not provided)
         level: Log level - "debug", "info", "warning", "error"
+        run_id: Pipeline execution identifier
+        stage: Current pipeline stage (fetch/ocr/compilation/extraction/deploy)
+        job_id: Current RQ job ID
+        parent_job_id: Parent RQ job ID for spawned jobs
         **kwargs: Additional structured fields for logging
     """
     sub = subdomain or _default_subdomain
@@ -45,6 +58,17 @@ def log(message: str, subdomain: str | None = None, level: str = "info", **kwarg
     extra: dict = {}
     if sub:
         extra["subdomain"] = sub
+
+    # Add structured logging fields (only if not None)
+    if run_id is not None:
+        extra["run_id"] = run_id
+    if stage is not None:
+        extra["stage"] = stage
+    if job_id is not None:
+        extra["job_id"] = job_id
+    if parent_job_id is not None:
+        extra["parent_job_id"] = parent_job_id
+
     if kwargs:
         extra.update(kwargs)
 
