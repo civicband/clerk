@@ -351,26 +351,22 @@ def db_compilation_job(subdomain, extract_entities):
         extract_entities,
     )
 
-    # Both paths complete → spawn deploy
-    # Note: In the actual implementation, we would need coordination to ensure
-    # both db compilation jobs complete before deploying. For now, the WITH entities
-    # path will be the one that triggers deploy since it runs last.
-    if extract_entities:
-        # Update progress: moving to deploy stage
-        with civic_db_connection() as conn:
-            update_site_progress(conn, subdomain, stage="deploy", stage_total=1)
-        logger.info("Updated progress to deploy stage for subdomain=%s", subdomain)
+    # Both paths spawn deploy (may deploy twice - once for fast path, once for entities path)
+    # Update progress: moving to deploy stage
+    with civic_db_connection() as conn:
+        update_site_progress(conn, subdomain, stage="deploy", stage_total=1)
+    logger.info("Updated progress to deploy stage for subdomain=%s", subdomain)
 
-        # Spawn deploy job
-        deploy_queue = get_deploy_queue()
-        job = deploy_queue.enqueue(
-            deploy_job, subdomain=subdomain, job_timeout="10m", description=f"Deploy: {subdomain}"
-        )
+    # Spawn deploy job
+    deploy_queue = get_deploy_queue()
+    job = deploy_queue.enqueue(
+        deploy_job, subdomain=subdomain, job_timeout="10m", description=f"Deploy: {subdomain}"
+    )
 
-        # Track in PostgreSQL
-        with civic_db_connection() as conn:
-            track_job(conn, job.id, subdomain, "deploy-site", "deploy")
-        logger.info("Enqueued deploy job %s for subdomain=%s", job.id, subdomain)
+    # Track in PostgreSQL
+    with civic_db_connection() as conn:
+        track_job(conn, job.id, subdomain, "deploy-site", "deploy")
+    logger.info("Enqueued deploy job %s for subdomain=%s", job.id, subdomain)
 
     logger.info(
         "Completed db_compilation_job for subdomain=%s (extract_entities=%s)",
