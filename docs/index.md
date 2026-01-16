@@ -18,6 +18,7 @@ A Python library for managing civic data pipelines for civic.band. Clerk handles
 :maxdepth: 2
 :caption: Contents
 
+setup/index
 getting-started/index
 user-guide/index
 developer-guide/index
