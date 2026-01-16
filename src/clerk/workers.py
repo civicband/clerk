@@ -3,6 +3,7 @@
 import logging
 import os
 import time
+import traceback
 from pathlib import Path
 
 from .db import civic_db_connection, get_site_by_subdomain
@@ -15,6 +16,37 @@ from .queue_db import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def log_with_context(message, subdomain, run_id=None, stage=None, **kwargs):
+    """Log with automatic run_id, stage, job_id context.
+
+    Args:
+        message: Log message
+        subdomain: Site subdomain
+        run_id: Pipeline run identifier (optional)
+        stage: Pipeline stage (fetch/ocr/compilation/extraction/deploy) (optional)
+        **kwargs: Additional structured fields for logging
+    """
+    from rq import get_current_job
+
+    job = get_current_job()
+    job_id = job.id if job else None
+
+    # Get parent_job_id if this job has a dependency
+    parent_job_id = None
+    if job and hasattr(job, 'dependency_id'):
+        parent_job_id = job.dependency_id
+
+    output_log(
+        message,
+        subdomain=subdomain,
+        run_id=run_id,
+        stage=stage,
+        job_id=job_id,
+        parent_job_id=parent_job_id,
+        **kwargs
+    )
 
 
 def fetch_site_job(subdomain, all_years=False, all_agendas=False):
@@ -327,83 +359,132 @@ def ocr_complete_coordinator(subdomain):
     )
 
 
-def db_compilation_job(subdomain, extract_entities):
+def db_compilation_job(subdomain, run_id=None, extract_entities=False, ignore_cache=False):
     """RQ job: Compile database from text files.
 
     Args:
         subdomain: Site subdomain
-        extract_entities: Whether to include entity extraction
+        run_id: Pipeline run identifier (optional for backward compatibility)
+        extract_entities: Whether to include entity extraction (default: False)
+        ignore_cache: Whether to ignore cache (default: False)
     """
     from .queue import get_deploy_queue
     from .utils import build_db_from_text_internal
 
+    stage = "compilation"
     start_time = time.time()
-    output_log(
-        "Starting db_compilation_job",
+
+    # Milestone: started
+    log_with_context(
+        "compilation_started",
         subdomain=subdomain,
-        job_type="db-compilation",
+        run_id=run_id,
+        stage=stage,
         extract_entities=extract_entities,
+        ignore_cache=ignore_cache,
     )
 
-    # Count text files to process
-    storage_dir = os.getenv("STORAGE_DIR", "../sites")
-    txt_dir = Path(f"{storage_dir}/{subdomain}/txt")
+    try:
+        # Count text files to process
+        storage_dir = os.getenv("STORAGE_DIR", "../sites")
+        txt_dir = Path(f"{storage_dir}/{subdomain}/txt")
 
-    if txt_dir.exists():
-        txt_files = list(txt_dir.glob("**/*.txt"))
-        output_log(
-            "Found text files for compilation",
+        if txt_dir.exists():
+            txt_files = list(txt_dir.glob("**/*.txt"))
+            log_with_context(
+                "Found text files for compilation",
+                subdomain=subdomain,
+                run_id=run_id,
+                stage=stage,
+                count=len(txt_files),
+                directory=str(txt_dir),
+            )
+        else:
+            txt_files = []
+            logger.warning("Text directory does not exist: %s for subdomain=%s", txt_dir, subdomain)
+
+        # Update progress counter
+        with civic_db_connection() as conn:
+            update_site_progress(conn, subdomain, stage="extraction", stage_total=len(txt_files))
+        logger.debug("Updated extraction progress with %d total files", len(txt_files))
+
+        # Build database
+        log_with_context(
+            "Building database",
             subdomain=subdomain,
-            count=len(txt_files),
-            directory=str(txt_dir),
+            run_id=run_id,
+            stage=stage,
+            extract_entities=extract_entities,
+            text_file_count=len(txt_files),
         )
-    else:
-        txt_files = []
-        logger.warning("Text directory does not exist: %s for subdomain=%s", txt_dir, subdomain)
+        build_db_from_text_internal(subdomain, extract_entities=extract_entities, ignore_cache=ignore_cache)
+        log_with_context(
+            "Completed database build",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            extract_entities=extract_entities,
+        )
 
-    # Update progress counter
-    with civic_db_connection() as conn:
-        update_site_progress(conn, subdomain, stage="extraction", stage_total=len(txt_files))
-    logger.debug("Updated extraction progress with %d total files", len(txt_files))
+        # Both paths spawn deploy (may deploy twice - once for fast path, once for entities path)
+        # Update progress: moving to deploy stage
+        with civic_db_connection() as conn:
+            update_site_progress(conn, subdomain, stage="deploy", stage_total=1)
+        log_with_context(
+            "Updated progress to deploy stage",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+        )
 
-    # Build database
-    output_log(
-        "Building database",
-        subdomain=subdomain,
-        extract_entities=extract_entities,
-        text_file_count=len(txt_files),
-    )
-    build_db_from_text_internal(subdomain, extract_entities=extract_entities, ignore_cache=False)
-    output_log(
-        "Completed database build",
-        subdomain=subdomain,
-        extract_entities=extract_entities,
-    )
+        # Spawn deploy job
+        deploy_queue = get_deploy_queue()
+        job = deploy_queue.enqueue(
+            deploy_job,
+            subdomain=subdomain,
+            run_id=run_id,
+            job_timeout="10m",
+            description=f"Deploy: {subdomain}"
+        )
 
-    # Both paths spawn deploy (may deploy twice - once for fast path, once for entities path)
-    # Update progress: moving to deploy stage
-    with civic_db_connection() as conn:
-        update_site_progress(conn, subdomain, stage="deploy", stage_total=1)
-    output_log("Updated progress to deploy stage", subdomain=subdomain, stage="deploy")
+        # Track in PostgreSQL
+        with civic_db_connection() as conn:
+            track_job(conn, job.id, subdomain, "deploy-site", "deploy")
+        log_with_context(
+            "Enqueued deploy job",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            deploy_job_id=job.id,
+        )
 
-    # Spawn deploy job
-    deploy_queue = get_deploy_queue()
-    job = deploy_queue.enqueue(
-        deploy_job, subdomain=subdomain, job_timeout="10m", description=f"Deploy: {subdomain}"
-    )
+        # Milestone: completed
+        duration = time.time() - start_time
+        log_with_context(
+            "compilation_completed",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            extract_entities=extract_entities,
+            duration_seconds=round(duration, 2),
+            text_file_count=len(txt_files),
+        )
 
-    # Track in PostgreSQL
-    with civic_db_connection() as conn:
-        track_job(conn, job.id, subdomain, "deploy-site", "deploy")
-    output_log("Enqueued deploy job", subdomain=subdomain, job_id=job.id)
-
-    duration = time.time() - start_time
-    output_log(
-        "Completed db_compilation_job",
-        subdomain=subdomain,
-        extract_entities=extract_entities,
-        duration_seconds=round(duration, 2),
-    )
+    except Exception as e:
+        duration = time.time() - start_time
+        log_with_context(
+            f"compilation_failed: {e}",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            level="error",
+            duration_seconds=round(duration, 2),
+            extract_entities=extract_entities,
+            error_type=type(e).__name__,
+            error_message=str(e),
+            traceback=traceback.format_exc()
+        )
+        raise
 
 
 def extraction_job(subdomain):
