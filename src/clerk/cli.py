@@ -1319,7 +1319,7 @@ def purge_queue(queue_name):
 
 
 @cli.command()
-@click.argument("worker_type", type=click.Choice(["fetch", "ocr", "extraction", "deploy"]))
+@click.argument("worker_type", type=click.Choice(["fetch", "ocr", "compilation", "extraction", "deploy"]))
 @click.option("--num-workers", "-n", type=int, default=1, help="Number of workers to start")
 @click.option("--burst", is_flag=True, help="Exit when queue empty (for testing)")
 def worker(worker_type, num_workers, burst):
@@ -1329,6 +1329,7 @@ def worker(worker_type, num_workers, burst):
     from rq.worker_pool import WorkerPool
 
     from .queue import (
+        get_compilation_queue,
         get_deploy_queue,
         get_extraction_queue,
         get_fetch_queue,
@@ -1348,6 +1349,7 @@ def worker(worker_type, num_workers, burst):
     queue_map = {
         "fetch": [get_high_queue(), get_fetch_queue()],
         "ocr": [get_high_queue(), get_ocr_queue()],
+        "compilation": [get_high_queue(), get_compilation_queue()],
         "extraction": [get_high_queue(), get_extraction_queue()],
         "deploy": [get_high_queue(), get_deploy_queue()],
     }
