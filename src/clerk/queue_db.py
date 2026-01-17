@@ -65,12 +65,14 @@ def update_site_progress(conn, subdomain, stage=None, stage_total=None):
         stage: New stage (optional)
         stage_total: Total items in stage (optional)
     """
-    updates = {"updated_at": datetime.now(UTC)}
+    updates = {
+        "updated_at": datetime.now(UTC),
+    }
     if stage:
         updates["current_stage"] = stage
     if stage_total is not None:
         updates["stage_total"] = stage_total
-        updates["stage_completed"] = 0  # Reset counter
+        updates["stage_completed"] = 0  # type: ignore # Reset counter
 
     stmt = (
         update(site_progress_table)

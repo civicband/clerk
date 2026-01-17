@@ -21,6 +21,7 @@ load_dotenv()
 
 # ruff: noqa: E402
 from . import output
+from .fetcher import Fetcher
 from .output import log
 from .plugin_loader import load_plugins_from_directory
 from .utils import assert_db_exists, build_db_from_text_internal, build_table_from_text, pm
@@ -383,7 +384,7 @@ def update_site_internal(
     pm.hook.post_deploy(site=site)
 
 
-def get_fetcher(site, all_years=False, all_agendas=False):
+def get_fetcher(site, all_years=False, all_agendas=False) -> Fetcher | None:
     start_year = site["start_year"]
     fetcher_class = None
     try:
@@ -603,7 +604,7 @@ def update_page_count(subdomain):
 def remove_all_image_dirs():
     """Remove image directories for all sites"""
     sites_db = assert_db_exists()
-    for site in sites_db.query("select subdomain from sites order by subdomain"):
+    for site in sites_db.query("select subdomain from sites order by subdomain"):  # type: ignore
         subdomain = site["subdomain"]
         log("Removing image dir", subdomain=subdomain)
         image_dir = f"{STORAGE_DIR}/{subdomain}/images"
