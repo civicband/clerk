@@ -2356,7 +2356,7 @@ def check_failed(queue, limit, output_json):
                 for line in job_info["exc_info"].split("\n"):
                     click.echo(f"     {line}")
             else:
-                click.secho("   (No exception info available)", fg="dim")
+                click.secho("   (No exception info available)", dim=True)
             click.echo()
 
 
