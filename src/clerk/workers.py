@@ -4,11 +4,13 @@ import logging
 import os
 import time
 import traceback
+from datetime import datetime
 from pathlib import Path
 
 from rq import get_current_job
 
-from .db import civic_db_connection, get_site_by_subdomain
+from .db import civic_db_connection, get_site_by_subdomain, update_site
+from .fetcher import Fetcher
 from .output import log as output_log
 from .queue_db import (
     create_site_progress,
@@ -41,7 +43,7 @@ def log_with_context(message, subdomain, run_id=None, stage=None, **kwargs):
     # Get parent_job_id if this job has a dependency (unless already in kwargs)
     if "parent_job_id" not in kwargs:
         if job and hasattr(job, "dependency_id"):
-            kwargs["parent_job_id"] = job.dependency_id
+            kwargs["parent_job_id"] = job.dependency_id  # type: ignore
         else:
             kwargs["parent_job_id"] = None
 
@@ -167,6 +169,15 @@ def fetch_site_job(
         # Update progress: moving to OCR stage
         with civic_db_connection() as conn:
             update_site_progress(conn, subdomain, stage="ocr", stage_total=len(pdf_files))
+            # Update legacy status field for backward compatibility
+            update_site(
+                conn,
+                subdomain,
+                {
+                    "status": "needs_ocr",
+                    "last_updated": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                },
+            )
         log_with_context(
             "Updated progress to OCR stage",
             subdomain=subdomain,
@@ -319,7 +330,7 @@ def ocr_page_job(subdomain, pdf_path, backend="tesseract", run_id=None):
             raise ValueError(f"Site not found: {subdomain}")
 
         # Create fetcher instance to use its OCR methods
-        fetcher = get_fetcher(site)
+        fetcher: Fetcher | None = get_fetcher(site)
         logger.debug("Created fetcher for subdomain=%s", subdomain)
 
         # Parse PDF path to extract meeting and date
@@ -356,7 +367,7 @@ def ocr_page_job(subdomain, pdf_path, backend="tesseract", run_id=None):
             pdf_name=path_obj.name,
             backend=backend,
         )
-        fetcher.do_ocr_job(job, None, job_id, backend=backend)
+        fetcher.do_ocr_job(job, None, job_id, backend=backend)  # type: ignore
 
         duration = time.time() - start_time
         log_with_context(
@@ -414,6 +425,15 @@ def ocr_complete_coordinator(subdomain, run_id):
         # Update progress: moving to compilation/extraction stage
         with civic_db_connection() as conn:
             update_site_progress(conn, subdomain, stage="extraction")
+            # Update legacy status field for backward compatibility
+            update_site(
+                conn,
+                subdomain,
+                {
+                    "status": "needs_extraction",
+                    "last_updated": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                },
+            )
         log_with_context(
             "Updated progress to extraction stage",
             subdomain=subdomain,
@@ -561,10 +581,39 @@ def db_compilation_job(subdomain, run_id=None, extract_entities=False, ignore_ca
             extract_entities=extract_entities,
         )
 
+        # Update page count in civic.db from meetings.db
+        from .cli import rebuild_site_fts_internal, update_page_count
+
+        log_with_context(
+            "Updating page count",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+        )
+        update_page_count(subdomain)
+
+        # Rebuild full-text search indexes
+        log_with_context(
+            "Rebuilding FTS indexes",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+        )
+        rebuild_site_fts_internal(subdomain)
+
         # Both paths spawn deploy (may deploy twice - once for fast path, once for entities path)
         # Update progress: moving to deploy stage
         with civic_db_connection() as conn:
             update_site_progress(conn, subdomain, stage="deploy", stage_total=1)
+            # Update legacy status field for backward compatibility
+            update_site(
+                conn,
+                subdomain,
+                {
+                    "status": "needs_deploy",
+                    "last_updated": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                },
+            )
         log_with_context(
             "Updated progress to deploy stage",
             subdomain=subdomain,
@@ -758,6 +807,13 @@ def deploy_job(subdomain, run_id=None):
     log_with_context("deploy_started", subdomain=subdomain, run_id=run_id, stage=stage)
 
     try:
+        # Get site data for post_deploy hook
+        with civic_db_connection() as conn:
+            site = get_site_by_subdomain(conn, subdomain)
+
+        if not site:
+            raise ValueError(f"Site not found: {subdomain}")
+
         # Use existing deploy logic
         log_with_context("Running deploy hook", subdomain=subdomain, run_id=run_id, stage=stage)
         pm.hook.deploy_municipality(subdomain=subdomain)
@@ -767,8 +823,26 @@ def deploy_job(subdomain, run_id=None):
         with civic_db_connection() as conn:
             update_site_progress(conn, subdomain, stage="completed", stage_total=1)
             increment_stage_progress(conn, subdomain)
+            # Update legacy status field for backward compatibility
+            update_site(
+                conn,
+                subdomain,
+                {
+                    "status": "deployed",
+                    "last_updated": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                },
+            )
         log_with_context(
             "Marked site as completed", subdomain=subdomain, run_id=run_id, stage=stage
+        )
+
+        # Run post-deploy hook (creates sites.db, uploads to production, updates civic.observer)
+        log_with_context(
+            "Running post_deploy hook", subdomain=subdomain, run_id=run_id, stage=stage
+        )
+        pm.hook.post_deploy(site=site)
+        log_with_context(
+            "Completed post_deploy hook", subdomain=subdomain, run_id=run_id, stage=stage
         )
 
         duration = time.time() - start_time

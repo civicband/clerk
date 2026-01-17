@@ -603,7 +603,7 @@ def update_page_count(subdomain):
 def remove_all_image_dirs():
     """Remove image directories for all sites"""
     sites_db = assert_db_exists()
-    for site in sites_db.query("select subdomain from sites order by subdomain"):
+    for site in sites_db.query("select subdomain from sites order by subdomain"):  # type: ignore
         subdomain = site["subdomain"]
         log("Removing image dir", subdomain=subdomain)
         image_dir = f"{STORAGE_DIR}/{subdomain}/images"
