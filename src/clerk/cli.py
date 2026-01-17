@@ -224,7 +224,9 @@ def new(ocr_backend="tesseract"):
 )
 def update(subdomain, next_site, all_years, skip_fetch, all_agendas, backfill, ocr_backend):
     """Update a site."""
-    from .db import civic_db_connection, get_oldest_site, get_site_by_subdomain
+    import datetime
+
+    from .db import civic_db_connection, get_oldest_site, get_site_by_subdomain, upsert_site
     from .queue import enqueue_job
 
     if next_site:
@@ -235,6 +237,18 @@ def update(subdomain, next_site, all_years, skip_fetch, all_agendas, backfill, o
             return
 
         click.echo(f"Auto-enqueueing {oldest_subdomain}")
+
+        # Update last_updated BEFORE enqueueing to prevent race condition
+        # (multiple cron runs picking the same site)
+        with civic_db_connection() as conn:
+            upsert_site(
+                conn,
+                {
+                    "subdomain": oldest_subdomain,
+                    "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                },
+            )
+
         enqueue_job("fetch-site", oldest_subdomain, priority="normal")
         return
 
