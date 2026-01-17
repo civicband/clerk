@@ -25,7 +25,11 @@ from datetime import UTC
 from . import output
 from .output import log
 from .plugin_loader import load_plugins_from_directory
+from .sentry import init_sentry
 from .utils import assert_db_exists, build_db_from_text_internal, build_table_from_text, pm
+
+# Initialize Sentry for error tracking (if SENTRY_DSN is configured)
+init_sentry()
 
 logger = logging.getLogger(__name__)
 
