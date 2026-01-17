@@ -2149,14 +2149,22 @@ def cleanup_orphaned(reset, reenqueue, max_age, output_json):
             SELECT subdomain, status, last_updated
             FROM sites
             WHERE status IN ('fetching', 'needs_ocr', 'needs_extraction', 'needs_deploy', 'extracting')
-              AND last_updated < :cutoff_time
+              AND last_updated::timestamp < :cutoff_time
             ORDER BY last_updated ASC
         """)
 
         for row in conn.execute(query, {"cutoff_time": cutoff_time}):
             subdomain = row[0]
             status = row[1]
-            last_updated = row[2]
+            last_updated_str = row[2]
+
+            # Parse last_updated string to datetime for stale calculation
+            last_updated = None
+            if last_updated_str:
+                try:
+                    last_updated = datetime.fromisoformat(last_updated_str).replace(tzinfo=UTC)
+                except Exception:
+                    pass
 
             # Check if there are any jobs for this site in any queue
             jobs = get_jobs_for_site(conn, subdomain)
@@ -2183,7 +2191,7 @@ def cleanup_orphaned(reset, reenqueue, max_age, output_json):
                     {
                         "subdomain": subdomain,
                         "status": status,
-                        "last_updated": str(last_updated),
+                        "last_updated": last_updated_str if last_updated_str else "unknown",
                         "stale_for": str(datetime.now(UTC) - last_updated)
                         if last_updated
                         else "unknown",
