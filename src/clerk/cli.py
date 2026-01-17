@@ -2309,6 +2309,8 @@ def check_failed(queue, limit, output_json):
                     "status": job.get_status(),
                     "created_at": str(job.created_at) if job.created_at else None,
                     "ended_at": str(job.ended_at) if job.ended_at else None,
+                    "args": job.args,
+                    "kwargs": job.kwargs,
                     "meta": job.meta,
                 }
             )
@@ -2345,12 +2347,19 @@ def check_failed(queue, limit, output_json):
             click.secho(f"{i}. {job_info['description']}", fg="yellow", bold=True)
             click.echo(f"   Job ID: {job_info['job_id']}")
             click.echo(f"   Status: {job_info.get('status', 'unknown')}")
+
+            # Show job arguments (subdomain, pdf_path, etc.)
+            if job_info.get("kwargs"):
+                kwargs = job_info["kwargs"]
+                if "subdomain" in kwargs:
+                    click.echo(f"   Subdomain: {kwargs['subdomain']}")
+                if "pdf_path" in kwargs:
+                    click.echo(f"   PDF Path: {kwargs['pdf_path']}")
+
             if job_info.get("created_at"):
                 click.echo(f"   Created: {job_info['created_at']}")
             if job_info.get("ended_at"):
                 click.echo(f"   Ended: {job_info['ended_at']}")
-            if job_info.get("meta"):
-                click.echo(f"   Meta: {job_info['meta']}")
             if job_info["exc_info"]:
                 click.secho("   Error:", fg="red")
                 for line in job_info["exc_info"].split("\n"):
