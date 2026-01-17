@@ -1367,15 +1367,29 @@ def worker(worker_type, num_workers, burst):
         "deploy": [get_high_queue(), get_deploy_queue()],
     }
 
+    # Default job timeouts per worker type (for jobs without explicit timeout)
+    # Note: Individual jobs can override with job_timeout parameter when enqueuing
+    timeout_map = {
+        "fetch": 600,  # 10 minutes - fetching PDFs from city websites
+        "ocr": 1800,  # 30 minutes - OCR can be slow, especially with Vision
+        "compilation": 3600,  # 1 hour - database compilation with large datasets
+        "extraction": 7200,  # 2 hours - LLM-based entity extraction
+        "deploy": 600,  # 10 minutes - S3 upload and CDN deployment
+    }
+
     queues = queue_map[worker_type]
+    default_timeout = timeout_map[worker_type]
 
     if num_workers == 1:
         # Single worker
-        worker_instance = Worker(queues, connection=get_redis())
+        worker_instance = Worker(queues, connection=get_redis(), default_worker_ttl=default_timeout)
         worker_instance.work(with_scheduler=True, burst=burst)
     else:
         # Worker pool for multiple workers
-        with WorkerPool(queues, num_workers=num_workers, connection=get_redis()) as pool:
+        # WorkerPool passes **kwargs to Worker constructor, so we can pass default_worker_ttl
+        with WorkerPool(
+            queues, num_workers=num_workers, connection=get_redis(), default_worker_ttl=default_timeout
+        ) as pool:
             pool.start()
 
 
