@@ -776,6 +776,13 @@ def deploy_job(subdomain, run_id=None):
     log_with_context("deploy_started", subdomain=subdomain, run_id=run_id, stage=stage)
 
     try:
+        # Get site data for post_deploy hook
+        with civic_db_connection() as conn:
+            site = get_site_by_subdomain(conn, subdomain)
+
+        if not site:
+            raise ValueError(f"Site not found: {subdomain}")
+
         # Use existing deploy logic
         log_with_context("Running deploy hook", subdomain=subdomain, run_id=run_id, stage=stage)
         pm.hook.deploy_municipality(subdomain=subdomain)
@@ -793,6 +800,11 @@ def deploy_job(subdomain, run_id=None):
         log_with_context(
             "Marked site as completed", subdomain=subdomain, run_id=run_id, stage=stage
         )
+
+        # Run post-deploy hook (creates sites.db, uploads to production, updates civic.observer)
+        log_with_context("Running post_deploy hook", subdomain=subdomain, run_id=run_id, stage=stage)
+        pm.hook.post_deploy(site=site)
+        log_with_context("Completed post_deploy hook", subdomain=subdomain, run_id=run_id, stage=stage)
 
         duration = time.time() - start_time
         log_with_context(
