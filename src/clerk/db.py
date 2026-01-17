@@ -240,18 +240,23 @@ def get_oldest_site(lookback_hours=23):
     """
     from datetime import datetime, timedelta
 
-    from sqlalchemy import or_
+    from sqlalchemy import cast, or_
+    from sqlalchemy.types import DateTime
 
     from .models import sites_table
 
     cutoff = datetime.now() - timedelta(hours=lookback_hours)
+
+    # Cast last_updated from String to DateTime for comparison
+    # (last_updated is stored as String for backward compatibility)
+    last_updated_dt = cast(sites_table.c.last_updated, DateTime)
 
     stmt = (
         select(sites_table.c.subdomain)
         .where(
             or_(
                 sites_table.c.last_updated.is_(None),
-                sites_table.c.last_updated < cutoff,
+                last_updated_dt < cutoff,
             )
         )
         .order_by(sites_table.c.last_updated.asc().nulls_first())
