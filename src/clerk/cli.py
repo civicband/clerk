@@ -2095,6 +2095,162 @@ def health(output_json, verbose):
     sys.exit(exit_code)
 
 
+@cli.command()
+@click.option("--reset", is_flag=True, help="Reset orphaned sites to initial state")
+@click.option("--reenqueue", is_flag=True, help="Re-enqueue orphaned sites for processing")
+@click.option("--max-age", default=2, help="Consider sites orphaned after N hours (default: 2)")
+@click.option("--json", "output_json", is_flag=True, help="Output as JSON")
+def cleanup_orphaned(reset, reenqueue, max_age, output_json):
+    """Find and clean up orphaned jobs.
+
+    Orphaned jobs are sites where the status indicates work in progress
+    (fetching, needs_ocr, etc.) but no job is actually running in the queue.
+
+    This can happen when:
+    - Workers crash mid-job
+    - Jobs fail silently without updating status
+    - Redis is cleared but database isn't
+
+    Examples:
+        # List orphaned sites
+        clerk cleanup-orphaned
+
+        # Reset orphaned sites to initial state
+        clerk cleanup-orphaned --reset
+
+        # Reset and re-enqueue for processing
+        clerk cleanup-orphaned --reset --reenqueue
+
+        # Only consider sites orphaned after 4 hours
+        clerk cleanup-orphaned --max-age 4
+    """
+    from datetime import datetime, timedelta
+
+    import redis
+    from sqlalchemy import text
+
+    from .db import civic_db_connection, update_site
+    from .queue import get_redis
+    from .queue_db import get_jobs_for_site
+
+    try:
+        redis_client = get_redis()
+        redis_client.ping()
+    except (redis.ConnectionError, redis.TimeoutError) as e:
+        click.secho(f"✗ Cannot connect to Redis: {e}", fg="red")
+        return
+
+    orphaned_sites = []
+
+    with civic_db_connection() as conn:
+        # Find sites with in-progress status that are old enough
+        cutoff_time = datetime.now(UTC) - timedelta(hours=max_age)
+        query = text("""
+            SELECT subdomain, status, last_updated
+            FROM sites
+            WHERE status IN ('fetching', 'needs_ocr', 'needs_extraction', 'needs_deploy', 'extracting')
+              AND last_updated < :cutoff_time
+            ORDER BY last_updated ASC
+        """)
+
+        for row in conn.execute(query, {"cutoff_time": cutoff_time}):
+            subdomain = row[0]
+            status = row[1]
+            last_updated = row[2]
+
+            # Check if there are any jobs for this site in any queue
+            jobs = get_jobs_for_site(conn, subdomain)
+
+            # Check if any job is actually running
+            has_active_job = False
+            for job_data in jobs:
+                job_id = job_data.get("job_id")
+                if job_id:
+                    # Check if job exists in Redis
+                    try:
+                        from rq.job import Job
+
+                        job = Job.fetch(job_id, connection=redis_client)
+                        if job.get_status() in ["queued", "started"]:
+                            has_active_job = True
+                            break
+                    except Exception:
+                        # Job doesn't exist in Redis
+                        pass
+
+            if not has_active_job:
+                orphaned_sites.append(
+                    {
+                        "subdomain": subdomain,
+                        "status": status,
+                        "last_updated": str(last_updated),
+                        "stale_for": str(datetime.now(UTC) - last_updated)
+                        if last_updated
+                        else "unknown",
+                    }
+                )
+
+    if output_json:
+        import json
+
+        result = {
+            "orphaned_count": len(orphaned_sites),
+            "sites": orphaned_sites,
+            "actions": {
+                "reset": reset,
+                "reenqueue": reenqueue,
+            },
+        }
+        click.echo(json.dumps(result, indent=2))
+    else:
+        if not orphaned_sites:
+            click.secho("✓ No orphaned sites found", fg="green")
+            return
+
+        click.secho(f"\n⚠️  Found {len(orphaned_sites)} orphaned sites:\n", fg="yellow", bold=True)
+
+        for site in orphaned_sites:
+            click.echo(f"  • {site['subdomain']}: {site['status']} - stale for {site['stale_for']}")
+
+    if orphaned_sites and (reset or reenqueue):
+        click.echo()
+
+        if reset:
+            click.secho(f"🔄 Resetting {len(orphaned_sites)} orphaned sites...", fg="cyan")
+            with civic_db_connection() as conn:
+                for site in orphaned_sites:
+                    update_site(
+                        conn,
+                        site["subdomain"],
+                        {
+                            "status": None,
+                            "last_updated": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                        },
+                    )
+                    click.echo(f"  ✓ Reset {site['subdomain']}")
+
+        if reenqueue:
+            from .queue import get_high_queue
+
+            click.secho(f"📥 Re-enqueueing {len(orphaned_sites)} sites...", fg="cyan")
+            high_queue = get_high_queue()
+
+            for site in orphaned_sites:
+                from .workers import fetch_site_job
+
+                job = high_queue.enqueue(
+                    fetch_site_job,
+                    subdomain=site["subdomain"],
+                    run_id=f"retry_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                    job_timeout="30m",
+                    description=f"Retry orphaned: {site['subdomain']}",
+                )
+                click.echo(f"  ✓ Enqueued {site['subdomain']} (job: {job.id})")
+
+        click.echo()
+        click.secho("✅ Cleanup complete", fg="green", bold=True)
+
+
 cli.add_command(new)
 cli.add_command(update)
 cli.add_command(build_full_db)
