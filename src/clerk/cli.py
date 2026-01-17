@@ -1863,7 +1863,11 @@ def health(output_json, verbose):
 
                 threshold = QUEUE_DEPTH_THRESHOLDS.get(queue_name, 100)
                 if depth > threshold:
-                    health_status["status"] = "degraded" if health_status["status"] == "healthy" else health_status["status"]
+                    health_status["status"] = (
+                        "degraded"
+                        if health_status["status"] == "healthy"
+                        else health_status["status"]
+                    )
                     health_status["warnings"].append(
                         f"{queue_name} queue backed up: {depth} jobs (threshold: {threshold})"
                     )
@@ -1871,7 +1875,9 @@ def health(output_json, verbose):
                 health_status["warnings"].append(f"Cannot check {queue_name} queue: {e}")
 
         health_status["checks"]["queues"] = {
-            "status": "ok" if not any(d > QUEUE_DEPTH_THRESHOLDS.get(q, 100) for q, d in queue_depths.items()) else "warning",
+            "status": "ok"
+            if not any(d > QUEUE_DEPTH_THRESHOLDS.get(q, 100) for q, d in queue_depths.items())
+            else "warning",
             "depths": queue_depths,
             "total_queued": sum(queue_depths.values()),
         }
@@ -1918,7 +1924,9 @@ def health(output_json, verbose):
             }
 
             if failed_count > 10:
-                health_status["status"] = "degraded" if health_status["status"] == "healthy" else health_status["status"]
+                health_status["status"] = (
+                    "degraded" if health_status["status"] == "healthy" else health_status["status"]
+                )
                 health_status["warnings"].append(f"{failed_count} failed jobs in queue")
 
             if verbose and failed_count > 0:
@@ -1963,12 +1971,14 @@ def health(output_json, verbose):
 
                 stuck_sites = []
                 for row in conn.execute(query):
-                    stuck_sites.append({
-                        "subdomain": row[0],
-                        "stage": row[1],
-                        "progress": f"{row[2]}/{row[3]}" if row[3] else "unknown",
-                        "stalled_for": str(datetime.now() - row[4]) if row[4] else "unknown",
-                    })
+                    stuck_sites.append(
+                        {
+                            "subdomain": row[0],
+                            "stage": row[1],
+                            "progress": f"{row[2]}/{row[3]}" if row[3] else "unknown",
+                            "stalled_for": str(datetime.now() - row[4]) if row[4] else "unknown",
+                        }
+                    )
 
                 health_status["checks"]["site_progress"] = {
                     "status": "ok" if len(stuck_sites) == 0 else "warning",
@@ -1976,8 +1986,14 @@ def health(output_json, verbose):
                 }
 
                 if stuck_sites:
-                    health_status["status"] = "degraded" if health_status["status"] == "healthy" else health_status["status"]
-                    health_status["warnings"].append(f"{len(stuck_sites)} sites stuck in progress for >2 hours")
+                    health_status["status"] = (
+                        "degraded"
+                        if health_status["status"] == "healthy"
+                        else health_status["status"]
+                    )
+                    health_status["warnings"].append(
+                        f"{len(stuck_sites)} sites stuck in progress for >2 hours"
+                    )
 
                     if verbose:
                         health_status["checks"]["site_progress"]["details"] = stuck_sites
@@ -2002,13 +2018,21 @@ def health(output_json, verbose):
         }
 
         click.echo(f"\n{status_emoji[health_status['status']]} System Status: ", nl=False)
-        click.secho(health_status['status'].upper(), fg=status_colors[health_status['status']], bold=True)
+        click.secho(
+            health_status["status"].upper(), fg=status_colors[health_status["status"]], bold=True
+        )
         click.echo(f"Checked at: {health_status['timestamp']}\n")
 
         # Show check results
         for check_name, check_data in health_status["checks"].items():
-            status_icon = "✓" if check_data["status"] == "ok" else ("!" if check_data["status"] == "warning" else "✗")
-            click.echo(f"{status_icon} {check_name.replace('_', ' ').title()}: {check_data.get('message', check_data['status'])}")
+            status_icon = (
+                "✓"
+                if check_data["status"] == "ok"
+                else ("!" if check_data["status"] == "warning" else "✗")
+            )
+            click.echo(
+                f"{status_icon} {check_name.replace('_', ' ').title()}: {check_data.get('message', check_data['status'])}"
+            )
 
             # Show key metrics
             if check_name == "queues" and "depths" in check_data:
@@ -2018,7 +2042,9 @@ def health(output_json, verbose):
                     click.secho(f"{depth} jobs", fg=color)
 
             elif check_name == "workers":
-                click.echo(f"    Active: {check_data.get('active', 0)}/{check_data.get('total', 0)} ({check_data.get('busy', 0)} busy)")
+                click.echo(
+                    f"    Active: {check_data.get('active', 0)}/{check_data.get('total', 0)} ({check_data.get('busy', 0)} busy)"
+                )
 
             elif check_name == "failed_jobs":
                 color = "red" if check_data.get("count", 0) > 10 else None
