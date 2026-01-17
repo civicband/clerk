@@ -26,6 +26,12 @@
         <string>{{PATH}}</string>
         <key>LOKI_URL</key>
         <string>{{LOKI_URL}}</string>
+        <key>SENTRY_DSN</key>
+        <string>{{SENTRY_DSN}}</string>
+        <key>SENTRY_ENVIRONMENT</key>
+        <string>{{SENTRY_ENVIRONMENT}}</string>
+        <key>SENTRY_TRACES_SAMPLE_RATE</key>
+        <string>{{SENTRY_TRACES_SAMPLE_RATE}}</string>
     </dict>
     <key>StandardOutPath</key>
     <string>{{LOG_DIR}}/clerk-worker-{{WORKER_TYPE}}-{{WORKER_NUM}}.log</string>

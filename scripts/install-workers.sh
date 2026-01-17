@@ -63,6 +63,9 @@ DATABASE_URL="${DATABASE_URL:-sqlite:///civic.db}"
 STORAGE_DIR="${STORAGE_DIR:-../sites}"
 DEFAULT_OCR_BACKEND="${DEFAULT_OCR_BACKEND:-tesseract}"
 LOKI_URL="${LOKI_URL:-}"  # Optional - empty string if not set
+SENTRY_DSN="${SENTRY_DSN:-}"  # Optional - empty string if not set
+SENTRY_ENVIRONMENT="${SENTRY_ENVIRONMENT:-production}"
+SENTRY_TRACES_SAMPLE_RATE="${SENTRY_TRACES_SAMPLE_RATE:-0.0}"
 
 # Detect architecture and set PATH for Homebrew + system binaries
 # LaunchAgents run with minimal PATH, need to include Homebrew paths for tools like pdfinfo
@@ -115,6 +118,9 @@ echo "  Database URL: ${DATABASE_URL}"
 echo "  Storage dir: ${STORAGE_DIR}"
 echo "  OCR backend: ${DEFAULT_OCR_BACKEND}"
 echo "  LOKI_URL: ${LOKI_URL:-not set}"
+echo "  SENTRY_DSN: ${SENTRY_DSN:-not set}"
+echo "  SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT}"
+echo "  SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE}"
 echo "  PATH: ${PATH_VAR}"
 echo ""
 echo "Worker counts:"
@@ -148,6 +154,9 @@ create_worker() {
         sed "s|{{DEFAULT_OCR_BACKEND}}|${DEFAULT_OCR_BACKEND}|g" | \
         sed "s|{{PATH}}|${PATH_VAR}|g" | \
         sed "s|{{LOKI_URL}}|${LOKI_URL}|g" | \
+        sed "s|{{SENTRY_DSN}}|${SENTRY_DSN}|g" | \
+        sed "s|{{SENTRY_ENVIRONMENT}}|${SENTRY_ENVIRONMENT}|g" | \
+        sed "s|{{SENTRY_TRACES_SAMPLE_RATE}}|${SENTRY_TRACES_SAMPLE_RATE}|g" | \
         sed "s|{{LOG_DIR}}|${LOG_DIR}|g" \
         > "${plist_file}"
 
