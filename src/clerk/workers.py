@@ -37,7 +37,7 @@ def log_with_context(message, subdomain, run_id=None, stage=None, **kwargs):
 
     # Get parent_job_id if this job has a dependency
     parent_job_id = None
-    if job and hasattr(job, 'dependency_id'):
+    if job and hasattr(job, "dependency_id"):
         parent_job_id = job.dependency_id
 
     output_log(
@@ -47,7 +47,7 @@ def log_with_context(message, subdomain, run_id=None, stage=None, **kwargs):
         stage=stage,
         job_id=job_id,
         parent_job_id=parent_job_id,
-        **kwargs
+        **kwargs,
     )
 
 
@@ -72,7 +72,7 @@ def fetch_site_job(subdomain, run_id, all_years=False, all_agendas=False):
         run_id=run_id,
         stage=stage,
         all_years=all_years,
-        all_agendas=all_agendas
+        all_agendas=all_agendas,
     )
 
     try:
@@ -81,10 +81,18 @@ def fetch_site_job(subdomain, run_id, all_years=False, all_agendas=False):
             site = get_site_by_subdomain(conn, subdomain)
 
         if not site:
-            log_with_context("Site not found", subdomain=subdomain, run_id=run_id, stage=stage, level="error")
+            log_with_context(
+                "Site not found", subdomain=subdomain, run_id=run_id, stage=stage, level="error"
+            )
             raise ValueError(f"Site not found: {subdomain}")
 
-        log_with_context("Found site", subdomain=subdomain, run_id=run_id, stage=stage, scraper=site.get("scraper"))
+        log_with_context(
+            "Found site",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            scraper=site.get("scraper"),
+        )
 
         # Update progress to fetch stage
         with civic_db_connection() as conn:
@@ -158,7 +166,13 @@ def fetch_site_job(subdomain, run_id, all_years=False, all_agendas=False):
         ocr_job_ids = []
 
         ocr_backend = os.getenv("DEFAULT_OCR_BACKEND", "tesseract")
-        log_with_context("Using OCR backend", subdomain=subdomain, run_id=run_id, stage=stage, backend=ocr_backend)
+        log_with_context(
+            "Using OCR backend",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            backend=ocr_backend,
+        )
 
         for pdf_path in pdf_files:
             job = ocr_queue.enqueue(
@@ -229,7 +243,7 @@ def fetch_site_job(subdomain, run_id, all_years=False, all_agendas=False):
             run_id=run_id,
             stage=stage,
             duration_seconds=round(duration, 2),
-            total_pdfs=len(pdf_files)
+            total_pdfs=len(pdf_files),
         )
 
     except Exception as e:
@@ -243,7 +257,7 @@ def fetch_site_job(subdomain, run_id, all_years=False, all_agendas=False):
             duration_seconds=round(duration, 2),
             error_type=type(e).__name__,
             error_message=str(e),
-            traceback=traceback.format_exc()
+            traceback=traceback.format_exc(),
         )
         raise
 
@@ -284,7 +298,7 @@ def ocr_page_job(subdomain, pdf_path, backend="tesseract", run_id=None):
                 run_id=run_id,
                 stage=stage,
                 level="error",
-                pdf_path=pdf_path
+                pdf_path=pdf_path,
             )
             raise ValueError(f"Site not found: {subdomain}")
 
@@ -357,7 +371,7 @@ def ocr_page_job(subdomain, pdf_path, backend="tesseract", run_id=None):
             backend=backend,
             error_type=type(e).__name__,
             error_message=str(e),
-            traceback=traceback.format_exc()
+            traceback=traceback.format_exc(),
         )
         raise
 
@@ -378,12 +392,7 @@ def ocr_complete_coordinator(subdomain, run_id):
     stage = "ocr"
     start_time = time.time()
 
-    log_with_context(
-        "ocr_coordinator_started",
-        subdomain=subdomain,
-        run_id=run_id,
-        stage=stage
-    )
+    log_with_context("ocr_coordinator_started", subdomain=subdomain, run_id=run_id, stage=stage)
 
     try:
         # Update progress: moving to compilation/extraction stage
@@ -394,7 +403,7 @@ def ocr_complete_coordinator(subdomain, run_id):
             subdomain=subdomain,
             run_id=run_id,
             stage=stage,
-            next_stage="extraction"
+            next_stage="extraction",
         )
 
         compilation_queue = get_compilation_queue()
@@ -462,7 +471,7 @@ def ocr_complete_coordinator(subdomain, run_id):
             duration_seconds=round(duration, 2),
             error_type=type(e).__name__,
             error_message=str(e),
-            traceback=traceback.format_exc()
+            traceback=traceback.format_exc(),
         )
         raise
 
@@ -525,7 +534,9 @@ def db_compilation_job(subdomain, run_id=None, extract_entities=False, ignore_ca
             extract_entities=extract_entities,
             text_file_count=len(txt_files),
         )
-        build_db_from_text_internal(subdomain, extract_entities=extract_entities, ignore_cache=ignore_cache)
+        build_db_from_text_internal(
+            subdomain, extract_entities=extract_entities, ignore_cache=ignore_cache
+        )
         log_with_context(
             "Completed database build",
             subdomain=subdomain,
@@ -552,7 +563,7 @@ def db_compilation_job(subdomain, run_id=None, extract_entities=False, ignore_ca
             subdomain=subdomain,
             run_id=run_id,
             job_timeout="10m",
-            description=f"Deploy: {subdomain}"
+            description=f"Deploy: {subdomain}",
         )
 
         # Track in PostgreSQL
@@ -590,7 +601,7 @@ def db_compilation_job(subdomain, run_id=None, extract_entities=False, ignore_ca
             extract_entities=extract_entities,
             error_type=type(e).__name__,
             error_message=str(e),
-            traceback=traceback.format_exc()
+            traceback=traceback.format_exc(),
         )
         raise
 
@@ -616,11 +627,10 @@ def extraction_job(subdomain, run_id, extract_entities=True, ignore_cache=False)
         run_id=run_id,
         stage=stage,
         extract_entities=extract_entities,
-        ignore_cache=ignore_cache
+        ignore_cache=ignore_cache,
     )
 
     try:
-
         # Count text files to process
         storage_dir = os.getenv("STORAGE_DIR", "../sites")
         txt_dir = Path(f"{storage_dir}/{subdomain}/txt")
@@ -655,21 +665,15 @@ def extraction_job(subdomain, run_id, extract_entities=True, ignore_cache=False)
                 subdomain=subdomain,
                 run_id=run_id,
                 stage=stage,
-                text_file_count=len(txt_files)
+                text_file_count=len(txt_files),
             )
             extract_entities_internal(subdomain)
             log_with_context(
-                "Completed entity extraction",
-                subdomain=subdomain,
-                run_id=run_id,
-                stage=stage
+                "Completed entity extraction", subdomain=subdomain, run_id=run_id, stage=stage
             )
         else:
             log_with_context(
-                "Skipping entity extraction",
-                subdomain=subdomain,
-                run_id=run_id,
-                stage=stage
+                "Skipping entity extraction", subdomain=subdomain, run_id=run_id, stage=stage
             )
 
         # Spawn database compilation WITH entities (to compilation queue, may run on different machine)
@@ -713,7 +717,7 @@ def extraction_job(subdomain, run_id, extract_entities=True, ignore_cache=False)
             duration_seconds=round(duration, 2),
             error_type=type(e).__name__,
             error_message=str(e),
-            traceback=traceback.format_exc()
+            traceback=traceback.format_exc(),
         )
         raise
 
@@ -734,12 +738,7 @@ def deploy_job(subdomain, run_id=None):
     if run_id is None:
         run_id = f"deploy_{subdomain}_{int(time.time())}"
 
-    log_with_context(
-        "deploy_started",
-        subdomain=subdomain,
-        run_id=run_id,
-        stage=stage
-    )
+    log_with_context("deploy_started", subdomain=subdomain, run_id=run_id, stage=stage)
 
     try:
         # Use existing deploy logic
@@ -751,7 +750,9 @@ def deploy_job(subdomain, run_id=None):
         with civic_db_connection() as conn:
             update_site_progress(conn, subdomain, stage="completed", stage_total=1)
             increment_stage_progress(conn, subdomain)
-        log_with_context("Marked site as completed", subdomain=subdomain, run_id=run_id, stage=stage)
+        log_with_context(
+            "Marked site as completed", subdomain=subdomain, run_id=run_id, stage=stage
+        )
 
         duration = time.time() - start_time
         log_with_context(
@@ -773,6 +774,6 @@ def deploy_job(subdomain, run_id=None):
             duration_seconds=round(duration, 2),
             error_type=type(e).__name__,
             error_message=str(e),
-            traceback=traceback.format_exc()
+            traceback=traceback.format_exc(),
         )
         raise

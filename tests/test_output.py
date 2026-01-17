@@ -107,8 +107,8 @@ class TestLog:
 
         assert len(caplog.records) == 1
         record = caplog.records[0]
-        assert not hasattr(record, 'run_id')
-        assert not hasattr(record, 'stage')
+        assert not hasattr(record, "run_id")
+        assert not hasattr(record, "stage")
 
 
 class TestConfigure:

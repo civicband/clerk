@@ -167,11 +167,11 @@ def test_enqueue_job_adds_to_correct_queue(reset_redis_singleton):
 def test_enqueue_job_generates_run_id(mocker):
     """Test that enqueue_job generates run_id if not provided."""
     # Mock Redis to avoid connection attempt
-    mocker.patch('clerk.queue.get_redis')
+    mocker.patch("clerk.queue.get_redis")
 
     mock_queue = mocker.MagicMock()
     mock_queue.enqueue.return_value = mocker.MagicMock(id="job-123")
-    mocker.patch('clerk.queue.get_fetch_queue', return_value=mock_queue)
+    mocker.patch("clerk.queue.get_fetch_queue", return_value=mock_queue)
 
     from clerk.queue import enqueue_job
 
@@ -179,11 +179,11 @@ def test_enqueue_job_generates_run_id(mocker):
 
     # Verify enqueue was called with run_id in kwargs
     call_kwargs = mock_queue.enqueue.call_args[1]
-    assert 'run_id' in call_kwargs
+    assert "run_id" in call_kwargs
 
     # Verify format: subdomain_timestamp_random
-    run_id = call_kwargs['run_id']
-    parts = run_id.split('_')
+    run_id = call_kwargs["run_id"]
+    parts = run_id.split("_")
     assert parts[0] == "test.civic.band"
     assert parts[1].isdigit()  # timestamp
     assert len(parts[2]) == 6  # random suffix
@@ -192,11 +192,11 @@ def test_enqueue_job_generates_run_id(mocker):
 def test_enqueue_job_uses_provided_run_id(mocker):
     """Test that enqueue_job uses run_id if provided."""
     # Mock Redis to avoid connection attempt
-    mocker.patch('clerk.queue.get_redis')
+    mocker.patch("clerk.queue.get_redis")
 
     mock_queue = mocker.MagicMock()
     mock_queue.enqueue.return_value = mocker.MagicMock(id="job-123")
-    mocker.patch('clerk.queue.get_fetch_queue', return_value=mock_queue)
+    mocker.patch("clerk.queue.get_fetch_queue", return_value=mock_queue)
 
     from clerk.queue import enqueue_job
 
@@ -205,26 +205,26 @@ def test_enqueue_job_uses_provided_run_id(mocker):
 
     # Verify enqueue was called with custom run_id
     call_kwargs = mock_queue.enqueue.call_args[1]
-    assert call_kwargs['run_id'] == custom_run_id
+    assert call_kwargs["run_id"] == custom_run_id
 
 
 def test_run_id_format_is_unique(mocker):
     """Test that generated run_ids are unique."""
     # Mock Redis to avoid connection attempt
-    mocker.patch('clerk.queue.get_redis')
+    mocker.patch("clerk.queue.get_redis")
 
     mock_queue = mocker.MagicMock()
     mock_queue.enqueue.return_value = mocker.MagicMock(id="job-123")
-    mocker.patch('clerk.queue.get_fetch_queue', return_value=mock_queue)
+    mocker.patch("clerk.queue.get_fetch_queue", return_value=mock_queue)
 
     from clerk.queue import enqueue_job
 
     # Generate two run_ids
     enqueue_job("fetch-site", "test.civic.band", priority="normal")
-    run_id_1 = mock_queue.enqueue.call_args[1]['run_id']
+    run_id_1 = mock_queue.enqueue.call_args[1]["run_id"]
 
     enqueue_job("fetch-site", "test.civic.band", priority="normal")
-    run_id_2 = mock_queue.enqueue.call_args[1]['run_id']
+    run_id_2 = mock_queue.enqueue.call_args[1]["run_id"]
 
     # Should be different
     assert run_id_1 != run_id_2

@@ -96,11 +96,11 @@ def enqueue_job(job_type, site_id, priority="normal", run_id=None, **kwargs):
     # Generate run_id if not provided
     if run_id is None:
         timestamp = int(time.time())
-        random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+        random_suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
         run_id = f"{site_id}_{timestamp}_{random_suffix}"
 
     # Pass run_id to job function
-    kwargs['run_id'] = run_id
+    kwargs["run_id"] = run_id
     # Determine which queue to use
     if priority == "high":
         queue = get_high_queue()
