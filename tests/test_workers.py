@@ -96,6 +96,8 @@ def test_db_compilation_job_accepts_run_id(mocker):
     mocker.patch("clerk.queue_db.update_site_progress")
     mocker.patch("clerk.queue.get_deploy_queue")
     mocker.patch("clerk.queue_db.track_job")
+    mocker.patch("clerk.cli.update_page_count")  # Mock new call
+    mocker.patch("clerk.cli.rebuild_site_fts_internal")  # Mock new call
     mock_log = mocker.patch("clerk.workers.log_with_context")
 
     db_compilation_job("test.civic.band", run_id="test_123_abc", extract_entities=False)
@@ -111,6 +113,8 @@ def test_db_compilation_job_passes_run_id_to_deploy(mocker):
     mocker.patch("clerk.utils.build_db_from_text_internal")
     mocker.patch("clerk.queue_db.update_site_progress")
     mocker.patch("clerk.queue_db.track_job")
+    mocker.patch("clerk.cli.update_page_count")  # Mock new call
+    mocker.patch("clerk.cli.rebuild_site_fts_internal")  # Mock new call
     mocker.patch("clerk.workers.log_with_context")
 
     mock_deploy_queue = mocker.MagicMock()
@@ -262,6 +266,7 @@ def test_deploy_job_accepts_run_id(mocker):
     from clerk.workers import deploy_job
 
     mocker.patch("clerk.workers.civic_db_connection")
+    mocker.patch("clerk.workers.get_site_by_subdomain", return_value={"subdomain": "test.civic.band"})  # Mock new call
     mocker.patch("clerk.workers.update_site_progress")
     mocker.patch("clerk.workers.increment_stage_progress")
     mocker.patch("clerk.utils.pm")
@@ -277,6 +282,7 @@ def test_deploy_job_logs_deploy_completed(mocker):
     from clerk.workers import deploy_job
 
     mocker.patch("clerk.workers.civic_db_connection")
+    mocker.patch("clerk.workers.get_site_by_subdomain", return_value={"subdomain": "test.civic.band"})  # Mock new call
     mocker.patch("clerk.workers.update_site_progress")
     mocker.patch("clerk.workers.increment_stage_progress")
     mocker.patch("clerk.utils.pm")

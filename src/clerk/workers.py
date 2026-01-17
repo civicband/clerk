@@ -6,7 +6,6 @@ import time
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from rq import get_current_job
 
@@ -327,7 +326,7 @@ def ocr_page_job(subdomain, pdf_path, backend="tesseract", run_id=None):
             raise ValueError(f"Site not found: {subdomain}")
 
         # Create fetcher instance to use its OCR methods
-        fetcher: Optional[Fetcher] = get_fetcher(site)
+        fetcher: Fetcher | None = get_fetcher(site)
         logger.debug("Created fetcher for subdomain=%s", subdomain)
 
         # Parse PDF path to extract meeting and date
