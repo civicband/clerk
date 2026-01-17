@@ -20,6 +20,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ruff: noqa: E402
+from datetime import UTC
+
 from . import output
 from .output import log
 from .plugin_loader import load_plugins_from_directory
@@ -1978,7 +1980,7 @@ def health(output_json, verbose):
                             "subdomain": row[0],
                             "stage": row[1],
                             "progress": f"{row[2]}/{row[3]}" if row[3] else "unknown",
-                            "stalled_for": str(datetime.now() - row[4]) if row[4] else "unknown",
+                            "stalled_for": str(datetime.now(UTC) - row[4]) if row[4] else "unknown",
                         }
                     )
 
