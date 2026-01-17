@@ -1388,7 +1388,10 @@ def worker(worker_type, num_workers, burst):
         # Worker pool for multiple workers
         # WorkerPool passes **kwargs to Worker constructor, so we can pass default_worker_ttl
         with WorkerPool(
-            queues, num_workers=num_workers, connection=get_redis(), default_worker_ttl=default_timeout
+            queues,
+            num_workers=num_workers,
+            connection=get_redis(),
+            default_worker_ttl=default_timeout,
         ) as pool:
             pool.start()
 
