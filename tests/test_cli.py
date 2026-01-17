@@ -2311,7 +2311,7 @@ class TestWorkerCommand:
         assert result.exit_code == 0
         # Verify WorkerPool was created with correct parameters
         mock_pool_class.assert_called_once_with(
-            [mock_high_queue, mock_extraction_queue], num_workers=2, connection=mock_redis
+            [mock_high_queue, mock_extraction_queue], num_workers=2, connection=mock_redis, default_worker_ttl=7200
         )
         # Verify pool.start() was called
         mock_pool.start.assert_called_once()
