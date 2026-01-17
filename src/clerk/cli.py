@@ -1835,9 +1835,11 @@ def health(output_json, verbose):
 
     # Check 2: PostgreSQL connectivity
     try:
+        from sqlalchemy import text
+
         with civic_db_connection() as conn:
             # Simple query to verify connection
-            result = conn.execute("SELECT 1").fetchone()
+            result = conn.execute(text("SELECT 1")).fetchone()
             if result:
                 health_status["checks"]["database"] = {
                     "status": "ok",
