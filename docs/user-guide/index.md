@@ -7,6 +7,7 @@ The User Guide provides comprehensive information about clerk's features and wor
 :caption: User Guide
 
 task-queue
+monitoring
 troubleshooting-workers
 ```
 
@@ -22,6 +23,18 @@ The [Task Queue System](task-queue.md) provides distributed processing capabilit
 - Manage job priorities and handle failures
 
 See the [complete task queue documentation](task-queue.md) for installation, configuration, and usage.
+
+### Monitoring
+
+The [Monitoring Guide](monitoring.md) covers health checking and observability for your clerk pipeline:
+
+- `clerk health` command for system health checks
+- Queue depth monitoring and thresholds
+- Worker status and failed job tracking
+- Integration with monitoring systems (Nagios, Prometheus)
+- Job completion verification and debugging
+
+See the [monitoring documentation](monitoring.md) for detailed usage and troubleshooting.
 
 ## Additional Topics
 
