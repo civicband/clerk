@@ -1765,6 +1765,294 @@ def diagnose_workers():
     click.echo(f"\nFor more details, check logs in: {log_dir}")
 
 
+@cli.command()
+@click.option("--json", "output_json", is_flag=True, help="Output as JSON for monitoring systems")
+@click.option("--verbose", "-v", is_flag=True, help="Show detailed information")
+def health(output_json, verbose):
+    """Check system health and queue status.
+
+    Checks:
+    - Redis connectivity
+    - PostgreSQL connectivity
+    - Queue depths and backlogs
+    - Worker status
+    - Failed job counts
+    - Recent completion rates
+    - Site progress issues
+
+    Exit codes:
+    - 0: System healthy
+    - 1: System degraded (warnings present)
+    - 2: System unhealthy (critical errors)
+    """
+    import sys
+    from datetime import datetime
+
+    import redis
+    from rq import Queue
+    from rq.registry import FailedJobRegistry, FinishedJobRegistry, StartedJobRegistry
+    from rq.worker import Worker
+
+    from .db import civic_db_connection
+    from .queue import get_redis
+
+    health_status = {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "checks": {},
+        "issues": [],
+        "warnings": [],
+    }
+
+    # Thresholds
+    QUEUE_DEPTH_THRESHOLDS = {
+        "high": 100,
+        "fetch": 50,
+        "ocr": 500,
+        "extraction": 100,
+        "deploy": 50,
+    }
+
+    # Check 1: Redis connectivity
+    try:
+        redis_client = get_redis()
+        redis_client.ping()
+        health_status["checks"]["redis"] = {
+            "status": "ok",
+            "message": "Redis is accessible",
+        }
+        if verbose:
+            info = redis_client.info()
+            health_status["checks"]["redis"]["version"] = info.get("redis_version")
+            health_status["checks"]["redis"]["uptime_seconds"] = info.get("uptime_in_seconds")
+    except (redis.ConnectionError, redis.TimeoutError) as e:
+        health_status["status"] = "unhealthy"
+        health_status["checks"]["redis"] = {
+            "status": "error",
+            "message": f"Cannot connect to Redis: {e}",
+        }
+        health_status["issues"].append("Redis unreachable - workers cannot process jobs")
+
+    # Check 2: PostgreSQL connectivity
+    try:
+        with civic_db_connection() as conn:
+            # Simple query to verify connection
+            result = conn.execute("SELECT 1").fetchone()
+            if result:
+                health_status["checks"]["database"] = {
+                    "status": "ok",
+                    "message": "PostgreSQL is accessible",
+                }
+    except Exception as e:
+        health_status["status"] = "unhealthy"
+        health_status["checks"]["database"] = {
+            "status": "error",
+            "message": f"Cannot connect to PostgreSQL: {e}",
+        }
+        health_status["issues"].append("Database unreachable - cannot track jobs or sites")
+
+    # Only continue with queue checks if Redis is up
+    if health_status["checks"].get("redis", {}).get("status") == "ok":
+        # Check 3: Queue depths
+        queue_depths = {}
+        for queue_name in ["high", "fetch", "ocr", "extraction", "deploy"]:
+            try:
+                queue = Queue(queue_name, connection=redis_client)
+                depth = len(queue)
+                queue_depths[queue_name] = depth
+
+                threshold = QUEUE_DEPTH_THRESHOLDS.get(queue_name, 100)
+                if depth > threshold:
+                    health_status["status"] = "degraded" if health_status["status"] == "healthy" else health_status["status"]
+                    health_status["warnings"].append(
+                        f"{queue_name} queue backed up: {depth} jobs (threshold: {threshold})"
+                    )
+            except Exception as e:
+                health_status["warnings"].append(f"Cannot check {queue_name} queue: {e}")
+
+        health_status["checks"]["queues"] = {
+            "status": "ok" if not any(d > QUEUE_DEPTH_THRESHOLDS.get(q, 100) for q, d in queue_depths.items()) else "warning",
+            "depths": queue_depths,
+            "total_queued": sum(queue_depths.values()),
+        }
+
+        # Check 4: Worker status
+        try:
+            workers = Worker.all(connection=redis_client)
+            active_workers = [w for w in workers if w.state in ("busy", "idle")]
+            busy_workers = [w for w in workers if w.state == "busy"]
+
+            health_status["checks"]["workers"] = {
+                "status": "ok" if len(active_workers) > 0 else "error",
+                "total": len(workers),
+                "active": len(active_workers),
+                "busy": len(busy_workers),
+                "idle": len(active_workers) - len(busy_workers),
+            }
+
+            if len(active_workers) == 0:
+                health_status["status"] = "unhealthy"
+                health_status["issues"].append("No workers running - jobs will not be processed")
+
+            if verbose and active_workers:
+                health_status["checks"]["workers"]["details"] = [
+                    {
+                        "name": w.name,
+                        "state": w.state,
+                        "queues": [q.name for q in w.queues],
+                        "current_job": w.get_current_job_id(),
+                    }
+                    for w in active_workers[:5]  # Limit to first 5
+                ]
+        except Exception as e:
+            health_status["warnings"].append(f"Cannot check worker status: {e}")
+
+        # Check 5: Failed jobs
+        try:
+            failed_registry = FailedJobRegistry(connection=redis_client)
+            failed_count = len(failed_registry)
+
+            health_status["checks"]["failed_jobs"] = {
+                "status": "ok" if failed_count < 10 else "warning",
+                "count": failed_count,
+            }
+
+            if failed_count > 10:
+                health_status["status"] = "degraded" if health_status["status"] == "healthy" else health_status["status"]
+                health_status["warnings"].append(f"{failed_count} failed jobs in queue")
+
+            if verbose and failed_count > 0:
+                # Get most recent failures
+                recent_failed = list(failed_registry.get_job_ids(0, 5))
+                health_status["checks"]["failed_jobs"]["recent"] = recent_failed[:5]
+        except Exception as e:
+            health_status["warnings"].append(f"Cannot check failed jobs: {e}")
+
+        # Check 6: Job completion rate (last hour)
+        try:
+            finished_registry = FinishedJobRegistry(connection=redis_client)
+            finished_count = len(finished_registry)
+
+            health_status["checks"]["completion"] = {
+                "status": "ok",
+                "finished_last_hour": finished_count,
+            }
+
+            if verbose:
+                started_registry = StartedJobRegistry(connection=redis_client)
+                started_count = len(started_registry)
+                health_status["checks"]["completion"]["currently_running"] = started_count
+        except Exception as e:
+            health_status["warnings"].append(f"Cannot check job completion: {e}")
+
+    # Check 7: Site progress issues (database check)
+    if health_status["checks"].get("database", {}).get("status") == "ok":
+        try:
+            with civic_db_connection() as conn:
+                # Find sites stuck in progress for too long
+                from sqlalchemy import text
+
+                query = text("""
+                    SELECT subdomain, current_stage, stage_completed, stage_total, updated_at
+                    FROM site_progress
+                    WHERE current_stage != 'completed'
+                      AND updated_at < NOW() - INTERVAL '2 hours'
+                    ORDER BY updated_at ASC
+                    LIMIT 10
+                """)
+
+                stuck_sites = []
+                for row in conn.execute(query):
+                    stuck_sites.append({
+                        "subdomain": row[0],
+                        "stage": row[1],
+                        "progress": f"{row[2]}/{row[3]}" if row[3] else "unknown",
+                        "stalled_for": str(datetime.now() - row[4]) if row[4] else "unknown",
+                    })
+
+                health_status["checks"]["site_progress"] = {
+                    "status": "ok" if len(stuck_sites) == 0 else "warning",
+                    "stuck_sites": len(stuck_sites),
+                }
+
+                if stuck_sites:
+                    health_status["status"] = "degraded" if health_status["status"] == "healthy" else health_status["status"]
+                    health_status["warnings"].append(f"{len(stuck_sites)} sites stuck in progress for >2 hours")
+
+                    if verbose:
+                        health_status["checks"]["site_progress"]["details"] = stuck_sites
+
+        except Exception as e:
+            health_status["warnings"].append(f"Cannot check site progress: {e}")
+
+    # Output results
+    if output_json:
+        click.echo(json.dumps(health_status, indent=2))
+    else:
+        # Human-readable output
+        status_colors = {
+            "healthy": "green",
+            "degraded": "yellow",
+            "unhealthy": "red",
+        }
+        status_emoji = {
+            "healthy": "✅",
+            "degraded": "⚠️",
+            "unhealthy": "❌",
+        }
+
+        click.echo(f"\n{status_emoji[health_status['status']]} System Status: ", nl=False)
+        click.secho(health_status['status'].upper(), fg=status_colors[health_status['status']], bold=True)
+        click.echo(f"Checked at: {health_status['timestamp']}\n")
+
+        # Show check results
+        for check_name, check_data in health_status["checks"].items():
+            status_icon = "✓" if check_data["status"] == "ok" else ("!" if check_data["status"] == "warning" else "✗")
+            click.echo(f"{status_icon} {check_name.replace('_', ' ').title()}: {check_data.get('message', check_data['status'])}")
+
+            # Show key metrics
+            if check_name == "queues" and "depths" in check_data:
+                for queue, depth in check_data["depths"].items():
+                    color = "red" if depth > QUEUE_DEPTH_THRESHOLDS.get(queue, 100) else None
+                    click.echo(f"    {queue}: ", nl=False)
+                    click.secho(f"{depth} jobs", fg=color)
+
+            elif check_name == "workers":
+                click.echo(f"    Active: {check_data.get('active', 0)}/{check_data.get('total', 0)} ({check_data.get('busy', 0)} busy)")
+
+            elif check_name == "failed_jobs":
+                color = "red" if check_data.get("count", 0) > 10 else None
+                click.echo("    Failed: ", nl=False)
+                click.secho(f"{check_data.get('count', 0)}", fg=color)
+
+            elif check_name == "site_progress" and check_data.get("stuck_sites", 0) > 0:
+                click.echo(f"    Stuck sites: {check_data['stuck_sites']}")
+
+        # Show issues
+        if health_status["issues"]:
+            click.echo("\n❌ CRITICAL ISSUES:")
+            for issue in health_status["issues"]:
+                click.secho(f"  • {issue}", fg="red")
+
+        # Show warnings
+        if health_status["warnings"]:
+            click.echo("\n⚠️  WARNINGS:")
+            for warning in health_status["warnings"]:
+                click.secho(f"  • {warning}", fg="yellow")
+
+        if not health_status["issues"] and not health_status["warnings"]:
+            click.echo("\n✅ All systems operational\n")
+
+    # Exit with appropriate code
+    exit_code = 0
+    if health_status["status"] == "degraded":
+        exit_code = 1
+    elif health_status["status"] == "unhealthy":
+        exit_code = 2
+
+    sys.exit(exit_code)
+
+
 cli.add_command(new)
 cli.add_command(update)
 cli.add_command(build_full_db)
