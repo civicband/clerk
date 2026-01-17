@@ -21,7 +21,6 @@ load_dotenv()
 
 # ruff: noqa: E402
 from . import output
-from .fetcher import Fetcher
 from .output import log
 from .plugin_loader import load_plugins_from_directory
 from .utils import assert_db_exists, build_db_from_text_internal, build_table_from_text, pm
