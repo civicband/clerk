@@ -98,6 +98,15 @@ def test_db_compilation_job_accepts_run_id(mocker):
     mocker.patch("clerk.queue_db.track_job")
     mocker.patch("clerk.cli.update_page_count")  # Mock new call
     mocker.patch("clerk.cli.rebuild_site_fts_internal")  # Mock new call
+    mocker.patch("os.path.exists", return_value=True)  # Mock meetings.db exists
+    mocker.patch("os.path.getsize", return_value=1024)  # Mock db size
+    mock_db = mocker.MagicMock()
+    mock_db.table_names.return_value = ["meetings", "minutes"]  # Mock tables exist
+    mocker.patch("sqlite_utils.Database", return_value=mock_db)
+    mocker.patch(
+        "clerk.workers.get_site_by_subdomain",
+        return_value={"subdomain": "test.civic.band", "pages": 10},
+    )
     mock_log = mocker.patch("clerk.workers.log_with_context")
 
     db_compilation_job("test.civic.band", run_id="test_123_abc", extract_entities=False)
@@ -115,6 +124,15 @@ def test_db_compilation_job_passes_run_id_to_deploy(mocker):
     mocker.patch("clerk.queue_db.track_job")
     mocker.patch("clerk.cli.update_page_count")  # Mock new call
     mocker.patch("clerk.cli.rebuild_site_fts_internal")  # Mock new call
+    mocker.patch("os.path.exists", return_value=True)  # Mock meetings.db exists
+    mocker.patch("os.path.getsize", return_value=1024)  # Mock db size
+    mock_db = mocker.MagicMock()
+    mock_db.table_names.return_value = ["meetings", "minutes"]  # Mock tables exist
+    mocker.patch("sqlite_utils.Database", return_value=mock_db)
+    mocker.patch(
+        "clerk.workers.get_site_by_subdomain",
+        return_value={"subdomain": "test.civic.band", "pages": 10},
+    )
     mocker.patch("clerk.workers.log_with_context")
 
     mock_deploy_queue = mocker.MagicMock()
@@ -267,11 +285,14 @@ def test_deploy_job_accepts_run_id(mocker):
 
     mocker.patch("clerk.workers.civic_db_connection")
     mocker.patch(
-        "clerk.workers.get_site_by_subdomain", return_value={"subdomain": "test.civic.band"}
-    )  # Mock new call
+        "clerk.workers.get_site_by_subdomain",
+        return_value={"subdomain": "test.civic.band", "status": "deployed"},
+    )
     mocker.patch("clerk.workers.update_site_progress")
     mocker.patch("clerk.workers.increment_stage_progress")
     mocker.patch("clerk.utils.pm")
+    mocker.patch("os.path.exists", return_value=True)  # Mock sites.db exists
+    mocker.patch("os.path.getsize", return_value=2048)  # Mock sites.db size
     mock_log = mocker.patch("clerk.workers.log_with_context")
 
     deploy_job("test.civic.band", run_id="test_123_abc")
@@ -285,11 +306,14 @@ def test_deploy_job_logs_deploy_completed(mocker):
 
     mocker.patch("clerk.workers.civic_db_connection")
     mocker.patch(
-        "clerk.workers.get_site_by_subdomain", return_value={"subdomain": "test.civic.band"}
-    )  # Mock new call
+        "clerk.workers.get_site_by_subdomain",
+        return_value={"subdomain": "test.civic.band", "status": "deployed"},
+    )
     mocker.patch("clerk.workers.update_site_progress")
     mocker.patch("clerk.workers.increment_stage_progress")
     mocker.patch("clerk.utils.pm")
+    mocker.patch("os.path.exists", return_value=True)  # Mock sites.db exists
+    mocker.patch("os.path.getsize", return_value=2048)  # Mock sites.db size
     mock_log = mocker.patch("clerk.workers.log_with_context")
 
     deploy_job("test.civic.band", run_id="test_123_abc")
@@ -305,6 +329,14 @@ def test_ocr_complete_coordinator_accepts_run_id(mocker):
     mocker.patch("clerk.workers.civic_db_connection")
     mocker.patch("clerk.workers.update_site_progress")
     mocker.patch("clerk.workers.track_job")
+
+    # Mock txt directory verification
+    mock_txt_dir = mocker.MagicMock()
+    mock_txt_dir.exists.return_value = True
+    mock_txt_file = mocker.MagicMock()
+    mock_txt_file.name = "test.txt"
+    mock_txt_dir.glob.return_value = [mock_txt_file]
+    mocker.patch("clerk.workers.Path", return_value=mock_txt_dir)
 
     mock_compilation_queue = mocker.MagicMock()
     mock_compilation_queue.enqueue.return_value = mocker.MagicMock(id="comp-job")
@@ -332,6 +364,14 @@ def test_ocr_complete_coordinator_passes_run_id_to_child_jobs(mocker):
     mocker.patch("clerk.workers.update_site_progress")
     mocker.patch("clerk.workers.track_job")
     mocker.patch("clerk.workers.log_with_context")
+
+    # Mock txt directory verification
+    mock_txt_dir = mocker.MagicMock()
+    mock_txt_dir.exists.return_value = True
+    mock_txt_file = mocker.MagicMock()
+    mock_txt_file.name = "test.txt"
+    mock_txt_dir.glob.return_value = [mock_txt_file]
+    mocker.patch("clerk.workers.Path", return_value=mock_txt_dir)
 
     mock_compilation_queue = mocker.MagicMock()
     mock_compilation_job = mocker.MagicMock(id="comp-job-123")
