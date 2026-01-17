@@ -166,6 +166,18 @@ def fetch_site_job(
             total_pdfs=len(pdf_files),
         )
 
+        # Verify fetch produced PDFs
+        if len(pdf_files) == 0:
+            log_with_context(
+                "WARNING: No PDFs found after fetch - site may have no documents or fetch failed",
+                subdomain=subdomain,
+                run_id=run_id,
+                stage=stage,
+                level="warning",
+                minutes_dir_exists=minutes_pdf_dir.exists(),
+                agendas_dir_exists=agendas_pdf_dir.exists(),
+            )
+
         # Update progress: moving to OCR stage
         with civic_db_connection() as conn:
             update_site_progress(conn, subdomain, stage="ocr", stage_total=len(pdf_files))
@@ -422,6 +434,27 @@ def ocr_complete_coordinator(subdomain, run_id):
     log_with_context("ocr_coordinator_started", subdomain=subdomain, run_id=run_id, stage=stage)
 
     try:
+        # Verify OCR completed by checking for txt files
+        storage_dir = os.getenv("STORAGE_DIR", "../sites")
+        txt_dir = Path(f"{storage_dir}/{subdomain}/txt")
+
+        if not txt_dir.exists():
+            raise FileNotFoundError(
+                f"Text directory not found at {txt_dir} - OCR may not have completed"
+            )
+
+        txt_files = list(txt_dir.glob("**/*.txt"))
+        if len(txt_files) == 0:
+            raise ValueError(f"No text files found in {txt_dir} - OCR may have failed for all PDFs")
+
+        log_with_context(
+            "Verified OCR completion",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            txt_file_count=len(txt_files),
+        )
+
         # Update progress: moving to compilation/extraction stage
         with civic_db_connection() as conn:
             update_site_progress(conn, subdomain, stage="extraction")
@@ -573,12 +606,32 @@ def db_compilation_job(subdomain, run_id=None, extract_entities=False, ignore_ca
         build_db_from_text_internal(
             subdomain, extract_entities=extract_entities, ignore_cache=ignore_cache
         )
+
+        # Verify meetings.db was created
+        import sqlite_utils
+
+        from .utils import STORAGE_DIR
+
+        meetings_db_path = f"{STORAGE_DIR}/{subdomain}/meetings.db"
+        if not os.path.exists(meetings_db_path):
+            raise FileNotFoundError(
+                f"meetings.db not found at {meetings_db_path} after compilation"
+            )
+
+        # Verify it has data
+        meetings_db = sqlite_utils.Database(meetings_db_path)
+        table_count = len(meetings_db.table_names())
+        if table_count == 0:
+            raise ValueError(f"meetings.db created but contains no tables for {subdomain}")
+
         log_with_context(
             "Completed database build",
             subdomain=subdomain,
             run_id=run_id,
             stage=stage,
             extract_entities=extract_entities,
+            tables_created=table_count,
+            db_size_bytes=os.path.getsize(meetings_db_path),
         )
 
         # Update page count in civic.db from meetings.db
@@ -591,6 +644,30 @@ def db_compilation_job(subdomain, run_id=None, extract_entities=False, ignore_ca
             stage=stage,
         )
         update_page_count(subdomain)
+
+        # Verify page count was updated
+        with civic_db_connection() as conn:
+            site = get_site_by_subdomain(conn, subdomain)
+            if not site:
+                raise ValueError(f"Site {subdomain} not found in civic.db after page count update")
+
+            pages = site.get("pages", 0)
+            if pages == 0:
+                log_with_context(
+                    "WARNING: Page count is 0 after update",
+                    subdomain=subdomain,
+                    run_id=run_id,
+                    stage=stage,
+                    level="warning",
+                )
+
+        log_with_context(
+            "Page count updated",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            pages=pages,
+        )
 
         # Rebuild full-text search indexes
         log_with_context(
@@ -844,6 +921,52 @@ def deploy_job(subdomain, run_id=None):
         log_with_context(
             "Completed post_deploy hook", subdomain=subdomain, run_id=run_id, stage=stage
         )
+
+        # Verify post_deploy created sites.db
+        from .utils import STORAGE_DIR
+
+        sites_db_path = f"{STORAGE_DIR}/sites.db"
+        if not os.path.exists(sites_db_path):
+            log_with_context(
+                "WARNING: sites.db not found after post_deploy",
+                subdomain=subdomain,
+                run_id=run_id,
+                stage=stage,
+                level="warning",
+                expected_path=sites_db_path,
+            )
+        else:
+            sites_db_size = os.path.getsize(sites_db_path)
+            log_with_context(
+                "Verified sites.db creation",
+                subdomain=subdomain,
+                run_id=run_id,
+                stage=stage,
+                sites_db_size_bytes=sites_db_size,
+            )
+
+        # Verify site is marked as deployed
+        with civic_db_connection() as conn:
+            deployed_site = get_site_by_subdomain(conn, subdomain)
+            if deployed_site and deployed_site.get("status") == "deployed":
+                log_with_context(
+                    "Verified deployment status",
+                    subdomain=subdomain,
+                    run_id=run_id,
+                    stage=stage,
+                    status=deployed_site.get("status"),
+                )
+            else:
+                log_with_context(
+                    "WARNING: Site status not 'deployed' after deploy_job",
+                    subdomain=subdomain,
+                    run_id=run_id,
+                    stage=stage,
+                    level="warning",
+                    actual_status=deployed_site.get("status")
+                    if deployed_site
+                    else "site_not_found",
+                )
 
         duration = time.time() - start_time
         log_with_context(
