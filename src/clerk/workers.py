@@ -51,7 +51,7 @@ def log_with_context(message, subdomain, run_id=None, stage=None, **kwargs):
     )
 
 
-def fetch_site_job(subdomain, run_id, all_years=False, all_agendas=False):
+def fetch_site_job(subdomain, run_id, all_years=False, all_agendas=False, ocr_backend=None, backfill=False, skip_fetch=False):
     """RQ job: Fetch PDFs for a site then spawn OCR jobs.
 
     Args:
@@ -59,6 +59,9 @@ def fetch_site_job(subdomain, run_id, all_years=False, all_agendas=False):
         run_id: Pipeline run identifier
         all_years: Fetch all years (default: False)
         all_agendas: Fetch all agendas (default: False)
+        ocr_backend: OCR backend to use (tesseract or vision). Defaults to DEFAULT_OCR_BACKEND env var.
+        backfill: Whether this is a backfill operation (default: False)
+        skip_fetch: Skip the fetch stage and go straight to OCR (default: False)
     """
     from .cli import fetch_internal, get_fetcher
     from .queue import get_ocr_queue
@@ -165,7 +168,9 @@ def fetch_site_job(subdomain, run_id, all_years=False, all_agendas=False):
         ocr_queue = get_ocr_queue()
         ocr_job_ids = []
 
-        ocr_backend = os.getenv("DEFAULT_OCR_BACKEND", "tesseract")
+        # Use parameter if provided, otherwise fall back to environment variable
+        if ocr_backend is None:
+            ocr_backend = os.getenv("DEFAULT_OCR_BACKEND", "tesseract")
         log_with_context(
             "Using OCR backend",
             subdomain=subdomain,
