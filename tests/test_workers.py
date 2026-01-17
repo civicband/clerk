@@ -266,7 +266,9 @@ def test_deploy_job_accepts_run_id(mocker):
     from clerk.workers import deploy_job
 
     mocker.patch("clerk.workers.civic_db_connection")
-    mocker.patch("clerk.workers.get_site_by_subdomain", return_value={"subdomain": "test.civic.band"})  # Mock new call
+    mocker.patch(
+        "clerk.workers.get_site_by_subdomain", return_value={"subdomain": "test.civic.band"}
+    )  # Mock new call
     mocker.patch("clerk.workers.update_site_progress")
     mocker.patch("clerk.workers.increment_stage_progress")
     mocker.patch("clerk.utils.pm")
@@ -282,7 +284,9 @@ def test_deploy_job_logs_deploy_completed(mocker):
     from clerk.workers import deploy_job
 
     mocker.patch("clerk.workers.civic_db_connection")
-    mocker.patch("clerk.workers.get_site_by_subdomain", return_value={"subdomain": "test.civic.band"})  # Mock new call
+    mocker.patch(
+        "clerk.workers.get_site_by_subdomain", return_value={"subdomain": "test.civic.band"}
+    )  # Mock new call
     mocker.patch("clerk.workers.update_site_progress")
     mocker.patch("clerk.workers.increment_stage_progress")
     mocker.patch("clerk.utils.pm")

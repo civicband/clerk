@@ -170,10 +170,14 @@ def fetch_site_job(
         with civic_db_connection() as conn:
             update_site_progress(conn, subdomain, stage="ocr", stage_total=len(pdf_files))
             # Update legacy status field for backward compatibility
-            update_site(conn, subdomain, {
-                "status": "needs_ocr",
-                "last_updated": datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-            })
+            update_site(
+                conn,
+                subdomain,
+                {
+                    "status": "needs_ocr",
+                    "last_updated": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                },
+            )
         log_with_context(
             "Updated progress to OCR stage",
             subdomain=subdomain,
@@ -422,10 +426,14 @@ def ocr_complete_coordinator(subdomain, run_id):
         with civic_db_connection() as conn:
             update_site_progress(conn, subdomain, stage="extraction")
             # Update legacy status field for backward compatibility
-            update_site(conn, subdomain, {
-                "status": "needs_extraction",
-                "last_updated": datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-            })
+            update_site(
+                conn,
+                subdomain,
+                {
+                    "status": "needs_extraction",
+                    "last_updated": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                },
+            )
         log_with_context(
             "Updated progress to extraction stage",
             subdomain=subdomain,
@@ -598,10 +606,14 @@ def db_compilation_job(subdomain, run_id=None, extract_entities=False, ignore_ca
         with civic_db_connection() as conn:
             update_site_progress(conn, subdomain, stage="deploy", stage_total=1)
             # Update legacy status field for backward compatibility
-            update_site(conn, subdomain, {
-                "status": "needs_deploy",
-                "last_updated": datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-            })
+            update_site(
+                conn,
+                subdomain,
+                {
+                    "status": "needs_deploy",
+                    "last_updated": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                },
+            )
         log_with_context(
             "Updated progress to deploy stage",
             subdomain=subdomain,
@@ -812,18 +824,26 @@ def deploy_job(subdomain, run_id=None):
             update_site_progress(conn, subdomain, stage="completed", stage_total=1)
             increment_stage_progress(conn, subdomain)
             # Update legacy status field for backward compatibility
-            update_site(conn, subdomain, {
-                "status": "deployed",
-                "last_updated": datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-            })
+            update_site(
+                conn,
+                subdomain,
+                {
+                    "status": "deployed",
+                    "last_updated": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                },
+            )
         log_with_context(
             "Marked site as completed", subdomain=subdomain, run_id=run_id, stage=stage
         )
 
         # Run post-deploy hook (creates sites.db, uploads to production, updates civic.observer)
-        log_with_context("Running post_deploy hook", subdomain=subdomain, run_id=run_id, stage=stage)
+        log_with_context(
+            "Running post_deploy hook", subdomain=subdomain, run_id=run_id, stage=stage
+        )
         pm.hook.post_deploy(site=site)
-        log_with_context("Completed post_deploy hook", subdomain=subdomain, run_id=run_id, stage=stage)
+        log_with_context(
+            "Completed post_deploy hook", subdomain=subdomain, run_id=run_id, stage=stage
+        )
 
         duration = time.time() - start_time
         log_with_context(
