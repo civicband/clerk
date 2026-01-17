@@ -2299,20 +2299,24 @@ def check_failed(queue, limit, output_json):
             exc_info = None
             if job.exc_info:
                 # Get last 3 lines of traceback
-                lines = job.exc_info.strip().split('\n')
-                exc_info = '\n'.join(lines[-3:])
+                lines = job.exc_info.strip().split("\n")
+                exc_info = "\n".join(lines[-3:])
 
-            failed_jobs.append({
-                "job_id": job_id,
-                "description": job.description,
-                "exc_info": exc_info,
-            })
+            failed_jobs.append(
+                {
+                    "job_id": job_id,
+                    "description": job.description,
+                    "exc_info": exc_info,
+                }
+            )
         except Exception as e:
-            failed_jobs.append({
-                "job_id": job_id,
-                "description": "Could not fetch job details",
-                "exc_info": str(e),
-            })
+            failed_jobs.append(
+                {
+                    "job_id": job_id,
+                    "description": "Could not fetch job details",
+                    "exc_info": str(e),
+                }
+            )
 
     if output_json:
         result = {
@@ -2323,9 +2327,9 @@ def check_failed(queue, limit, output_json):
         }
         click.echo(json.dumps(result, indent=2))
     else:
-        click.secho(f"\n{'='*60}", fg="cyan")
+        click.secho(f"\n{'=' * 60}", fg="cyan")
         click.secho(f"Failed Jobs in '{queue}' Queue", fg="cyan", bold=True)
-        click.secho(f"{'='*60}\n", fg="cyan")
+        click.secho(f"{'=' * 60}\n", fg="cyan")
 
         click.echo(f"Total failures: {total_failures}")
         click.echo(f"Showing first {len(failed_jobs)} jobs:\n")
@@ -2333,9 +2337,9 @@ def check_failed(queue, limit, output_json):
         for i, job_info in enumerate(failed_jobs, 1):
             click.secho(f"{i}. {job_info['description']}", fg="yellow", bold=True)
             click.echo(f"   Job ID: {job_info['job_id']}")
-            if job_info['exc_info']:
+            if job_info["exc_info"]:
                 click.secho("   Error:", fg="red")
-                for line in job_info['exc_info'].split('\n'):
+                for line in job_info["exc_info"].split("\n"):
                     click.echo(f"     {line}")
             click.echo()
 
