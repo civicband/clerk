@@ -2,8 +2,11 @@
 """Queue management using RQ (Redis Queue)."""
 
 import os
+import random
+import string
 import sys
 import threading
+import time
 
 import redis
 from rq import Queue
@@ -77,18 +80,27 @@ def get_deploy_queue():
     return Queue("deploy", connection=get_redis())
 
 
-def enqueue_job(job_type, site_id, priority="normal", **kwargs):
+def enqueue_job(job_type, site_id, priority="normal", run_id=None, **kwargs):
     """Enqueue a job to the appropriate queue.
 
     Args:
         job_type: Type of job (fetch-site, ocr-page, etc.)
         site_id: Site subdomain
         priority: 'high', 'normal', or 'low'
+        run_id: Optional pipeline run ID (auto-generated if not provided)
         **kwargs: Additional job parameters
 
     Returns:
         RQ job ID
     """
+    # Generate run_id if not provided
+    if run_id is None:
+        timestamp = int(time.time())
+        random_suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
+        run_id = f"{site_id}_{timestamp}_{random_suffix}"
+
+    # Pass run_id to job function
+    kwargs["run_id"] = run_id
     # Determine which queue to use
     if priority == "high":
         queue = get_high_queue()
