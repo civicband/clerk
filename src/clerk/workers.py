@@ -39,8 +39,11 @@ def log_with_context(message, subdomain, run_id=None, stage=None, **kwargs):
         kwargs["job_id"] = job.id if job else None
 
     # Get parent_job_id if this job has a dependency (unless already in kwargs)
-    if "parent_job_id" not in kwargs and job and hasattr(job, "dependency_id"):
-        kwargs["parent_job_id"] = job.dependency_id
+    if "parent_job_id" not in kwargs:
+        if job and hasattr(job, "dependency_id"):
+            kwargs["parent_job_id"] = job.dependency_id
+        else:
+            kwargs["parent_job_id"] = None
 
     output_log(
         message,
@@ -51,7 +54,15 @@ def log_with_context(message, subdomain, run_id=None, stage=None, **kwargs):
     )
 
 
-def fetch_site_job(subdomain, run_id, all_years=False, all_agendas=False, ocr_backend=None, backfill=False, skip_fetch=False):
+def fetch_site_job(
+    subdomain,
+    run_id,
+    all_years=False,
+    all_agendas=False,
+    ocr_backend=None,
+    backfill=False,
+    skip_fetch=False,
+):
     """RQ job: Fetch PDFs for a site then spawn OCR jobs.
 
     Args:
