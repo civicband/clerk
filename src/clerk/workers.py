@@ -574,6 +574,26 @@ def db_compilation_job(subdomain, run_id=None, extract_entities=False, ignore_ca
             extract_entities=extract_entities,
         )
 
+        # Update page count in civic.db from meetings.db
+        from .cli import rebuild_site_fts_internal, update_page_count
+
+        log_with_context(
+            "Updating page count",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+        )
+        update_page_count(subdomain)
+
+        # Rebuild full-text search indexes
+        log_with_context(
+            "Rebuilding FTS indexes",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+        )
+        rebuild_site_fts_internal(subdomain)
+
         # Both paths spawn deploy (may deploy twice - once for fast path, once for entities path)
         # Update progress: moving to deploy stage
         with civic_db_connection() as conn:
