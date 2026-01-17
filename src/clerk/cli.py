@@ -1370,8 +1370,8 @@ def worker(worker_type, num_workers, burst):
     # Default job timeouts per worker type (for jobs without explicit timeout)
     # Note: Individual jobs can override with job_timeout parameter when enqueuing
     timeout_map = {
-        "fetch": 600,  # 10 minutes - fetching PDFs from city websites
-        "ocr": 1800,  # 30 minutes - OCR can be slow, especially with Vision
+        "fetch": 3600,  # 1 hour - fetching PDFs from city websites
+        "ocr": 3600,  # 1 hour - OCR can be slow, especially with Vision
         "compilation": 3600,  # 1 hour - database compilation with large datasets
         "extraction": 7200,  # 2 hours - LLM-based entity extraction
         "deploy": 600,  # 10 minutes - S3 upload and CDN deployment
