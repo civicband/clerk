@@ -686,6 +686,7 @@ def extraction_job(subdomain, run_id, extract_entities=True, ignore_cache=False)
         job = compilation_queue.enqueue(
             db_compilation_job,
             subdomain=subdomain,
+            run_id=run_id,
             extract_entities=True,
             job_timeout="30m",
             description=f"DB compilation (with entities): {subdomain}",
