@@ -384,7 +384,7 @@ def update_site_internal(
     pm.hook.post_deploy(site=site)
 
 
-def get_fetcher(site, all_years=False, all_agendas=False) -> Fetcher | None:
+def get_fetcher(site, all_years=False, all_agendas=False):
     start_year = site["start_year"]
     fetcher_class = None
     try:
