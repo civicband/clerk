@@ -30,23 +30,23 @@ def log_with_context(message, subdomain, run_id=None, stage=None, **kwargs):
         subdomain: Site subdomain
         run_id: Pipeline run identifier (optional)
         stage: Pipeline stage (fetch/ocr/compilation/extraction/deploy) (optional)
-        **kwargs: Additional structured fields for logging
+        **kwargs: Additional structured fields for logging (can override job_id/parent_job_id)
     """
     job = get_current_job()
-    job_id = job.id if job else None
 
-    # Get parent_job_id if this job has a dependency
-    parent_job_id = None
-    if job and hasattr(job, "dependency_id"):
-        parent_job_id = job.dependency_id
+    # Only extract job_id if not already provided in kwargs (allows logging spawned job IDs)
+    if "job_id" not in kwargs:
+        kwargs["job_id"] = job.id if job else None
+
+    # Get parent_job_id if this job has a dependency (unless already in kwargs)
+    if "parent_job_id" not in kwargs and job and hasattr(job, "dependency_id"):
+        kwargs["parent_job_id"] = job.dependency_id
 
     output_log(
         message,
         subdomain=subdomain,
         run_id=run_id,
         stage=stage,
-        job_id=job_id,
-        parent_job_id=parent_job_id,
         **kwargs,
     )
 
