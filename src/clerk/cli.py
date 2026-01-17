@@ -2298,15 +2298,18 @@ def check_failed(queue, limit, output_json):
             job = Job.fetch(job_id, connection=redis_client)
             exc_info = None
             if job.exc_info:
-                # Get last 3 lines of traceback
-                lines = job.exc_info.strip().split("\n")
-                exc_info = "\n".join(lines[-3:])
+                # Get full traceback for debugging
+                exc_info = job.exc_info.strip()
 
             failed_jobs.append(
                 {
                     "job_id": job_id,
                     "description": job.description,
                     "exc_info": exc_info,
+                    "status": job.get_status(),
+                    "created_at": str(job.created_at) if job.created_at else None,
+                    "ended_at": str(job.ended_at) if job.ended_at else None,
+                    "meta": job.meta,
                 }
             )
         except Exception as e:
@@ -2315,6 +2318,10 @@ def check_failed(queue, limit, output_json):
                     "job_id": job_id,
                     "description": "Could not fetch job details",
                     "exc_info": str(e),
+                    "status": "unknown",
+                    "created_at": None,
+                    "ended_at": None,
+                    "meta": {},
                 }
             )
 
@@ -2337,10 +2344,19 @@ def check_failed(queue, limit, output_json):
         for i, job_info in enumerate(failed_jobs, 1):
             click.secho(f"{i}. {job_info['description']}", fg="yellow", bold=True)
             click.echo(f"   Job ID: {job_info['job_id']}")
+            click.echo(f"   Status: {job_info.get('status', 'unknown')}")
+            if job_info.get("created_at"):
+                click.echo(f"   Created: {job_info['created_at']}")
+            if job_info.get("ended_at"):
+                click.echo(f"   Ended: {job_info['ended_at']}")
+            if job_info.get("meta"):
+                click.echo(f"   Meta: {job_info['meta']}")
             if job_info["exc_info"]:
                 click.secho("   Error:", fg="red")
                 for line in job_info["exc_info"].split("\n"):
                     click.echo(f"     {line}")
+            else:
+                click.secho("   (No exception info available)", fg="dim")
             click.echo()
 
 
