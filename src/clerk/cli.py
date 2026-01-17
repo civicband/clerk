@@ -1965,11 +1965,16 @@ def health(output_json, verbose):
                 from sqlalchemy import text
 
                 query = text("""
-                    SELECT subdomain, current_stage, stage_completed, stage_total, updated_at
-                    FROM site_progress
-                    WHERE current_stage != 'completed'
-                      AND updated_at < NOW() - INTERVAL '2 hours'
-                    ORDER BY updated_at ASC
+                    SELECT sp.subdomain, sp.current_stage, sp.stage_completed, sp.stage_total, sp.updated_at, s.status
+                    FROM site_progress sp
+                    LEFT JOIN sites s ON sp.subdomain = s.subdomain
+                    WHERE sp.current_stage != 'completed'
+                      AND sp.updated_at < NOW() - INTERVAL '2 hours'
+                      AND NOT (
+                        -- Exclude sites that are deployed and just waiting on optional extraction
+                        s.status = 'deployed' AND sp.current_stage = 'extraction'
+                      )
+                    ORDER BY sp.updated_at ASC
                     LIMIT 10
                 """)
 
@@ -1981,6 +1986,7 @@ def health(output_json, verbose):
                             "stage": row[1],
                             "progress": f"{row[2]}/{row[3]}" if row[3] else "unknown",
                             "stalled_for": str(datetime.now(UTC) - row[4]) if row[4] else "unknown",
+                            "status": row[5] if row[5] else "unknown",
                         }
                     )
 
@@ -1996,7 +2002,7 @@ def health(output_json, verbose):
                         else health_status["status"]
                     )
                     health_status["warnings"].append(
-                        f"{len(stuck_sites)} sites stuck in progress for >2 hours"
+                        f"{len(stuck_sites)} sites stuck in critical pipeline stages for >2 hours"
                     )
 
                     if verbose:
