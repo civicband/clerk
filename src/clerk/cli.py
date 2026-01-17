@@ -2259,6 +2259,87 @@ def cleanup_orphaned(reset, reenqueue, max_age, output_json):
         click.secho("✅ Cleanup complete", fg="green", bold=True)
 
 
+@cli.command()
+@click.option("--queue", default="ocr", help="Queue to check (default: ocr)")
+@click.option("--limit", default=5, help="Number of failed jobs to show (default: 5)")
+@click.option("--json", "output_json", is_flag=True, help="Output as JSON")
+def check_failed(queue, limit, output_json):
+    """Check failed jobs in a queue and show error details.
+
+    Examples:
+        # Check OCR failures
+        clerk check-failed
+
+        # Check first 10 fetch failures
+        clerk check-failed --queue fetch --limit 10
+
+        # Get JSON output
+        clerk check-failed --json
+    """
+    import redis
+    from rq.job import Job
+    from rq.registry import FailedJobRegistry
+
+    from .queue import get_redis
+
+    try:
+        redis_client = get_redis()
+        redis_client.ping()
+    except (redis.ConnectionError, redis.TimeoutError) as e:
+        click.secho(f"✗ Cannot connect to Redis: {e}", fg="red")
+        return
+
+    failed_reg = FailedJobRegistry(queue, connection=redis_client)
+    total_failures = len(failed_reg)
+
+    failed_jobs = []
+    for job_id in list(failed_reg.get_job_ids())[:limit]:
+        try:
+            job = Job.fetch(job_id, connection=redis_client)
+            exc_info = None
+            if job.exc_info:
+                # Get last 3 lines of traceback
+                lines = job.exc_info.strip().split('\n')
+                exc_info = '\n'.join(lines[-3:])
+
+            failed_jobs.append({
+                "job_id": job_id,
+                "description": job.description,
+                "exc_info": exc_info,
+            })
+        except Exception as e:
+            failed_jobs.append({
+                "job_id": job_id,
+                "description": "Could not fetch job details",
+                "exc_info": str(e),
+            })
+
+    if output_json:
+        result = {
+            "queue": queue,
+            "total_failures": total_failures,
+            "showing": len(failed_jobs),
+            "failed_jobs": failed_jobs,
+        }
+        click.echo(json.dumps(result, indent=2))
+    else:
+        click.secho(f"\n{'='*60}", fg="cyan")
+        click.secho(f"Failed Jobs in '{queue}' Queue", fg="cyan", bold=True)
+        click.secho(f"{'='*60}\n", fg="cyan")
+
+        click.echo(f"Total failures: {total_failures}")
+        click.echo(f"Showing first {len(failed_jobs)} jobs:\n")
+
+        for i, job_info in enumerate(failed_jobs, 1):
+            click.secho(f"{i}. {job_info['description']}", fg="yellow", bold=True)
+            click.echo(f"   Job ID: {job_info['job_id']}")
+            if job_info['exc_info']:
+                click.secho("   Error:", fg="red")
+                for line in job_info['exc_info'].split('\n'):
+                    click.echo(f"     {line}")
+            click.echo()
+
+
 cli.add_command(new)
 cli.add_command(update)
 cli.add_command(build_full_db)
