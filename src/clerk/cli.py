@@ -2063,6 +2063,12 @@ def health(output_json, verbose):
 
             elif check_name == "site_progress" and check_data.get("stuck_sites", 0) > 0:
                 click.echo(f"    Stuck sites: {check_data['stuck_sites']}")
+                if verbose and "details" in check_data:
+                    for site in check_data["details"]:
+                        click.echo(
+                            f"      • {site['subdomain']}: {site['stage']} ({site['progress']}) "
+                            f"- stalled {site['stalled_for']} [status: {site['status']}]"
+                        )
 
         # Show issues
         if health_status["issues"]:
