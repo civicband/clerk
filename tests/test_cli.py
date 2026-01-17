@@ -30,6 +30,16 @@ class TestAutoEnqueueScheduler:
         # Mock get_oldest_site to return a site
         mocker.patch("clerk.db.get_oldest_site", return_value="old-site.civic.band")
 
+        # Mock civic_db_connection context manager
+        mock_conn = mocker.MagicMock()
+        mock_db_context = mocker.MagicMock()
+        mock_db_context.__enter__ = mocker.Mock(return_value=mock_conn)
+        mock_db_context.__exit__ = mocker.Mock(return_value=False)
+        mocker.patch("clerk.db.civic_db_connection", return_value=mock_db_context)
+
+        # Mock upsert_site
+        mock_upsert = mocker.patch("clerk.db.upsert_site")
+
         # Mock enqueue_job
         mock_enqueue = mocker.patch("clerk.queue.enqueue_job")
 
@@ -37,6 +47,13 @@ class TestAutoEnqueueScheduler:
 
         assert result.exit_code == 0
         assert "Auto-enqueueing old-site.civic.band" in result.output
+
+        # Verify upsert_site was called to update last_updated
+        mock_upsert.assert_called_once()
+        call_args = mock_upsert.call_args
+        assert call_args[0][0] == mock_conn
+        assert call_args[0][1]["subdomain"] == "old-site.civic.band"
+        assert "last_updated" in call_args[0][1]
 
         # Verify enqueued with normal priority
         mock_enqueue.assert_called_once_with("fetch-site", "old-site.civic.band", priority="normal")
@@ -2240,7 +2257,7 @@ class TestWorkerCommand:
         assert result.exit_code == 0
         # Verify Worker was created with correct queues (high first, then fetch)
         mock_worker_class.assert_called_once_with(
-            [mock_high_queue, mock_fetch_queue], connection=mock_redis
+            [mock_high_queue, mock_fetch_queue], connection=mock_redis, default_worker_ttl=3600
         )
         # Verify worker.work() was called with scheduler and not burst
         mock_worker.work.assert_called_once_with(with_scheduler=True, burst=False)
@@ -2266,7 +2283,7 @@ class TestWorkerCommand:
         assert result.exit_code == 0
         # Verify Worker was created with correct queues
         mock_worker_class.assert_called_once_with(
-            [mock_high_queue, mock_ocr_queue], connection=mock_redis
+            [mock_high_queue, mock_ocr_queue], connection=mock_redis, default_worker_ttl=3600
         )
         # Verify burst mode was enabled
         mock_worker.work.assert_called_once_with(with_scheduler=True, burst=True)
@@ -2320,7 +2337,7 @@ class TestWorkerCommand:
         assert result.exit_code == 0
         # Verify Worker was created with deploy queue
         mock_worker_class.assert_called_once_with(
-            [mock_high_queue, mock_deploy_queue], connection=mock_redis
+            [mock_high_queue, mock_deploy_queue], connection=mock_redis, default_worker_ttl=600
         )
 
     def test_worker_handles_redis_connection_error(self, cli_runner, mocker):
