@@ -595,73 +595,127 @@ def db_compilation_job(subdomain, run_id=None, extract_entities=False, ignore_ca
         raise
 
 
-def extraction_job(subdomain):
+def extraction_job(subdomain, run_id, extract_entities=True, ignore_cache=False):
     """RQ job: Extract entities from text files.
 
     Args:
         subdomain: Site subdomain
+        run_id: Pipeline run identifier
+        extract_entities: Whether to extract entities (default: True)
+        ignore_cache: Whether to ignore cached entities (default: False)
     """
-    from .extraction import extract_entities_from_text
+    from .cli import extract_entities_internal
     from .queue import get_compilation_queue
 
+    stage = "extraction"
     start_time = time.time()
-    output_log("Starting extraction_job", subdomain=subdomain, job_type="extraction")
 
-    # Count text files to process
-    storage_dir = os.getenv("STORAGE_DIR", "../sites")
-    txt_dir = Path(f"{storage_dir}/{subdomain}/txt")
+    log_with_context(
+        "extraction_started",
+        subdomain=subdomain,
+        run_id=run_id,
+        stage=stage,
+        extract_entities=extract_entities,
+        ignore_cache=ignore_cache
+    )
 
-    if txt_dir.exists():
-        txt_files = list(txt_dir.glob("**/*.txt"))
-        output_log(
-            "Found text files for extraction",
+    try:
+
+        # Count text files to process
+        storage_dir = os.getenv("STORAGE_DIR", "../sites")
+        txt_dir = Path(f"{storage_dir}/{subdomain}/txt")
+
+        if txt_dir.exists():
+            txt_files = list(txt_dir.glob("**/*.txt"))
+            log_with_context(
+                "Found text files for extraction",
+                subdomain=subdomain,
+                run_id=run_id,
+                stage=stage,
+                count=len(txt_files),
+                directory=str(txt_dir),
+            )
+        else:
+            txt_files = []
+            logger.warning(
+                "Text directory does not exist: %s for subdomain=%s",
+                txt_dir,
+                subdomain,
+            )
+
+        # Update progress
+        with civic_db_connection() as conn:
+            update_site_progress(conn, subdomain, stage="extraction", stage_total=len(txt_files))
+        logger.debug("Updated extraction progress with %d total files", len(txt_files))
+
+        # Extract entities (this caches them to disk)
+        if extract_entities:
+            log_with_context(
+                "Extracting entities",
+                subdomain=subdomain,
+                run_id=run_id,
+                stage=stage,
+                text_file_count=len(txt_files)
+            )
+            extract_entities_internal(subdomain)
+            log_with_context(
+                "Completed entity extraction",
+                subdomain=subdomain,
+                run_id=run_id,
+                stage=stage
+            )
+        else:
+            log_with_context(
+                "Skipping entity extraction",
+                subdomain=subdomain,
+                run_id=run_id,
+                stage=stage
+            )
+
+        # Spawn database compilation WITH entities (to compilation queue, may run on different machine)
+        compilation_queue = get_compilation_queue()
+        job = compilation_queue.enqueue(
+            db_compilation_job,
             subdomain=subdomain,
-            count=len(txt_files),
-            directory=str(txt_dir),
-        )
-    else:
-        txt_files = []
-        logger.warning(
-            "Text directory does not exist: %s for subdomain=%s",
-            txt_dir,
-            subdomain,
+            extract_entities=True,
+            job_timeout="30m",
+            description=f"DB compilation (with entities): {subdomain}",
         )
 
-    # Update progress
-    with civic_db_connection() as conn:
-        update_site_progress(conn, subdomain, stage="extraction", stage_total=len(txt_files))
-    logger.debug("Updated extraction progress with %d total files", len(txt_files))
+        # Track in PostgreSQL
+        with civic_db_connection() as conn:
+            track_job(conn, job.id, subdomain, "db-compilation-with-entities", "extraction")
+        log_with_context(
+            "Enqueued DB compilation job (with entities)",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            job_id=job.id,
+        )
 
-    # Extract entities (this caches them to disk)
-    output_log("Extracting entities", subdomain=subdomain, text_file_count=len(txt_files))
-    extract_entities_from_text(subdomain)
-    output_log("Completed entity extraction", subdomain=subdomain)
+        duration = time.time() - start_time
+        log_with_context(
+            "extraction_completed",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            duration_seconds=round(duration, 2),
+        )
 
-    # Spawn database compilation WITH entities (to compilation queue, may run on different machine)
-    compilation_queue = get_compilation_queue()
-    job = compilation_queue.enqueue(
-        db_compilation_job,
-        subdomain=subdomain,
-        extract_entities=True,
-        job_timeout="30m",
-        description=f"DB compilation (with entities): {subdomain}",
-    )
-
-    # Track in PostgreSQL
-    with civic_db_connection() as conn:
-        track_job(conn, job.id, subdomain, "db-compilation-with-entities", "extraction")
-    output_log(
-        "Enqueued DB compilation job (with entities)",
-        subdomain=subdomain,
-        job_id=job.id,
-    )
-
-    duration = time.time() - start_time
-    output_log(
-        "Completed extraction_job",
-        subdomain=subdomain,
-        duration_seconds=round(duration, 2),
-    )
+    except Exception as e:
+        duration = time.time() - start_time
+        log_with_context(
+            f"extraction_failed: {e}",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            level="error",
+            duration_seconds=round(duration, 2),
+            error_type=type(e).__name__,
+            error_message=str(e),
+            traceback=traceback.format_exc()
+        )
+        raise
 
 
 def deploy_job(subdomain, run_id=None):

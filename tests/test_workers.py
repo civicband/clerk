@@ -376,3 +376,59 @@ def test_ocr_page_job_logs_with_stage_ocr(mocker):
     ocr_page_job("test.civic.band", "/path/to/test.pdf", "tesseract", run_id="test_123_abc")
 
     assert any(call[1].get('stage') == 'ocr' for call in mock_log.call_args_list)
+
+def test_extraction_job_accepts_run_id(mocker):
+    """Test that extraction_job accepts run_id parameter."""
+    from clerk.workers import extraction_job
+
+    mocker.patch('clerk.workers.civic_db_connection')
+    mocker.patch('clerk.cli.extract_entities_internal')
+    mocker.patch('clerk.workers.update_site_progress')
+    mocker.patch('clerk.workers.track_job')
+
+    # Mock Path to return no text files
+    mock_path_class = mocker.patch('clerk.workers.Path')
+    mock_path_instance = mocker.MagicMock()
+    mock_path_instance.exists.return_value = False
+    mock_path_class.return_value = mock_path_instance
+
+    # Mock compilation queue
+    mock_compilation_queue = mocker.MagicMock()
+    mock_job = mocker.MagicMock(id="comp-job-123")
+    mock_compilation_queue.enqueue.return_value = mock_job
+    mocker.patch('clerk.queue.get_compilation_queue', return_value=mock_compilation_queue)
+
+    mock_log = mocker.patch('clerk.workers.log_with_context')
+
+    extraction_job("test.civic.band", run_id="test_123_abc")
+
+    assert any(call[1]['stage'] == 'extraction' for call in mock_log.call_args_list)
+
+
+def test_extraction_job_logs_extraction_started(mocker):
+    """Test that extraction_job logs extraction_started milestone."""
+    from clerk.workers import extraction_job
+
+    mocker.patch('clerk.workers.civic_db_connection')
+    mocker.patch('clerk.cli.extract_entities_internal')
+    mocker.patch('clerk.workers.update_site_progress')
+    mocker.patch('clerk.workers.track_job')
+
+    # Mock Path to return no text files
+    mock_path_class = mocker.patch('clerk.workers.Path')
+    mock_path_instance = mocker.MagicMock()
+    mock_path_instance.exists.return_value = False
+    mock_path_class.return_value = mock_path_instance
+
+    # Mock compilation queue
+    mock_compilation_queue = mocker.MagicMock()
+    mock_job = mocker.MagicMock(id="comp-job-123")
+    mock_compilation_queue.enqueue.return_value = mock_job
+    mocker.patch('clerk.queue.get_compilation_queue', return_value=mock_compilation_queue)
+
+    mock_log = mocker.patch('clerk.workers.log_with_context')
+
+    extraction_job("test.civic.band", run_id="test_123_abc")
+
+    started_calls = [call for call in mock_log.call_args_list if "extraction_started" in call[0][0]]
+    assert len(started_calls) >= 1
