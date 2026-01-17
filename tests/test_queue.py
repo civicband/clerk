@@ -166,13 +166,16 @@ def test_enqueue_job_adds_to_correct_queue(reset_redis_singleton):
 
 def test_enqueue_job_generates_run_id(mocker):
     """Test that enqueue_job generates run_id if not provided."""
+    # Mock Redis to avoid connection attempt
+    mocker.patch('clerk.queue.get_redis')
+
     mock_queue = mocker.MagicMock()
     mock_queue.enqueue.return_value = mocker.MagicMock(id="job-123")
     mocker.patch('clerk.queue.get_fetch_queue', return_value=mock_queue)
 
     from clerk.queue import enqueue_job
 
-    job_id = enqueue_job("fetch-site", "test.civic.band", priority="normal")
+    enqueue_job("fetch-site", "test.civic.band", priority="normal")
 
     # Verify enqueue was called with run_id in kwargs
     call_kwargs = mock_queue.enqueue.call_args[1]
@@ -188,6 +191,9 @@ def test_enqueue_job_generates_run_id(mocker):
 
 def test_enqueue_job_uses_provided_run_id(mocker):
     """Test that enqueue_job uses run_id if provided."""
+    # Mock Redis to avoid connection attempt
+    mocker.patch('clerk.queue.get_redis')
+
     mock_queue = mocker.MagicMock()
     mock_queue.enqueue.return_value = mocker.MagicMock(id="job-123")
     mocker.patch('clerk.queue.get_fetch_queue', return_value=mock_queue)
@@ -195,7 +201,7 @@ def test_enqueue_job_uses_provided_run_id(mocker):
     from clerk.queue import enqueue_job
 
     custom_run_id = "custom_12345_xyz123"
-    job_id = enqueue_job("fetch-site", "test.civic.band", priority="normal", run_id=custom_run_id)
+    enqueue_job("fetch-site", "test.civic.band", priority="normal", run_id=custom_run_id)
 
     # Verify enqueue was called with custom run_id
     call_kwargs = mock_queue.enqueue.call_args[1]
@@ -204,6 +210,9 @@ def test_enqueue_job_uses_provided_run_id(mocker):
 
 def test_run_id_format_is_unique(mocker):
     """Test that generated run_ids are unique."""
+    # Mock Redis to avoid connection attempt
+    mocker.patch('clerk.queue.get_redis')
+
     mock_queue = mocker.MagicMock()
     mock_queue.enqueue.return_value = mocker.MagicMock(id="job-123")
     mocker.patch('clerk.queue.get_fetch_queue', return_value=mock_queue)
