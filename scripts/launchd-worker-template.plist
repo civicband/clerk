@@ -24,6 +24,8 @@
         <string>{{DEFAULT_OCR_BACKEND}}</string>
         <key>PATH</key>
         <string>{{PATH}}</string>
+        <key>LOKI_URL</key>
+        <string>{{LOKI_URL}}</string>
     </dict>
     <key>StandardOutPath</key>
     <string>{{LOG_DIR}}/clerk-worker-{{WORKER_TYPE}}-{{WORKER_NUM}}.log</string>

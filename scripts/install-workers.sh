@@ -62,6 +62,7 @@ REDIS_URL="${REDIS_URL:-redis://localhost:6379/0}"
 DATABASE_URL="${DATABASE_URL:-sqlite:///civic.db}"
 STORAGE_DIR="${STORAGE_DIR:-../sites}"
 DEFAULT_OCR_BACKEND="${DEFAULT_OCR_BACKEND:-tesseract}"
+LOKI_URL="${LOKI_URL:-}"  # Optional - empty string if not set
 
 # Detect architecture and set PATH for Homebrew + system binaries
 # LaunchAgents run with minimal PATH, need to include Homebrew paths for tools like pdfinfo
@@ -113,6 +114,7 @@ echo "  Redis URL: ${REDIS_URL}"
 echo "  Database URL: ${DATABASE_URL}"
 echo "  Storage dir: ${STORAGE_DIR}"
 echo "  OCR backend: ${DEFAULT_OCR_BACKEND}"
+echo "  LOKI_URL: ${LOKI_URL:-not set}"
 echo "  PATH: ${PATH_VAR}"
 echo ""
 echo "Worker counts:"
@@ -145,6 +147,7 @@ create_worker() {
         sed "s|{{STORAGE_DIR}}|${STORAGE_DIR}|g" | \
         sed "s|{{DEFAULT_OCR_BACKEND}}|${DEFAULT_OCR_BACKEND}|g" | \
         sed "s|{{PATH}}|${PATH_VAR}|g" | \
+        sed "s|{{LOKI_URL}}|${LOKI_URL}|g" | \
         sed "s|{{LOG_DIR}}|${LOG_DIR}|g" \
         > "${plist_file}"
 
