@@ -30,12 +30,15 @@ def init_sentry():
     environment = os.getenv("SENTRY_ENVIRONMENT", "production")
     traces_sample_rate = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.0"))
 
+    # Import RQ integration to capture worker job exceptions
+    from sentry_sdk.integrations.rq import RqIntegration
+
     sentry_sdk.init(
         dsn=sentry_dsn,
         environment=environment,
         send_default_pii=True,
         max_request_body_size="always",
         traces_sample_rate=traces_sample_rate,
-        # Capture exception info for RQ jobs
-        integrations=[],
+        # Enable RQ integration to capture worker job exceptions
+        integrations=[RqIntegration()],
     )
