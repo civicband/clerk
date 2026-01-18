@@ -8,13 +8,9 @@ class TestBeforeSend:
 
     def test_pdf_file_not_found_log_message(self):
         """PDF file not found log messages should be grouped together."""
-        event1 = {
-            "logentry": {"message": "PDF file not found: /path/to/site1/pdfs/file.pdf"}
-        }
+        event1 = {"logentry": {"message": "PDF file not found: /path/to/site1/pdfs/file.pdf"}}
         event2 = {
-            "logentry": {
-                "message": "PDF file not found: /different/path/site2/pdfs/other.pdf"
-            }
+            "logentry": {"message": "PDF file not found: /different/path/site2/pdfs/other.pdf"}
         }
 
         result1 = before_send(event1, {})
@@ -25,17 +21,9 @@ class TestBeforeSend:
 
     def test_no_text_files_found_exception(self):
         """No text files found exceptions should be grouped together."""
-        event1 = {
-            "exception": {
-                "values": [{"value": "No text files found in /path/to/site1/txt"}]
-            }
-        }
+        event1 = {"exception": {"values": [{"value": "No text files found in /path/to/site1/txt"}]}}
         event2 = {
-            "exception": {
-                "values": [
-                    {"value": "No text files found in /different/path/site2/txt"}
-                ]
-            }
+            "exception": {"values": [{"value": "No text files found in /different/path/site2/txt"}]}
         }
 
         result1 = before_send(event1, {})
@@ -46,16 +34,8 @@ class TestBeforeSend:
 
     def test_error_fetching_year(self):
         """Error fetching year messages should be grouped together."""
-        event1 = {
-            "exception": {
-                "values": [{"value": "Error fetching year 2026 for Committee A"}]
-            }
-        }
-        event2 = {
-            "exception": {
-                "values": [{"value": "Error fetching year 2025 for Committee B"}]
-            }
-        }
+        event1 = {"exception": {"values": [{"value": "Error fetching year 2026 for Committee A"}]}}
+        event2 = {"exception": {"values": [{"value": "Error fetching year 2025 for Committee B"}]}}
 
         result1 = before_send(event1, {})
         result2 = before_send(event2, {})
@@ -66,24 +46,14 @@ class TestBeforeSend:
     def test_error_fetching_https_grouped_by_domain(self):
         """Error fetching URL messages should be grouped by domain."""
         event1 = {
-            "exception": {
-                "values": [
-                    {"value": "Error fetching https://example.com/page1/path"}
-                ]
-            }
+            "exception": {"values": [{"value": "Error fetching https://example.com/page1/path"}]}
         }
         event2 = {
             "exception": {
-                "values": [
-                    {"value": "Error fetching https://example.com/page2/different"}
-                ]
+                "values": [{"value": "Error fetching https://example.com/page2/different"}]
             }
         }
-        event3 = {
-            "exception": {
-                "values": [{"value": "Error fetching https://other.com/page"}]
-            }
-        }
+        event3 = {"exception": {"values": [{"value": "Error fetching https://other.com/page"}]}}
 
         result1 = before_send(event1, {})
         result2 = before_send(event2, {})
@@ -96,9 +66,7 @@ class TestBeforeSend:
     def test_ocr_coordinator_failed(self):
         """OCR coordinator failures should be grouped together."""
         event = {
-            "exception": {
-                "values": [{"value": "ocr_coordinator_failed: No text files found"}]
-            }
+            "exception": {"values": [{"value": "ocr_coordinator_failed: No text files found"}]}
         }
 
         result = before_send(event, {})
@@ -107,15 +75,9 @@ class TestBeforeSend:
 
     def test_empty_pdf_file_log_message(self):
         """Empty PDF file log messages should be grouped together."""
-        event1 = {
-            "logentry": {
-                "message": "Skipping empty PDF file /path/to/site1/pdfs/empty.pdf"
-            }
-        }
+        event1 = {"logentry": {"message": "Skipping empty PDF file /path/to/site1/pdfs/empty.pdf"}}
         event2 = {
-            "logentry": {
-                "message": "Skipping empty PDF file /path/to/site2/pdfs/another.pdf"
-            }
+            "logentry": {"message": "Skipping empty PDF file /path/to/site2/pdfs/another.pdf"}
         }
 
         result1 = before_send(event1, {})
@@ -174,9 +136,7 @@ class TestBeforeSend:
         """FileNotFoundError for other files should be grouped separately."""
         event = {
             "exception": {
-                "values": [
-                    {"type": "FileNotFoundError", "value": "/path/to/config.json"}
-                ]
+                "values": [{"type": "FileNotFoundError", "value": "/path/to/config.json"}]
             }
         }
 
@@ -214,11 +174,7 @@ class TestBeforeSend:
         """When multiple patterns could match, the first one wins."""
         # This message could match both "No text files found" and has a path
         # But "No text files found" pattern comes first in the code
-        event = {
-            "exception": {
-                "values": [{"value": "No text files found in /path/to/pdfs/site"}]
-            }
-        }
+        event = {"exception": {"values": [{"value": "No text files found in /path/to/pdfs/site"}]}}
 
         result = before_send(event, {})
 
