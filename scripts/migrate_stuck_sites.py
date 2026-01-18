@@ -36,7 +36,7 @@ def count_pdf_files(subdomain):
     return len(list(pdf_dir.glob("**/*.pdf")))
 
 
-def migrate_stuck_sites():
+def migrate_stuck_sites(dry_run=False):
     """Migrate stuck sites to new system."""
 
     with civic_db_connection() as conn:
@@ -66,20 +66,21 @@ def migrate_stuck_sites():
             ocr_completed = txt_count
             ocr_failed = max(0, ocr_total - ocr_completed)
 
-            # Update sites table
-            conn.execute(
-                update(sites_table).where(
-                    sites_table.c.subdomain == subdomain
-                ).values(
-                    current_stage='ocr',
-                    ocr_total=ocr_total,
-                    ocr_completed=ocr_completed,
-                    ocr_failed=ocr_failed,
-                    coordinator_enqueued=False,  # Allows reconciliation to trigger
-                    started_at=site_prog.started_at,
-                    updated_at=site_prog.updated_at,
+            # Update sites table (skip in dry-run mode)
+            if not dry_run:
+                conn.execute(
+                    update(sites_table).where(
+                        sites_table.c.subdomain == subdomain
+                    ).values(
+                        current_stage='ocr',
+                        ocr_total=ocr_total,
+                        ocr_completed=ocr_completed,
+                        ocr_failed=ocr_failed,
+                        coordinator_enqueued=False,  # Allows reconciliation to trigger
+                        started_at=site_prog.started_at,
+                        updated_at=site_prog.updated_at,
+                    )
                 )
-            )
 
             migrated += 1
             click.echo(f"  {subdomain}: {ocr_completed}/{ocr_total} completed, {ocr_failed} failed")
@@ -139,7 +140,7 @@ def main(dry_run):
         click.secho("DRY RUN MODE - no changes will be made", fg="yellow")
         click.echo()
 
-    migrate_stuck_sites()
+    migrate_stuck_sites(dry_run=dry_run)
 
     if not dry_run:
         clear_rq_state()
