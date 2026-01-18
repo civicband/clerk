@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, UTC
 from pathlib import Path
 from clerk.db import civic_db_connection
 from clerk.models import sites_table
+from clerk.pipeline_state import claim_coordinator_enqueue
 from clerk.queue import get_compilation_queue
 from clerk.workers import ocr_complete_coordinator
 from sqlalchemy import select, update
@@ -77,28 +78,32 @@ def recover_stuck_site(subdomain):
 
         if txt_count > 0 and not site.coordinator_enqueued:
             # Work was done but coordinator never enqueued
-            click.echo(f"  {subdomain}: Found {txt_count} txt files, enqueueing coordinator")
 
-            # Update database to match reality
+            # Update database to match reality (ocr_completed)
             with civic_db_connection() as conn:
                 conn.execute(
                     update(sites_table).where(
                         sites_table.c.subdomain == subdomain
                     ).values(
                         ocr_completed=txt_count,
-                        coordinator_enqueued=True,
                         updated_at=datetime.now(UTC),
                     )
                 )
 
-            # Enqueue coordinator
-            get_compilation_queue().enqueue(
-                ocr_complete_coordinator,
-                subdomain=subdomain,
-                run_id=f"{subdomain}_recovered",
-                job_timeout="5m",
-                description=f"OCR coordinator (recovered): {subdomain}",
-            )
+            # Atomic claim to prevent duplicate coordinators
+            if claim_coordinator_enqueue(subdomain):
+                click.echo(f"  {subdomain}: Found {txt_count} txt files, enqueueing coordinator")
+
+                # Enqueue coordinator
+                get_compilation_queue().enqueue(
+                    ocr_complete_coordinator,
+                    subdomain=subdomain,
+                    run_id=f"{subdomain}_recovered",
+                    job_timeout="5m",
+                    description=f"OCR coordinator (recovered): {subdomain}",
+                )
+            else:
+                click.echo(f"  {subdomain}: Coordinator already claimed by another process")
 
         elif txt_count == 0:
             click.secho(f"  {subdomain}: No txt files found - ALL OCR failed", fg="yellow")
