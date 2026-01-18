@@ -1,7 +1,5 @@
 """Tests for Sentry integration and error fingerprinting."""
 
-import pytest
-
 from clerk.sentry import before_send
 
 
