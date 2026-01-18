@@ -864,6 +864,7 @@ class Fetcher:
 
             # Cleanup
             processed_path = f"{self.dir_prefix}{prefix}/processed/{meeting}/{date}.txt"
+            os.makedirs(os.path.dirname(processed_path), exist_ok=True)
             with open(processed_path, "a"):
                 os.utime(processed_path, None)
             remote_pdf_path = f"{self.subdomain}{prefix}/_pdfs/{meeting}/{date}.pdf"
