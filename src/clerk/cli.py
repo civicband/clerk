@@ -1463,6 +1463,36 @@ def uninstall_workers():
 
 
 @cli.command()
+def reload_workers():
+    """Reload RQ worker background services after code changes (macOS/Linux)."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    # Try package location first (installed)
+    package_scripts = Path(sys.prefix) / "share" / "clerk" / "scripts"
+
+    # Try relative to this file (development)
+    dev_scripts = Path(__file__).parent.parent.parent / "scripts"
+
+    script_path = None
+    if (package_scripts / "reload-workers.sh").exists():
+        script_path = package_scripts / "reload-workers.sh"
+    elif (dev_scripts / "reload-workers.sh").exists():
+        script_path = dev_scripts / "reload-workers.sh"
+    else:
+        click.secho("Error: reload-workers.sh script not found", fg="red")
+        raise click.Abort()
+
+    # Execute the script
+    result = subprocess.run(
+        [str(script_path)],
+        cwd=Path.cwd(),  # Run in current directory (where .env is)
+    )
+    sys.exit(result.returncode)
+
+
+@cli.command()
 def diagnose_workers():
     """Diagnose worker installation and connection issues."""
     import subprocess
