@@ -766,6 +766,19 @@ class Fetcher:
                 reader = PdfReader(doc_path)
                 total_pages = len(reader.pages)
             except Exception as e:
+                # Record failure in manifest if available
+                if manifest:
+                    manifest.record_failure(
+                        job_id=job_id,
+                        document_path=doc_path,
+                        meeting=meeting,
+                        date=date,
+                        error_type="permanent",
+                        error_class=type(e).__name__,
+                        error_message=str(e),
+                        retry_count=0,
+                    )
+
                 output_log(
                     f"{doc_path} failed to read: {e}. "
                     "PDF may be corrupted. Skipping this document.",
@@ -819,6 +832,19 @@ class Fetcher:
                                 continue
                             page.save(page_image_path, "PNG")
             except Exception as e:
+                # Record failure in manifest if available
+                if manifest:
+                    manifest.record_failure(
+                        job_id=job_id,
+                        document_path=doc_path,
+                        meeting=meeting,
+                        date=date,
+                        error_type="permanent",
+                        error_class=type(e).__name__,
+                        error_message=str(e),
+                        retry_count=0,
+                    )
+
                 output_log(
                     f"{doc_path} failed to process: {e}. "
                     "PDF conversion to images failed. Skipping this document.",
