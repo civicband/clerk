@@ -292,6 +292,63 @@ def fetch_site_job(
         raise
 
 
+def _attempt_coordinator_enqueue(subdomain, stage, run_id):
+    """Helper to check and enqueue coordinator if all jobs complete.
+
+    This function checks if all jobs in a stage are done (completed + failed == total)
+    and atomically claims the right to enqueue the coordinator. Only one job will
+    successfully claim and enqueue.
+
+    Args:
+        subdomain: Site subdomain
+        stage: Pipeline stage (e.g., "ocr")
+        run_id: Pipeline run identifier
+    """
+    # Check if this is the last job and we should trigger coordinator
+    if should_trigger_coordinator(subdomain, stage):
+        logger.debug("All %s jobs complete, attempting to claim coordinator enqueue", stage)
+
+        # Atomically claim the right to enqueue coordinator (only one job wins)
+        if claim_coordinator_enqueue(subdomain):
+            log_with_context(
+                "Successfully claimed coordinator enqueue",
+                subdomain=subdomain,
+                run_id=run_id,
+                stage=stage,
+            )
+
+            # Enqueue coordinator job
+            from .queue import get_compilation_queue
+
+            compilation_queue = get_compilation_queue()
+            coord_job = compilation_queue.enqueue(
+                ocr_complete_coordinator,
+                subdomain=subdomain,
+                run_id=run_id,
+                job_timeout="5m",
+                description=f"OCR coordinator: {subdomain}",
+            )
+
+            # Track coordinator job
+            with civic_db_connection() as conn:
+                track_job(conn, coord_job.id, subdomain, "ocr-coordinator", "ocr")
+
+            log_with_context(
+                "Enqueued OCR coordinator job",
+                subdomain=subdomain,
+                run_id=run_id,
+                stage=stage,
+                coordinator_job_id=coord_job.id,
+            )
+        else:
+            log_with_context(
+                "Coordinator already enqueued by another job",
+                subdomain=subdomain,
+                run_id=run_id,
+                stage=stage,
+            )
+
+
 def ocr_page_job(subdomain, pdf_path, backend="tesseract", run_id=None):
     """RQ job: OCR a single PDF page using atomic counters.
 
@@ -415,49 +472,8 @@ def ocr_page_job(subdomain, pdf_path, backend="tesseract", run_id=None):
             )
             logger.debug("Incremented failed counter for subdomain=%s", subdomain)
 
-        # Check if this is the last job and we should trigger coordinator
-        if should_trigger_coordinator(subdomain, stage):
-            logger.debug("All OCR jobs complete, attempting to claim coordinator enqueue")
-
-            # Atomically claim the right to enqueue coordinator (only one job wins)
-            if claim_coordinator_enqueue(subdomain):
-                log_with_context(
-                    "Successfully claimed coordinator enqueue",
-                    subdomain=subdomain,
-                    run_id=run_id,
-                    stage=stage,
-                )
-
-                # Enqueue coordinator job
-                from .queue import get_compilation_queue
-
-                compilation_queue = get_compilation_queue()
-                coord_job = compilation_queue.enqueue(
-                    ocr_complete_coordinator,
-                    subdomain=subdomain,
-                    run_id=run_id,
-                    job_timeout="5m",
-                    description=f"OCR coordinator: {subdomain}",
-                )
-
-                # Track coordinator job
-                with civic_db_connection() as conn:
-                    track_job(conn, coord_job.id, subdomain, "ocr-coordinator", "ocr")
-
-                log_with_context(
-                    "Enqueued OCR coordinator job",
-                    subdomain=subdomain,
-                    run_id=run_id,
-                    stage=stage,
-                    coordinator_job_id=coord_job.id,
-                )
-            else:
-                log_with_context(
-                    "Coordinator already enqueued by another job",
-                    subdomain=subdomain,
-                    run_id=run_id,
-                    stage=stage,
-                )
+        # Attempt to enqueue coordinator (if all jobs done)
+        _attempt_coordinator_enqueue(subdomain, stage, run_id)
 
     except Exception as e:
         duration = time.time() - start_time
@@ -474,6 +490,19 @@ def ocr_page_job(subdomain, pdf_path, backend="tesseract", run_id=None):
             error_message=str(e),
             traceback=traceback.format_exc(),
         )
+
+        # Increment failed counter for setup/infrastructure errors (atomic)
+        increment_failed(
+            subdomain,
+            stage,
+            error_message=str(e),
+            error_class=type(e).__name__,
+        )
+        logger.debug("Incremented failed counter for setup error, subdomain=%s", subdomain)
+
+        # Attempt to enqueue coordinator (if all jobs done)
+        _attempt_coordinator_enqueue(subdomain, stage, run_id)
+
         # Don't re-raise - we've already tracked the failure
         # This prevents RQ from marking the job as failed
 
