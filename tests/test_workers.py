@@ -479,3 +479,65 @@ def test_extraction_job_logs_extraction_started(mocker):
 
     started_calls = [call for call in mock_log.call_args_list if "extraction_started" in call[0][0]]
     assert len(started_calls) >= 1
+
+
+def test_ocr_job_updates_counters_on_success(mocker):
+    """Test that ocr_page_job updates atomic counters on success."""
+    from clerk.workers import ocr_page_job
+
+    # Mock dependencies
+    mocker.patch("clerk.workers.civic_db_connection")
+    mocker.patch("clerk.workers.get_site_by_subdomain", return_value={"subdomain": "test"})
+    mock_fetcher = mocker.MagicMock()
+    mocker.patch("clerk.cli.get_fetcher", return_value=mock_fetcher)
+    mocker.patch("clerk.workers.log_with_context")
+
+    # Mock atomic counter functions
+    mock_increment_completed = mocker.patch("clerk.workers.increment_completed")
+    mock_should_trigger = mocker.patch("clerk.workers.should_trigger_coordinator", return_value=False)
+    mock_claim = mocker.patch("clerk.workers.claim_coordinator_enqueue")
+
+    # Run OCR job
+    ocr_page_job("test.civic.band", "/path/to/meeting/2024-01-01.pdf", "tesseract", run_id="test_123")
+
+    # Verify increment_completed was called
+    mock_increment_completed.assert_called_once_with("test.civic.band", "ocr")
+
+    # Verify should_trigger_coordinator was called
+    mock_should_trigger.assert_called_once_with("test.civic.band", "ocr")
+
+
+def test_ocr_job_updates_counters_on_failure(mocker):
+    """Test that ocr_page_job updates atomic counters on failure."""
+    from clerk.workers import ocr_page_job
+
+    # Mock dependencies
+    mocker.patch("clerk.workers.civic_db_connection")
+    mocker.patch("clerk.workers.get_site_by_subdomain", return_value={"subdomain": "test"})
+
+    # Mock fetcher to raise an error
+    mock_fetcher = mocker.MagicMock()
+    mock_fetcher.do_ocr_job.side_effect = RuntimeError("OCR processing failed")
+    mocker.patch("clerk.cli.get_fetcher", return_value=mock_fetcher)
+    mocker.patch("clerk.workers.log_with_context")
+
+    # Mock atomic counter functions
+    mock_increment_failed = mocker.patch("clerk.workers.increment_failed")
+    mock_should_trigger = mocker.patch("clerk.workers.should_trigger_coordinator", return_value=False)
+
+    # Run OCR job (should not raise - errors are caught)
+    ocr_page_job("test.civic.band", "/path/to/meeting/2024-01-01.pdf", "tesseract", run_id="test_123")
+
+    # Verify increment_failed was called with error details
+    mock_increment_failed.assert_called_once()
+    call_kwargs = mock_increment_failed.call_args[1]
+    assert call_kwargs["error_message"] == "OCR processing failed"
+    assert call_kwargs["error_class"] == "RuntimeError"
+
+    # Verify positional args
+    call_args = mock_increment_failed.call_args[0]
+    assert call_args[0] == "test.civic.band"
+    assert call_args[1] == "ocr"
+
+    # Verify should_trigger_coordinator was still called
+    mock_should_trigger.assert_called_once_with("test.civic.band", "ocr")

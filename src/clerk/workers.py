@@ -12,6 +12,13 @@ from rq import get_current_job
 from .db import civic_db_connection, get_site_by_subdomain, update_site
 from .fetcher import Fetcher
 from .output import log as output_log
+from .pipeline_state import (
+    claim_coordinator_enqueue,
+    increment_completed,
+    increment_failed,
+    initialize_stage,
+    should_trigger_coordinator,
+)
 from .queue_db import (
     create_site_progress,
     increment_stage_progress,
@@ -243,31 +250,15 @@ def fetch_site_job(
             job_count=len(ocr_job_ids),
         )
 
-        # Spawn coordinator job that waits for ALL OCR jobs (fan-in)
+        # Initialize atomic counters for OCR stage
         if ocr_job_ids:
-            from .queue import get_compilation_queue
-
-            compilation_queue = get_compilation_queue()
-            coord_job = compilation_queue.enqueue(
-                ocr_complete_coordinator,
-                subdomain=subdomain,
-                run_id=run_id,
-                depends_on=ocr_job_ids,  # RQ waits for ALL
-                job_timeout="5m",
-                description=f"OCR coordinator: {subdomain}",
-            )
-
-            # Track coordinator job
-            with civic_db_connection() as conn:
-                track_job(conn, coord_job.id, subdomain, "ocr-coordinator", "ocr")
-
+            initialize_stage(subdomain, stage="ocr", total_jobs=len(ocr_job_ids))
             log_with_context(
-                "Enqueued OCR coordinator job",
+                "Initialized OCR stage with atomic counters",
                 subdomain=subdomain,
                 run_id=run_id,
                 stage=stage,
-                coordinator_job_id=coord_job.id,
-                depends_on_count=len(ocr_job_ids),
+                total_jobs=len(ocr_job_ids),
             )
         else:
             logger.warning(
@@ -302,7 +293,7 @@ def fetch_site_job(
 
 
 def ocr_page_job(subdomain, pdf_path, backend="tesseract", run_id=None):
-    """RQ job: OCR a single PDF page.
+    """RQ job: OCR a single PDF page using atomic counters.
 
     Args:
         subdomain: Site subdomain
@@ -379,28 +370,99 @@ def ocr_page_job(subdomain, pdf_path, backend="tesseract", run_id=None):
             pdf_name=path_obj.name,
             backend=backend,
         )
-        fetcher.do_ocr_job(job, None, job_id, backend=backend)  # type: ignore
 
-        duration = time.time() - start_time
-        log_with_context(
-            "ocr_completed",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
-            ocr_job_id=job_id,
-            pdf_name=path_obj.name,
-            duration_seconds=round(duration, 2),
-        )
+        # Wrap do_ocr_job in try/except to handle failures gracefully
+        try:
+            fetcher.do_ocr_job(job, None, job_id, backend=backend)  # type: ignore
 
-        # Increment progress counter
-        with civic_db_connection() as conn:
-            increment_stage_progress(conn, subdomain)
-        logger.debug("Incremented OCR progress for subdomain=%s", subdomain)
+            duration = time.time() - start_time
+            log_with_context(
+                "ocr_completed",
+                subdomain=subdomain,
+                run_id=run_id,
+                stage=stage,
+                ocr_job_id=job_id,
+                pdf_name=path_obj.name,
+                duration_seconds=round(duration, 2),
+            )
+
+            # Increment completed counter (atomic)
+            increment_completed(subdomain, stage)
+            logger.debug("Incremented completed counter for subdomain=%s", subdomain)
+
+        except Exception as ocr_error:
+            duration = time.time() - start_time
+            log_with_context(
+                f"ocr_failed: {ocr_error}",
+                subdomain=subdomain,
+                run_id=run_id,
+                stage=stage,
+                level="error",
+                duration_seconds=round(duration, 2),
+                pdf_path=pdf_path,
+                backend=backend,
+                error_type=type(ocr_error).__name__,
+                error_message=str(ocr_error),
+                traceback=traceback.format_exc(),
+            )
+
+            # Increment failed counter with error details (atomic)
+            increment_failed(
+                subdomain,
+                stage,
+                error_message=str(ocr_error),
+                error_class=type(ocr_error).__name__,
+            )
+            logger.debug("Incremented failed counter for subdomain=%s", subdomain)
+
+        # Check if this is the last job and we should trigger coordinator
+        if should_trigger_coordinator(subdomain, stage):
+            logger.debug("All OCR jobs complete, attempting to claim coordinator enqueue")
+
+            # Atomically claim the right to enqueue coordinator (only one job wins)
+            if claim_coordinator_enqueue(subdomain):
+                log_with_context(
+                    "Successfully claimed coordinator enqueue",
+                    subdomain=subdomain,
+                    run_id=run_id,
+                    stage=stage,
+                )
+
+                # Enqueue coordinator job
+                from .queue import get_compilation_queue
+
+                compilation_queue = get_compilation_queue()
+                coord_job = compilation_queue.enqueue(
+                    ocr_complete_coordinator,
+                    subdomain=subdomain,
+                    run_id=run_id,
+                    job_timeout="5m",
+                    description=f"OCR coordinator: {subdomain}",
+                )
+
+                # Track coordinator job
+                with civic_db_connection() as conn:
+                    track_job(conn, coord_job.id, subdomain, "ocr-coordinator", "ocr")
+
+                log_with_context(
+                    "Enqueued OCR coordinator job",
+                    subdomain=subdomain,
+                    run_id=run_id,
+                    stage=stage,
+                    coordinator_job_id=coord_job.id,
+                )
+            else:
+                log_with_context(
+                    "Coordinator already enqueued by another job",
+                    subdomain=subdomain,
+                    run_id=run_id,
+                    stage=stage,
+                )
 
     except Exception as e:
         duration = time.time() - start_time
         log_with_context(
-            f"ocr_failed: {e}",
+            f"ocr_job_error: {e}",
             subdomain=subdomain,
             run_id=run_id,
             stage=stage,
@@ -412,7 +474,8 @@ def ocr_page_job(subdomain, pdf_path, backend="tesseract", run_id=None):
             error_message=str(e),
             traceback=traceback.format_exc(),
         )
-        raise
+        # Don't re-raise - we've already tracked the failure
+        # This prevents RQ from marking the job as failed
 
 
 def ocr_complete_coordinator(subdomain, run_id):
