@@ -37,6 +37,7 @@ class TestFetcherContract:
     def test_fetch_events_raises_not_implemented(self, tmp_path, monkeypatch):
         """Base Fetcher.fetch_events() should raise NotImplementedError."""
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr("clerk.fetcher.STORAGE_DIR", str(tmp_path))
 
         from clerk.fetcher import Fetcher
 
@@ -64,6 +65,7 @@ class TestFetcherCheckIfExists:
     def test_returns_false_when_no_files_exist(self, tmp_path, monkeypatch):
         """check_if_exists returns False when no matching files exist."""
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr("clerk.fetcher.STORAGE_DIR", str(tmp_path))
 
         from clerk.fetcher import Fetcher
 
@@ -89,6 +91,7 @@ class TestFetcherCheckIfExists:
         import sys
 
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr("clerk.fetcher.STORAGE_DIR", str(tmp_path))
 
         # Reload modules to pick up the new STORAGE_DIR
         if "clerk.utils" in sys.modules:
@@ -138,6 +141,7 @@ class TestFetcherSimplifiedMeetingName:
     def test_removes_spaces(self, tmp_path, monkeypatch):
         """simplified_meeting_name removes spaces."""
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr("clerk.fetcher.STORAGE_DIR", str(tmp_path))
 
         from clerk.fetcher import Fetcher
 
@@ -161,6 +165,7 @@ class TestFetcherSimplifiedMeetingName:
     def test_replaces_special_chars(self, tmp_path, monkeypatch):
         """simplified_meeting_name replaces special characters."""
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr("clerk.fetcher.STORAGE_DIR", str(tmp_path))
 
         from clerk.fetcher import Fetcher
 
@@ -336,6 +341,7 @@ class TestDoOCRJobEnhanced:
         mock_site["subdomain"] = "test"
 
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr("clerk.fetcher.STORAGE_DIR", str(tmp_path))
 
         fetcher = Fetcher(mock_site)
         manifest_path = Path(tmp_path) / "failures.jsonl"
@@ -397,6 +403,7 @@ class TestDoOCRJobEnhanced:
         mock_site["subdomain"] = "test"
 
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr("clerk.fetcher.STORAGE_DIR", str(tmp_path))
 
         fetcher = Fetcher(mock_site)
         manifest_path = Path(tmp_path) / "failures.jsonl"
@@ -437,7 +444,7 @@ class TestDoOCRJobEnhanced:
         assert entry["error_class"] == "MockPdfReadError"
 
     def test_do_ocr_job_raises_on_critical_error(self, mock_site, tmp_path, monkeypatch):
-        """do_ocr_job should raise critical errors immediately."""
+        """do_ocr_job should skip missing PDF files with appropriate logging."""
         from pathlib import Path
         from unittest.mock import patch
 
@@ -447,25 +454,24 @@ class TestDoOCRJobEnhanced:
         mock_site["subdomain"] = "test"
 
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr("clerk.fetcher.STORAGE_DIR", str(tmp_path))
 
         fetcher = Fetcher(mock_site)
         manifest_path = Path(tmp_path) / "failures.jsonl"
         manifest = FailureManifest(str(manifest_path))
         job_id = "test_123"
 
-        # Mock critical error (file not found means storage dir issue)
+        # Test missing PDF file (fetch job likely failed)
         with (
             patch("clerk.fetcher.PDF_SUPPORT", True),
-            patch("clerk.fetcher.PdfReader", side_effect=FileNotFoundError("missing")),
-            patch("clerk.fetcher.output_log"),
+            patch("clerk.fetcher.output_log") as mock_log,
         ):
             job = ("", "Meeting", "2024-01-01")
+            # Don't create the PDF file - it should be skipped
+            fetcher.do_ocr_job(job, manifest, job_id)
 
-            try:
-                fetcher.do_ocr_job(job, manifest, job_id)
-                raise AssertionError("Should have raised FileNotFoundError")
-            except FileNotFoundError:
-                pass  # Expected
+            # Should log missing PDF error
+            assert any("PDF file not found" in str(call) for call in mock_log.call_args_list)
 
         manifest.close()
 
@@ -481,6 +487,7 @@ class TestDoOCRIntegration:
 
         mock_site["subdomain"] = "test"
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr("clerk.fetcher.STORAGE_DIR", str(tmp_path))
 
         fetcher = Fetcher(mock_site)
 
@@ -504,6 +511,7 @@ class TestDoOCRIntegration:
 
         mock_site["subdomain"] = "test"
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr("clerk.fetcher.STORAGE_DIR", str(tmp_path))
 
         fetcher = Fetcher(mock_site)
 
@@ -579,6 +587,7 @@ def test_ocr_with_vision_extracts_text(tmp_path, mocker, monkeypatch):
 
     # Set storage dir
     monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+    monkeypatch.setattr("clerk.fetcher.STORAGE_DIR", str(tmp_path))
 
     # Create a mock image
     image_path = tmp_path / "test.png"
@@ -627,6 +636,7 @@ def test_ocr_with_vision_handles_import_error(tmp_path, monkeypatch):
 
     # Set storage dir
     monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+    monkeypatch.setattr("clerk.fetcher.STORAGE_DIR", str(tmp_path))
 
     # Remove Vision from sys.modules if present
     if "Vision" in sys.modules:
@@ -651,6 +661,7 @@ def test_ocr_with_vision_handles_vision_error(tmp_path, mocker, monkeypatch):
 
     # Set storage dir
     monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+    monkeypatch.setattr("clerk.fetcher.STORAGE_DIR", str(tmp_path))
 
     image_path = tmp_path / "test.png"
     image_path.write_bytes(b"fake png data")
@@ -681,6 +692,7 @@ def test_do_ocr_job_uses_tesseract_backend(tmp_path, mocker, monkeypatch):
 
     # Setup environment
     monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+    monkeypatch.setattr("clerk.fetcher.STORAGE_DIR", str(tmp_path))
 
     site = {"subdomain": "test", "start_year": 2020, "pages": 0}
     fetcher = Fetcher(site)
@@ -749,6 +761,7 @@ def test_do_ocr_job_uses_vision_backend(tmp_path, mocker, monkeypatch):
 
     # Setup environment
     monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+    monkeypatch.setattr("clerk.fetcher.STORAGE_DIR", str(tmp_path))
 
     site = {"subdomain": "test", "start_year": 2020, "pages": 0}
     fetcher = Fetcher(site)
@@ -816,6 +829,7 @@ def test_do_ocr_job_falls_back_to_tesseract_on_vision_error(tmp_path, mocker, mo
 
     # Setup environment
     monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+    monkeypatch.setattr("clerk.fetcher.STORAGE_DIR", str(tmp_path))
 
     site = {"subdomain": "test", "start_year": 2020, "pages": 0}
     fetcher = Fetcher(site)

@@ -730,6 +730,36 @@ class Fetcher:
             doc_image_dir_path = f"{self.dir_prefix}{prefix}/images/{meeting}/{date}"
             doc_txt_dir_path = f"{self.dir_prefix}{prefix}/txt/{meeting}/{date}"
 
+            # Check if PDF file exists before attempting to read
+            if not os.path.exists(doc_path):
+                output_log(
+                    f"PDF file not found: {doc_path}. "
+                    "Fetch job may have failed or file was deleted.",
+                    subdomain=self.subdomain,
+                    level="error",
+                    doc_path=doc_path,
+                    meeting=meeting,
+                    date=date,
+                    error_type="missing_pdf",
+                )
+                return  # Skip this job without raising exception
+
+            # Check for empty/corrupted PDF before attempting to read
+            file_size = os.path.getsize(doc_path)
+            if file_size == 0:
+                output_log(
+                    f"Skipping empty PDF file (0 bytes): {doc_path}. "
+                    "File likely from failed download. Manual cleanup required.",
+                    subdomain=self.subdomain,
+                    level="error",
+                    doc_path=doc_path,
+                    file_size=0,
+                    meeting=meeting,
+                    date=date,
+                    error_type="empty_pdf",
+                )
+                return  # Skip this job without raising exception
+
             # PDF reading with timing
             read_st = time.time()
             try:
