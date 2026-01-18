@@ -22,41 +22,61 @@ def before_send(event, hint):
     Returns:
         Modified event with custom fingerprint, or None to drop the event
     """
-    # Get exception info
+    message = None
+    exc_type = None
+
+    # Extract message from either exception or log message
     if "exception" in event and event["exception"]["values"]:
         exc_value = event["exception"]["values"][0]
-        exc_message = exc_value.get("value", "")
+        message = exc_value.get("value", "")
+        exc_type = exc_value.get("type", "")
+    elif "logentry" in event:
+        message = event["logentry"].get("message", "")
+    elif "message" in event:
+        message = event["message"]
 
-        # Pattern 1: "No text files found in /path/to/site/txt" - OCR verification failures
-        if "No text files found in" in exc_message:
-            event["fingerprint"] = ["no-text-files-found"]
+    if not message:
+        return event
 
-        # Pattern 2: "Error fetching year 2026 for [CommitteeName]" - Fetch failures
-        elif "Error fetching year" in exc_message:
-            event["fingerprint"] = ["error-fetching-year"]
+    # Apply fingerprinting patterns
+    # Pattern 1: "PDF file not found: /path/to/file.pdf" - Log messages
+    if "PDF file not found:" in message:
+        event["fingerprint"] = ["pdf-file-not-found"]
 
-        # Pattern 3: "Error fetching https://..." - Network/HTTP errors
-        elif "Error fetching https://" in exc_message:
-            # Group by domain, not full URL
-            match = re.search(r"https://([^/]+)", exc_message)
-            if match:
-                domain = match.group(1)
-                event["fingerprint"] = ["fetch-error", domain]
-            else:
-                event["fingerprint"] = ["fetch-error", "unknown-domain"]
+    # Pattern 2: "No text files found in /path/to/site/txt" - OCR verification failures
+    elif "No text files found in" in message:
+        event["fingerprint"] = ["no-text-files-found"]
 
-        # Pattern 4: "ocr_coordinator_failed: No text files found" - OCR coordinator
-        elif "ocr_coordinator_failed" in exc_message:
-            event["fingerprint"] = ["ocr-coordinator-failed"]
+    # Pattern 3: "Error fetching year 2026 for [CommitteeName]" - Fetch failures
+    elif "Error fetching year" in message:
+        event["fingerprint"] = ["error-fetching-year"]
 
-        # Pattern 5: FileNotFoundError with paths - Missing PDFs or files
-        elif exc_value.get("type") == "FileNotFoundError":
-            if "/pdfs/" in exc_message:
-                event["fingerprint"] = ["file-not-found", "pdf"]
-            elif "/txt/" in exc_message:
-                event["fingerprint"] = ["file-not-found", "txt"]
-            else:
-                event["fingerprint"] = ["file-not-found", "other"]
+    # Pattern 4: "Error fetching https://..." - Network/HTTP errors
+    elif "Error fetching https://" in message:
+        # Group by domain, not full URL
+        match = re.search(r"https://([^/]+)", message)
+        if match:
+            domain = match.group(1)
+            event["fingerprint"] = ["fetch-error", domain]
+        else:
+            event["fingerprint"] = ["fetch-error", "unknown-domain"]
+
+    # Pattern 5: "ocr_coordinator_failed: No text files found" - OCR coordinator
+    elif "ocr_coordinator_failed" in message:
+        event["fingerprint"] = ["ocr-coordinator-failed"]
+
+    # Pattern 6: "Skipping empty PDF file" - Empty PDF handling
+    elif "Skipping empty PDF file" in message:
+        event["fingerprint"] = ["empty-pdf-file"]
+
+    # Pattern 7: FileNotFoundError with paths - Missing PDFs or files
+    elif exc_type == "FileNotFoundError":
+        if "/pdfs/" in message:
+            event["fingerprint"] = ["file-not-found", "pdf"]
+        elif "/txt/" in message:
+            event["fingerprint"] = ["file-not-found", "txt"]
+        else:
+            event["fingerprint"] = ["file-not-found", "other"]
 
     return event
 
