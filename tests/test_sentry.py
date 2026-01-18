@@ -6,6 +6,44 @@ from clerk.sentry import before_send
 class TestBeforeSend:
     """Test the before_send hook for Sentry event fingerprinting."""
 
+    def test_pdf_failed_to_read(self):
+        """PDF read failures should be grouped together."""
+        event1 = {
+            "logentry": {
+                "message": "/Volumes/CivicBandData/sites/lenawee-county.mi/pdfs/BoardofHealth/2022-06-15.pdf failed to read: PdfReadError: Invalid PDF"
+            }
+        }
+        event2 = {
+            "logentry": {
+                "message": "/Volumes/CivicBandData/sites/passaic-county.nj/pdfs/Meeting/2023-01-10.pdf failed to read: PdfReadError: EOF marker not found"
+            }
+        }
+
+        result1 = before_send(event1, {})
+        result2 = before_send(event2, {})
+
+        assert result1["fingerprint"] == ["pdf-failed-to-read"]
+        assert result2["fingerprint"] == ["pdf-failed-to-read"]
+
+    def test_pdf_failed_to_process(self):
+        """PDF processing failures should be grouped together."""
+        event1 = {
+            "logentry": {
+                "message": "/path/to/site1/pdfs/Meeting/2022-01-01.pdf failed to process: MemoryError"
+            }
+        }
+        event2 = {
+            "logentry": {
+                "message": "/different/path/site2/pdfs/Board/2023-05-15.pdf failed to process: TimeoutError"
+            }
+        }
+
+        result1 = before_send(event1, {})
+        result2 = before_send(event2, {})
+
+        assert result1["fingerprint"] == ["pdf-failed-to-process"]
+        assert result2["fingerprint"] == ["pdf-failed-to-process"]
+
     def test_pdf_file_not_found_log_message(self):
         """PDF file not found log messages should be grouped together."""
         event1 = {"logentry": {"message": "PDF file not found: /path/to/site1/pdfs/file.pdf"}}
