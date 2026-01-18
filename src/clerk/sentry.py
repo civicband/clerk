@@ -39,19 +39,27 @@ def before_send(event, hint):
         return event
 
     # Apply fingerprinting patterns
-    # Pattern 1: "PDF file not found: /path/to/file.pdf" - Log messages
-    if "PDF file not found:" in message:
+    # Pattern 1: "/path/to/file.pdf failed to read:" - PDF read errors
+    if ".pdf failed to read:" in message:
+        event["fingerprint"] = ["pdf-failed-to-read"]
+
+    # Pattern 2: "/path/to/file.pdf failed to process:" - PDF processing errors
+    elif ".pdf failed to process:" in message:
+        event["fingerprint"] = ["pdf-failed-to-process"]
+
+    # Pattern 3: "PDF file not found: /path/to/file.pdf" - Log messages
+    elif "PDF file not found:" in message:
         event["fingerprint"] = ["pdf-file-not-found"]
 
-    # Pattern 2: "No text files found in /path/to/site/txt" - OCR verification failures
+    # Pattern 4: "No text files found in /path/to/site/txt" - OCR verification failures
     elif "No text files found in" in message:
         event["fingerprint"] = ["no-text-files-found"]
 
-    # Pattern 3: "Error fetching year 2026 for [CommitteeName]" - Fetch failures
+    # Pattern 5: "Error fetching year 2026 for [CommitteeName]" - Fetch failures
     elif "Error fetching year" in message:
         event["fingerprint"] = ["error-fetching-year"]
 
-    # Pattern 4: "Error fetching https://..." - Network/HTTP errors
+    # Pattern 6: "Error fetching https://..." - Network/HTTP errors
     elif "Error fetching https://" in message:
         # Group by domain, not full URL
         match = re.search(r"https://([^/]+)", message)
@@ -61,15 +69,15 @@ def before_send(event, hint):
         else:
             event["fingerprint"] = ["fetch-error", "unknown-domain"]
 
-    # Pattern 5: "ocr_coordinator_failed: No text files found" - OCR coordinator
+    # Pattern 7: "ocr_coordinator_failed: No text files found" - OCR coordinator
     elif "ocr_coordinator_failed" in message:
         event["fingerprint"] = ["ocr-coordinator-failed"]
 
-    # Pattern 6: "Skipping empty PDF file" - Empty PDF handling
+    # Pattern 8: "Skipping empty PDF file" - Empty PDF handling
     elif "Skipping empty PDF file" in message:
         event["fingerprint"] = ["empty-pdf-file"]
 
-    # Pattern 7: FileNotFoundError with paths - Missing PDFs or files
+    # Pattern 9: FileNotFoundError with paths - Missing PDFs or files
     elif exc_type == "FileNotFoundError":
         if "/pdfs/" in message:
             event["fingerprint"] = ["file-not-found", "pdf"]
