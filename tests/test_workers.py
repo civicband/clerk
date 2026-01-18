@@ -541,3 +541,44 @@ def test_ocr_job_updates_counters_on_failure(mocker):
 
     # Verify should_trigger_coordinator was still called
     mock_should_trigger.assert_called_once_with("test.civic.band", "ocr")
+
+
+def test_coordinator_resets_enqueued_flag(mock_site, tmp_path, monkeypatch):
+    """Coordinator should reset coordinator_enqueued flag for next stage."""
+    from clerk.workers import ocr_complete_coordinator
+    from clerk.db import civic_db_connection, upsert_site
+    from clerk.models import sites_table
+    from clerk.pipeline_state import initialize_stage, increment_completed, claim_coordinator_enqueue
+    from sqlalchemy import select
+    from pathlib import Path
+
+    subdomain = "test-site"
+    mock_site["subdomain"] = subdomain
+
+    # Setup site in database
+    with civic_db_connection() as conn:
+        upsert_site(conn, mock_site)
+
+    initialize_stage(subdomain, "ocr", total_jobs=1)
+    increment_completed(subdomain, "ocr")
+    claim_coordinator_enqueue(subdomain)
+
+    # Create txt files (OCR succeeded)
+    monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+    txt_dir = Path(tmp_path) / subdomain / "txt" / "Meeting"
+    txt_dir.mkdir(parents=True)
+    (txt_dir / "2024-01-01.txt").write_text("test content")
+
+    # Run coordinator
+    ocr_complete_coordinator(subdomain, run_id="test_run")
+
+    # Verify flag reset and stage transitioned
+    with civic_db_connection() as conn:
+        site = conn.execute(
+            select(sites_table).where(sites_table.c.subdomain == subdomain)
+        ).fetchone()
+
+    assert site.current_stage == 'extraction'  # Moved to next stage
+    assert site.coordinator_enqueued == False  # Flag reset
+    assert site.compilation_total == 1  # Next stage initialized
+    assert site.extraction_total == 1

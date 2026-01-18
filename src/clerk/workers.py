@@ -4,12 +4,14 @@ import logging
 import os
 import time
 import traceback
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from rq import get_current_job
+from sqlalchemy import update
 
 from .db import civic_db_connection, get_site_by_subdomain, update_site
+from .models import sites_table
 from .fetcher import Fetcher
 from .output import log as output_log
 from .pipeline_state import (
@@ -547,9 +549,20 @@ def ocr_complete_coordinator(subdomain, run_id):
             txt_file_count=len(txt_files),
         )
 
-        # Update progress: moving to compilation/extraction stage
+        # Update progress: transition to next stage
         with civic_db_connection() as conn:
-            update_site_progress(conn, subdomain, stage="extraction")
+            conn.execute(
+                update(sites_table).where(
+                    sites_table.c.subdomain == subdomain
+                ).values(
+                    current_stage='extraction',
+                    compilation_total=1,
+                    extraction_total=1,
+                    coordinator_enqueued=False,  # Reset flag for next stage
+                    updated_at=datetime.now(UTC),
+                )
+            )
+
             # Update legacy status field for backward compatibility
             update_site(
                 conn,
