@@ -1,6 +1,6 @@
 """SQLAlchemy table definitions for civic.db schema."""
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, MetaData, String, Table
+from sqlalchemy import Boolean, Column, DateTime, Integer, MetaData, String, Table, Text
 from sqlalchemy.sql import func
 
 metadata = MetaData()
@@ -55,7 +55,7 @@ sites_table = Table(
 
     # Error tracking
     Column("last_error_stage", String),
-    Column("last_error_message", String),
+    Column("last_error_message", Text),
     Column("last_error_at", DateTime(timezone=True)),
 
     # Deprecated (keep during migration)
