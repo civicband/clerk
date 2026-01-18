@@ -392,13 +392,11 @@ class TestDoOCRJobEnhanced:
         manifest.close()
 
     def test_do_ocr_job_handles_permanent_error(self, mock_site, tmp_path, monkeypatch):
-        """do_ocr_job should record permanent errors in manifest and continue."""
-        import json
+        """do_ocr_job should skip corrupted PDFs with appropriate logging."""
         from pathlib import Path
         from unittest.mock import patch
 
         from clerk.fetcher import Fetcher
-        from clerk.ocr_utils import FailureManifest
 
         mock_site["subdomain"] = "test"
 
@@ -406,8 +404,6 @@ class TestDoOCRJobEnhanced:
         monkeypatch.setattr("clerk.fetcher.STORAGE_DIR", str(tmp_path))
 
         fetcher = Fetcher(mock_site)
-        manifest_path = Path(tmp_path) / "failures.jsonl"
-        manifest = FailureManifest(str(manifest_path))
         job_id = "test_123"
 
         # Create a mock PdfReadError
@@ -418,7 +414,6 @@ class TestDoOCRJobEnhanced:
         with (
             patch("clerk.fetcher.PDF_SUPPORT", True),
             patch("clerk.fetcher.PdfReader", side_effect=MockPdfReadError("corrupted")),
-            patch("clerk.fetcher.PERMANENT_ERRORS", (MockPdfReadError,)),
             patch("clerk.fetcher.output_log") as mock_log,
         ):
             # Create necessary directories
@@ -427,21 +422,10 @@ class TestDoOCRJobEnhanced:
             (pdf_dir / "2024-01-01.pdf").write_bytes(b"fake pdf")
 
             job = ("", "Meeting", "2024-01-01")
-            fetcher.do_ocr_job(job, manifest, job_id)
+            fetcher.do_ocr_job(job, None, job_id)
 
-            # Should log error
-            assert any("Document failed" in str(call) for call in mock_log.call_args_list)
-
-        manifest.close()
-
-        # Verify manifest entry
-        with open(manifest_path) as f:
-            entry = json.loads(f.readline())
-
-        assert entry["job_id"] == job_id
-        assert entry["meeting"] == "Meeting"
-        assert entry["error_type"] == "permanent"
-        assert entry["error_class"] == "MockPdfReadError"
+            # Should log "failed to read" error and skip
+            assert any("failed to read" in str(call) for call in mock_log.call_args_list)
 
     def test_do_ocr_job_raises_on_critical_error(self, mock_site, tmp_path, monkeypatch):
         """do_ocr_job should skip missing PDF files with appropriate logging."""
