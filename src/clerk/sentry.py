@@ -4,8 +4,61 @@ Initializes Sentry SDK if SENTRY_DSN environment variable is set.
 """
 
 import os
+import re
 
 import sentry_sdk
+
+
+def before_send(event, hint):
+    """Normalize error fingerprints for better grouping in Sentry.
+
+    Groups similar errors together even when they contain site-specific data
+    (paths, committee names, URLs) to reduce noise in error tracking.
+
+    Args:
+        event: Sentry event dict
+        hint: Additional context about the event
+
+    Returns:
+        Modified event with custom fingerprint, or None to drop the event
+    """
+    # Get exception info
+    if "exception" in event and event["exception"]["values"]:
+        exc_value = event["exception"]["values"][0]
+        exc_message = exc_value.get("value", "")
+
+        # Pattern 1: "No text files found in /path/to/site/txt" - OCR verification failures
+        if "No text files found in" in exc_message:
+            event["fingerprint"] = ["no-text-files-found"]
+
+        # Pattern 2: "Error fetching year 2026 for [CommitteeName]" - Fetch failures
+        elif "Error fetching year" in exc_message:
+            event["fingerprint"] = ["error-fetching-year"]
+
+        # Pattern 3: "Error fetching https://..." - Network/HTTP errors
+        elif "Error fetching https://" in exc_message:
+            # Group by domain, not full URL
+            match = re.search(r"https://([^/]+)", exc_message)
+            if match:
+                domain = match.group(1)
+                event["fingerprint"] = ["fetch-error", domain]
+            else:
+                event["fingerprint"] = ["fetch-error", "unknown-domain"]
+
+        # Pattern 4: "ocr_coordinator_failed: No text files found" - OCR coordinator
+        elif "ocr_coordinator_failed" in exc_message:
+            event["fingerprint"] = ["ocr-coordinator-failed"]
+
+        # Pattern 5: FileNotFoundError with paths - Missing PDFs or files
+        elif exc_value.get("type") == "FileNotFoundError":
+            if "/pdfs/" in exc_message:
+                event["fingerprint"] = ["file-not-found", "pdf"]
+            elif "/txt/" in exc_message:
+                event["fingerprint"] = ["file-not-found", "txt"]
+            else:
+                event["fingerprint"] = ["file-not-found", "other"]
+
+    return event
 
 
 def init_sentry():
@@ -41,4 +94,6 @@ def init_sentry():
         traces_sample_rate=traces_sample_rate,
         # Enable RQ integration to capture worker job exceptions
         integrations=[RqIntegration()],
+        # Use custom fingerprinting to group similar errors
+        before_send=before_send,
     )
