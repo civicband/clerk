@@ -7,6 +7,7 @@ CLI commands and standalone scripts.
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any, cast
 
 import click
 from sqlalchemy import select, update
@@ -150,7 +151,7 @@ def clear_rq_state() -> tuple[int, int]:
     return (cancelled, deleted)
 
 
-def find_stuck_sites(threshold_hours: int = 2) -> list:
+def find_stuck_sites(threshold_hours: int = 2) -> list[Any]:
     """Find sites stuck in pipeline for >threshold_hours.
 
     Args:
@@ -170,7 +171,7 @@ def find_stuck_sites(threshold_hours: int = 2) -> list:
             )
         ).fetchall()
 
-    return stuck
+    return cast(list[Any], stuck)
 
 
 def recover_stuck_site(subdomain: str) -> bool:
