@@ -1,12 +1,13 @@
 """Tests for pipeline reconciliation job."""
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
-from datetime import datetime, timedelta, UTC
-from pathlib import Path
+from sqlalchemy import select, update
+
 from clerk.db import civic_db_connection, upsert_site
 from clerk.models import sites_table
-from clerk.pipeline_state import initialize_stage, increment_completed
-from sqlalchemy import select, update
+from clerk.pipeline_state import initialize_stage
 
 
 @pytest.fixture
@@ -66,8 +67,9 @@ def test_detect_stuck_site(stuck_site):
 
 def test_recover_stuck_site_with_txt_files(stuck_site):
     """Test recovering stuck site by inferring state from txt files."""
+    from unittest.mock import MagicMock, patch
+
     from scripts.reconcile_pipeline import recover_stuck_site
-    from unittest.mock import patch, MagicMock
 
     # Mock queue.enqueue to verify coordinator gets enqueued
     mock_queue = MagicMock()
@@ -85,7 +87,7 @@ def test_recover_stuck_site_with_txt_files(stuck_site):
         ).fetchone()
 
     assert site.ocr_completed == 2  # 2 txt files found
-    assert site.coordinator_enqueued == True
+    assert site.coordinator_enqueued is True
 
 
 def test_skip_recently_updated_sites():

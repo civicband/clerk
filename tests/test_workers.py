@@ -495,7 +495,7 @@ def test_ocr_job_updates_counters_on_success(mocker):
     # Mock atomic counter functions
     mock_increment_completed = mocker.patch("clerk.workers.increment_completed")
     mock_should_trigger = mocker.patch("clerk.workers.should_trigger_coordinator", return_value=False)
-    mock_claim = mocker.patch("clerk.workers.claim_coordinator_enqueue")
+    _mock_claim = mocker.patch("clerk.workers.claim_coordinator_enqueue")
 
     # Run OCR job
     ocr_page_job("test.civic.band", "/path/to/meeting/2024-01-01.pdf", "tesseract", run_id="test_123")
@@ -545,12 +545,18 @@ def test_ocr_job_updates_counters_on_failure(mocker):
 
 def test_coordinator_resets_enqueued_flag(mock_site, tmp_path, monkeypatch):
     """Coordinator should reset coordinator_enqueued flag for next stage."""
-    from clerk.workers import ocr_complete_coordinator
+    from pathlib import Path
+
+    from sqlalchemy import select
+
     from clerk.db import civic_db_connection, upsert_site
     from clerk.models import sites_table
-    from clerk.pipeline_state import initialize_stage, increment_completed, claim_coordinator_enqueue
-    from sqlalchemy import select
-    from pathlib import Path
+    from clerk.pipeline_state import (
+        claim_coordinator_enqueue,
+        increment_completed,
+        initialize_stage,
+    )
+    from clerk.workers import ocr_complete_coordinator
 
     subdomain = "test-site"
     mock_site["subdomain"] = subdomain
@@ -579,6 +585,6 @@ def test_coordinator_resets_enqueued_flag(mock_site, tmp_path, monkeypatch):
         ).fetchone()
 
     assert site.current_stage == 'extraction'  # Moved to next stage
-    assert site.coordinator_enqueued == False  # Flag reset
+    assert site.coordinator_enqueued is False  # Flag reset
     assert site.compilation_total == 1  # Next stage initialized
     assert site.extraction_total == 1

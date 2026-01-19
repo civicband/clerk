@@ -4,6 +4,7 @@ Provides atomic operations for updating pipeline state in sites table.
 """
 
 from datetime import UTC, datetime
+
 from sqlalchemy import select, update
 
 from .db import civic_db_connection
@@ -129,7 +130,7 @@ def claim_coordinator_enqueue(subdomain: str) -> bool:
             update(sites_table)
             .where(
                 sites_table.c.subdomain == subdomain,
-                sites_table.c.coordinator_enqueued == False,  # Critical: prevents duplicates
+                sites_table.c.coordinator_enqueued == False,  # noqa: E712 - SQL comparison, not Python boolean
             )
             .values(
                 coordinator_enqueued=True,

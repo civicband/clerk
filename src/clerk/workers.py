@@ -11,8 +11,8 @@ from rq import get_current_job
 from sqlalchemy import update
 
 from .db import civic_db_connection, get_site_by_subdomain, update_site
-from .models import sites_table
 from .fetcher import Fetcher
+from .models import sites_table
 from .output import log as output_log
 from .pipeline_state import (
     claim_coordinator_enqueue,

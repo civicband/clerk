@@ -566,8 +566,14 @@ class TestBuildFullDb:
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
         monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
 
-        # Create civic.db with a site
-        db = sqlite_utils.Database("civic.db")
+        # Create civic.db with proper schema
+        from tests.conftest import create_sites_table_with_schema
+
+        db_path = tmp_path / "civic.db"
+        create_sites_table_with_schema(db_path)
+
+        # Insert test site
+        db = sqlite_utils.Database(db_path)
         db["sites"].insert(
             {
                 "subdomain": "example.civic.band",
@@ -587,7 +593,6 @@ class TestBuildFullDb:
                 "extraction_status": "pending",
                 "last_extracted": None,
             },
-            pk="subdomain",
         )
 
         runner = CliRunner()
@@ -1161,32 +1166,22 @@ class TestExtractEntitiesIntegration:
         monkeypatch.setenv("ENABLE_EXTRACTION", "0")  # Fast test without spaCy
         monkeypatch.setenv("CIVIC_DEV_MODE", "1")  # Skip deployment
 
-        # Step 1: Create database WITHOUT extraction columns (simulates old database)
+        # Step 1: Create database with full schema but drop extraction columns
+        # (simulates database with pipeline state columns but old extraction format)
         import sqlite_utils
         from sqlalchemy import inspect
 
-        db = sqlite_utils.Database("civic.db")
-        db["sites"].create(
-            {
-                "subdomain": str,
-                "name": str,
-                "state": str,
-                "country": str,
-                "kind": str,
-                "scraper": str,
-                "pages": int,
-                "start_year": int,
-                "extra": str,
-                "status": str,
-                "last_updated": str,
-                "last_deployed": str,
-                "lat": str,
-                "lng": str,
-            },
-            pk="subdomain",
-        )
+        from tests.conftest import create_sites_table_with_schema
 
-        # Initially no extraction columns exist
+        db_path = tmp_path / "civic.db"
+        create_sites_table_with_schema(db_path)
+
+        # Drop extraction columns to simulate old database
+        db = sqlite_utils.Database(db_path)
+        db.execute("ALTER TABLE sites DROP COLUMN extraction_status")
+        db.execute("ALTER TABLE sites DROP COLUMN last_extracted")
+
+        # Verify extraction columns were dropped
         site_columns_before = {col.name for col in db["sites"].columns}
         assert "extraction_status" not in site_columns_before
         assert "last_extracted" not in site_columns_before

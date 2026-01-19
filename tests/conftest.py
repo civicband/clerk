@@ -7,9 +7,26 @@ import sys
 import pluggy
 import pytest
 import sqlite_utils
+from sqlalchemy import create_engine
 
 from clerk.hookspecs import ClerkSpec
 from tests.mocks.mock_plugins import TestPlugin
+
+
+def create_sites_table_with_schema(db_path):
+    """Create a sites table using SQLAlchemy model schema.
+
+    This ensures all columns from the model (including pipeline state columns)
+    are created in the test database.
+
+    Args:
+        db_path: Path to the SQLite database file
+    """
+    from clerk.models import metadata
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    metadata.create_all(engine)
+    engine.dispose()
 
 
 @pytest.fixture

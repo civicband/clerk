@@ -8,12 +8,14 @@ This script:
 4. Clears deferred coordinators and failed OCR jobs from RQ
 """
 
-import click
 from pathlib import Path
+
+import click
+from sqlalchemy import select, update
+
 from clerk.db import civic_db_connection
 from clerk.models import site_progress_table, sites_table
 from clerk.queue import get_compilation_queue, get_ocr_queue
-from sqlalchemy import select, update
 
 
 def count_txt_files(subdomain):

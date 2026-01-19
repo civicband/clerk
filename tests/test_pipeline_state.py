@@ -1,15 +1,16 @@
 """Tests for pipeline state management helpers."""
 
+
 import pytest
-from datetime import datetime, UTC
+
 from clerk.db import civic_db_connection
 from clerk.models import sites_table
 from clerk.pipeline_state import (
-    initialize_stage,
+    claim_coordinator_enqueue,
     increment_completed,
     increment_failed,
+    initialize_stage,
     should_trigger_coordinator,
-    claim_coordinator_enqueue,
 )
 
 
@@ -51,7 +52,7 @@ def test_initialize_stage(test_site):
     assert site.ocr_total == 5
     assert site.ocr_completed == 0
     assert site.ocr_failed == 0
-    assert site.coordinator_enqueued == False
+    assert site.coordinator_enqueued is False
     assert site.updated_at is not None
 
 
@@ -102,7 +103,7 @@ def test_should_trigger_coordinator_not_ready(test_site):
 
     result = should_trigger_coordinator(test_site, "ocr")
 
-    assert result == False
+    assert result is False
 
 
 def test_should_trigger_coordinator_ready(test_site):
@@ -114,7 +115,7 @@ def test_should_trigger_coordinator_ready(test_site):
 
     result = should_trigger_coordinator(test_site, "ocr")
 
-    assert result == True  # 2 + 1 == 3
+    assert result is True  # 2 + 1 == 3
 
 
 def test_claim_coordinator_enqueue_success(test_site):
@@ -124,7 +125,7 @@ def test_claim_coordinator_enqueue_success(test_site):
 
     claimed = claim_coordinator_enqueue(test_site)
 
-    assert claimed == True
+    assert claimed is True
 
     with civic_db_connection() as conn:
         from sqlalchemy import select
@@ -132,7 +133,7 @@ def test_claim_coordinator_enqueue_success(test_site):
             select(sites_table).where(sites_table.c.subdomain == test_site)
         ).fetchone()
 
-    assert site.coordinator_enqueued == True
+    assert site.coordinator_enqueued is True
 
 
 def test_claim_coordinator_enqueue_race_condition(test_site):
@@ -143,8 +144,8 @@ def test_claim_coordinator_enqueue_race_condition(test_site):
 
     # First claim succeeds
     claimed1 = claim_coordinator_enqueue(test_site)
-    assert claimed1 == True
+    assert claimed1 is True
 
     # Second claim fails (already claimed)
     claimed2 = claim_coordinator_enqueue(test_site)
-    assert claimed2 == False
+    assert claimed2 is False

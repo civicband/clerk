@@ -10,16 +10,18 @@ Detects and recovers stuck sites by:
 Run this periodically (every 15 minutes) via cron.
 """
 
-import click
 import os
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+import click
+from sqlalchemy import select, update
+
 from clerk.db import civic_db_connection
 from clerk.models import sites_table
 from clerk.pipeline_state import claim_coordinator_enqueue
 from clerk.queue import get_compilation_queue
 from clerk.workers import ocr_complete_coordinator
-from sqlalchemy import select, update
 
 
 def count_txt_files(subdomain):
