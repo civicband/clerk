@@ -102,7 +102,7 @@
           {
             "refId": "A",
             "format": "table",
-            "rawSql": "SELECT COUNT(*) as stuck_count FROM sites WHERE current_stage != 'completed' AND current_stage IS NOT NULL AND updated_at < NOW() - INTERVAL '2 hours' AND updated_at > NOW() - INTERVAL '$__range';"
+            "rawSql": "SELECT COUNT(*) as stuck_count FROM sites WHERE current_stage != 'completed' AND current_stage IS NOT NULL AND updated_at < NOW() - INTERVAL '2 hours';"
           }
         ],
         "options": {
