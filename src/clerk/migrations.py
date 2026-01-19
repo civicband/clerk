@@ -20,19 +20,40 @@ from .workers import ocr_complete_coordinator
 
 
 def count_txt_files(subdomain: str) -> int:
-    """Count txt files on filesystem.
+    """Count completed OCR documents on filesystem.
+
+    Note: Despite the name, this counts DOCUMENTS (not individual txt pages).
+    Each OCR job processes one PDF document and creates a directory with
+    multiple txt files (one per page). A document is considered complete
+    if its directory exists and contains at least one txt file.
 
     Args:
         subdomain: Site subdomain
 
     Returns:
-        Number of txt files found
+        Number of completed OCR documents (not pages)
     """
     storage_dir = os.getenv("STORAGE_DIR", "../sites")
-    txt_dir = Path(f"{storage_dir}/{subdomain}/txt")
-    if not txt_dir.exists():
+    txt_base = Path(f"{storage_dir}/{subdomain}/txt")
+
+    if not txt_base.exists():
         return 0
-    return len(list(txt_dir.glob("**/*.txt")))
+
+    # Count document directories that have at least one txt file
+    # Structure: txt/{meeting}/{date}/*.txt
+    completed_docs = 0
+    for meeting_dir in txt_base.iterdir():
+        if not meeting_dir.is_dir():
+            continue
+        for doc_dir in meeting_dir.iterdir():
+            if not doc_dir.is_dir():
+                continue
+            # Check if this document has any txt files (at least one page completed)
+            txt_files = list(doc_dir.glob("*.txt"))
+            if txt_files:
+                completed_docs += 1
+
+    return completed_docs
 
 
 def count_pdf_files(subdomain: str) -> int:
@@ -73,19 +94,19 @@ def migrate_stuck_sites(dry_run: bool = False) -> int:
         for site_prog in stuck:
             subdomain = site_prog.subdomain
 
-            # Infer actual state from filesystem
-            txt_count = count_txt_files(subdomain)
-            pdf_count = count_pdf_files(subdomain)
+            # Infer actual state from filesystem (count DOCUMENTS, not pages)
+            completed_docs = count_txt_files(subdomain)  # Counts document dirs with txt files
+            total_docs = count_pdf_files(subdomain)  # Counts PDF documents
 
             # Conservative estimate of totals
-            ocr_total = pdf_count if pdf_count > 0 else site_prog.stage_total
+            ocr_total = total_docs if total_docs > 0 else site_prog.stage_total
             if ocr_total == 0:
                 ocr_total = 1  # avoid division by zero
 
-            ocr_completed = txt_count
+            ocr_completed = completed_docs
 
             # Ensure total is at least as large as completed
-            # (can happen if PDFs were deleted after OCR, or if some PDFs generated multiple txt files)
+            # (can happen if PDFs were deleted after OCR completed)
             if ocr_completed > ocr_total:
                 ocr_total = ocr_completed
 
@@ -203,9 +224,9 @@ def recover_stuck_site(subdomain: str) -> bool:
 
     if stage == "ocr":
         # Infer state from filesystem
-        txt_count = count_txt_files(subdomain)
+        completed_docs = count_txt_files(subdomain)
 
-        if txt_count > 0 and not site.coordinator_enqueued:
+        if completed_docs > 0 and not site.coordinator_enqueued:
             # Work was done but coordinator never enqueued
 
             # Update database to match reality (ocr_completed)
@@ -214,14 +235,14 @@ def recover_stuck_site(subdomain: str) -> bool:
                     update(sites_table)
                     .where(sites_table.c.subdomain == subdomain)
                     .values(
-                        ocr_completed=txt_count,
+                        ocr_completed=completed_docs,
                         updated_at=datetime.now(UTC),
                     )
                 )
 
             # Atomic claim to prevent duplicate coordinators
             if claim_coordinator_enqueue(subdomain):
-                click.echo(f"  {subdomain}: Found {txt_count} txt files, enqueueing coordinator")
+                click.echo(f"  {subdomain}: Found {completed_docs} completed documents, enqueueing coordinator")
 
                 # Enqueue coordinator
                 get_compilation_queue().enqueue(
@@ -236,8 +257,8 @@ def recover_stuck_site(subdomain: str) -> bool:
                 click.echo(f"  {subdomain}: Coordinator already claimed by another process")
                 return False
 
-        elif txt_count == 0:
-            click.secho(f"  {subdomain}: No txt files found - ALL OCR failed", fg="yellow")
+        elif completed_docs == 0:
+            click.secho(f"  {subdomain}: No completed OCR documents found - ALL OCR failed", fg="yellow")
             return False
 
         else:
