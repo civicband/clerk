@@ -1,7 +1,7 @@
 {
   "uid": "clerk_stuck_sites_critical",
   "title": "Clerk: Stuck Sites Critical",
-  "condition": "A",
+  "condition": "C",
   "data": [
     {
       "refId": "A",
