@@ -328,6 +328,151 @@
             "decimals": 1
           }
         }
+      },
+      {
+        "id": 9,
+        "type": "row",
+        "title": "Debugging (Filtered by Variables)",
+        "collapsed": false,
+        "gridPos": { "x": 0, "y": 24, "w": 24, "h": 1 }
+      },
+      {
+        "id": 10,
+        "type": "table",
+        "title": "Recent Errors (Last Hour)",
+        "datasource": {
+          "type": "loki",
+          "uid": "${DS_LOKI}"
+        },
+        "gridPos": { "x": 0, "y": 25, "w": 24, "h": 6 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "{job=\"clerk\"} |= `level` | json | level=~\"error|warning\" | subdomain=~\"$subdomain\" | stage=~\"$stage\"",
+            "legendFormat": ""
+          }
+        ],
+        "options": {
+          "showHeader": true,
+          "sortBy": [
+            {
+              "displayName": "Time",
+              "desc": true
+            }
+          ]
+        },
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {},
+              "indexByName": {
+                "Time": 0,
+                "subdomain": 1,
+                "stage": 2,
+                "message": 3,
+                "job_id": 4
+              },
+              "renameByName": {
+                "Time": "Time",
+                "subdomain": "Subdomain",
+                "stage": "Stage",
+                "message": "Message",
+                "job_id": "Job ID"
+              }
+            }
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "width": null
+            }
+          },
+          "overrides": [
+            {
+              "matcher": { "id": "byName", "options": "Message" },
+              "properties": [
+                {
+                  "id": "custom.width",
+                  "value": 600
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 11,
+        "type": "logs",
+        "title": "Log Search",
+        "datasource": {
+          "type": "loki",
+          "uid": "${DS_LOKI}"
+        },
+        "gridPos": { "x": 0, "y": 31, "w": 24, "h": 8 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "{job=\"clerk\"} | json | subdomain=~\"$subdomain\" | stage=~\"$stage\" | run_id=~\"$run_id\" | line_format \"{{.time}} [{{.level}}] {{.subdomain}}/{{.stage}}: {{.message}}\"",
+            "legendFormat": ""
+          }
+        ],
+        "options": {
+          "showTime": true,
+          "showLabels": true,
+          "showCommonLabels": false,
+          "wrapLogMessage": true,
+          "prettifyLogMessage": false,
+          "enableLogDetails": true,
+          "dedupStrategy": "none",
+          "sortOrder": "Descending"
+        }
+      },
+      {
+        "id": 12,
+        "type": "table",
+        "title": "Pipeline Run Trace",
+        "datasource": {
+          "type": "loki",
+          "uid": "${DS_LOKI}"
+        },
+        "gridPos": { "x": 0, "y": 39, "w": 24, "h": 8 },
+        "targets": [
+          {
+            "refId": "A",
+            "expr": "{job=\"clerk\"} | json | subdomain=~\"$subdomain\" | run_id=~\"$run_id\" | stage != \"\" | line_format \"{{.stage}}: {{.message}} (job={{.job_id}})\"",
+            "legendFormat": ""
+          }
+        ],
+        "options": {
+          "showHeader": true,
+          "sortBy": [
+            {
+              "displayName": "Time",
+              "desc": false
+            }
+          ]
+        },
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "indexByName": {
+                "Time": 0,
+                "stage": 1,
+                "message": 2,
+                "job_id": 3
+              },
+              "renameByName": {
+                "Time": "Time",
+                "stage": "Stage",
+                "message": "Message",
+                "job_id": "Job ID"
+              }
+            }
+          }
+        ]
       }
     ],
     "editable": true,
