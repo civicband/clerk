@@ -583,7 +583,11 @@ def test_coordinator_resets_enqueued_flag(mock_site, tmp_path, monkeypatch, mock
     txt_dir.mkdir(parents=True)
     (txt_dir / "2024-01-01.txt").write_text("test content")
 
-    # Mock queue operations (coordinator enqueues extraction and deploy jobs)
+    # Mock queue operations (coordinator enqueues compilation, extraction and deploy jobs)
+    mock_compilation_queue = mocker.MagicMock()
+    mock_compilation_queue.enqueue.return_value = mocker.MagicMock(id="comp-job")
+    mocker.patch("clerk.queue.get_compilation_queue", return_value=mock_compilation_queue)
+
     mock_extraction_queue = mocker.MagicMock()
     mock_extraction_queue.enqueue.return_value = mocker.MagicMock(id="ext-job")
     mocker.patch("clerk.queue.get_extraction_queue", return_value=mock_extraction_queue)
