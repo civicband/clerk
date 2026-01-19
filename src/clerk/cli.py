@@ -2619,6 +2619,82 @@ def investigate_failed_ocr(limit):
         click.echo("  - Sites may need manual intervention or different OCR approach")
 
 
+@cli.command()
+@click.option("--limit", default=10, help="Number of failed jobs to show")
+def debug_failed_ocr(limit):
+    """Show errors from failed OCR jobs in RQ queue.
+
+    This command inspects the RQ failed job registry to show actual error
+    messages from OCR jobs that failed. Useful for diagnosing why OCR is
+    failing (missing files, permissions, tesseract errors, etc.).
+
+    Examples:
+        # Show first 10 failed OCR jobs
+        clerk debug-failed-ocr
+
+        # Show first 20 failed OCR jobs
+        clerk debug-failed-ocr --limit 20
+    """
+    from .queue import get_ocr_queue
+
+    click.echo("=" * 80)
+    click.echo("DEBUG: Failed OCR Jobs")
+    click.echo("=" * 80)
+    click.echo()
+
+    ocr_q = get_ocr_queue()
+    failed = ocr_q.failed_job_registry
+
+    total_failed = len(failed)
+    click.echo(f"Total failed OCR jobs: {total_failed}")
+    click.echo()
+
+    if total_failed == 0:
+        click.echo("No failed OCR jobs found")
+        return
+
+    # Get first N failed jobs
+    job_ids = list(failed.get_job_ids())[:limit]
+
+    for i, job_id in enumerate(job_ids):
+        job = ocr_q.fetch_job(job_id)
+        if job:
+            subdomain = job.kwargs.get("subdomain", "unknown")
+            pdf_path = job.kwargs.get("pdf_path", "unknown")
+
+            click.echo(f"Failed Job {i + 1}/{len(job_ids)}: {job_id}")
+            click.echo(f"  Subdomain: {subdomain}")
+            click.echo(f"  PDF path: {pdf_path}")
+
+            if job.exc_info:
+                # Extract error type from traceback
+                lines = job.exc_info.split("\n")
+                error_line = None
+                for line in lines:
+                    if line.strip().startswith(
+                        ("FileNotFoundError:", "PermissionError:", "ValueError:", "Exception:")
+                    ):
+                        error_line = line.strip()
+                        break
+
+                if error_line:
+                    click.secho(f"  Error: {error_line[:150]}", fg="red")
+                else:
+                    # Show last non-empty line
+                    for line in reversed(lines):
+                        if line.strip():
+                            click.secho(f"  Error: {line.strip()[:150]}", fg="red")
+                            break
+            else:
+                click.echo("  Error: (no error info available)")
+
+            click.echo()
+
+    if total_failed > limit:
+        click.echo(f"... and {total_failed - limit} more failed jobs")
+        click.echo(f"Run with --limit {total_failed} to see all")
+
+
 cli.add_command(new)
 cli.add_command(update)
 cli.add_command(build_full_db)
