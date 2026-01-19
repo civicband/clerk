@@ -339,7 +339,7 @@ def investigate_failed_ocr_sites(limit: int = 10) -> dict[str, Any]:
             )
         ).fetchall()
 
-    patterns = {
+    patterns: dict[str, Any] = {
         "total_count": len(failed_sites),
         "investigated_count": min(limit, len(failed_sites)),
         "no_site_dir": 0,
@@ -454,7 +454,8 @@ def recover_stuck_site(subdomain: str) -> bool:
             else:
                 # PDFs exist but OCR failed - real failure
                 click.secho(
-                    f"  {subdomain}: No completed OCR documents found - ALL OCR failed ({total_pdfs} PDFs exist)", fg="yellow"
+                    f"  {subdomain}: No completed OCR documents found - ALL OCR failed ({total_pdfs} PDFs exist)",
+                    fg="yellow",
                 )
                 return False
 

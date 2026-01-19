@@ -336,13 +336,13 @@ def get_fetcher(site, all_years=False, all_agendas=False) -> Fetcher:  # type: i
         fetcher_class = fetcher_class[0]
 
     if fetcher_class:
-        return fetcher_class(site, start_year, all_agendas)  # pyright: ignore[reportCallIssue]
+        return fetcher_class(site, start_year, all_agendas)  # type: ignore[no-any-return, operator]  # pyright: ignore[reportCallIssue]
     if site["scraper"] == "custom":
         import importlib
 
         module_path = f"fetchers.custom.{site['subdomain'].replace('.', '_')}"
         fetcher = importlib.import_module(module_path)
-        return fetcher.custom_fetcher(site, start_year, all_agendas)
+        return fetcher.custom_fetcher(site, start_year, all_agendas)  # type: ignore[no-any-return]
 
 
 def fetch_internal(subdomain: str, fetcher: Fetcher):
