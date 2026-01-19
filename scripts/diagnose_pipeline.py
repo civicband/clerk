@@ -15,9 +15,9 @@ from clerk.queue import (
     get_ocr_queue,
 )
 
-print("="*80)
+print("=" * 80)
 print("EVIDENCE 1: Site Progress State")
-print("="*80)
+print("=" * 80)
 
 with civic_db_connection() as conn:
     stmt = select(site_progress_table)
@@ -36,11 +36,13 @@ with civic_db_connection() as conn:
     print(f"\nNot completed: {len(non_completed)}")
     print("\nFirst 5 non-completed:")
     for row in non_completed[:5]:
-        print(f"  {row.subdomain}: {row.current_stage} ({row.stage_completed}/{row.stage_total}) updated {row.updated_at}")
+        print(
+            f"  {row.subdomain}: {row.current_stage} ({row.stage_completed}/{row.stage_total}) updated {row.updated_at}"
+        )
 
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 print("EVIDENCE 2: Sites Table Status")
-print("="*80)
+print("=" * 80)
 
 with civic_db_connection() as conn:
     stmt = select(sites_table)
@@ -54,9 +56,9 @@ with civic_db_connection() as conn:
     for status, sites in sorted(by_status.items()):
         print(f"  {status}: {len(sites)}")
 
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 print("EVIDENCE 3: Deferred Jobs")
-print("="*80)
+print("=" * 80)
 
 queues = {
     "fetch": get_fetch_queue(),
@@ -76,9 +78,11 @@ for name, queue in queues.items():
             if job:
                 print(f"  {job.func_name} - {job.args[0] if job.args else 'no-args'}")
 
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 print("EVIDENCE 4: Active Queues")
-print("="*80)
+print("=" * 80)
 
 for name, queue in queues.items():
-    print(f"{name}: active={len(queue)} started={len(queue.started_job_registry)} failed={len(queue.failed_job_registry)}")
+    print(
+        f"{name}: active={len(queue)} started={len(queue.started_job_registry)} failed={len(queue.failed_job_registry)}"
+    )

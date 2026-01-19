@@ -21,6 +21,7 @@ from clerk.queue import get_compilation_queue, get_ocr_queue
 def count_txt_files(subdomain):
     """Count txt files on filesystem."""
     import os
+
     storage_dir = os.getenv("STORAGE_DIR", "../sites")
     txt_dir = Path(f"{storage_dir}/{subdomain}/txt")
     if not txt_dir.exists():
@@ -31,6 +32,7 @@ def count_txt_files(subdomain):
 def count_pdf_files(subdomain):
     """Count PDF files on filesystem."""
     import os
+
     storage_dir = os.getenv("STORAGE_DIR", "../sites")
     pdf_dir = Path(f"{storage_dir}/{subdomain}/pdfs")
     if not pdf_dir.exists():
@@ -44,9 +46,7 @@ def migrate_stuck_sites(dry_run=False):
     with civic_db_connection() as conn:
         # Get all stuck sites from site_progress
         stuck = conn.execute(
-            select(site_progress_table).where(
-                site_progress_table.c.current_stage == 'ocr'
-            )
+            select(site_progress_table).where(site_progress_table.c.current_stage == "ocr")
         ).fetchall()
 
         click.echo(f"Found {len(stuck)} stuck sites in OCR stage")
@@ -71,10 +71,10 @@ def migrate_stuck_sites(dry_run=False):
             # Update sites table (skip in dry-run mode)
             if not dry_run:
                 conn.execute(
-                    update(sites_table).where(
-                        sites_table.c.subdomain == subdomain
-                    ).values(
-                        current_stage='ocr',
+                    update(sites_table)
+                    .where(sites_table.c.subdomain == subdomain)
+                    .values(
+                        current_stage="ocr",
                         ocr_total=ocr_total,
                         ocr_completed=ocr_completed,
                         ocr_failed=ocr_failed,
@@ -129,7 +129,9 @@ def clear_rq_state():
 
 
 @click.command()
-@click.option('--dry-run', is_flag=True, default=False, help='Show what would be done without making changes')
+@click.option(
+    "--dry-run", is_flag=True, default=False, help="Show what would be done without making changes"
+)
 def main(dry_run):
     """Migrate stuck sites to new atomic counter system."""
 

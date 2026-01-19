@@ -2403,6 +2403,137 @@ def check_failed(queue, limit, output_json):
             click.echo()
 
 
+@cli.command()
+@click.option(
+    "--dry-run", is_flag=True, default=False, help="Show what would be done without making changes"
+)
+def migrate_stuck_sites(dry_run):
+    """Migrate stuck sites to atomic counter system.
+
+    This command:
+    1. Finds sites stuck in OCR stage (from site_progress table)
+    2. Infers actual state from filesystem (count txt/PDF files)
+    3. Updates sites table with inferred counters
+    4. Clears deferred coordinators and failed OCR jobs from RQ
+
+    Examples:
+        # Preview what would be migrated
+        clerk migrate-stuck-sites --dry-run
+
+        # Execute migration
+        clerk migrate-stuck-sites
+    """
+    # Import from existing script to avoid code duplication
+    import sys
+    from pathlib import Path
+
+    # Add scripts directory to path
+    scripts_dir = Path(__file__).parent.parent.parent / "scripts"
+    sys.path.insert(0, str(scripts_dir))
+
+    try:
+        from migrate_stuck_sites import clear_rq_state
+        from migrate_stuck_sites import migrate_stuck_sites as migrate_impl
+
+        click.echo("=" * 80)
+        click.echo("MIGRATION: Stuck Sites to Atomic Counter System")
+        click.echo("=" * 80)
+        click.echo()
+
+        if dry_run:
+            click.secho("DRY RUN MODE - no changes will be made", fg="yellow")
+            click.echo()
+
+        migrate_impl(dry_run=dry_run)
+
+        if not dry_run:
+            clear_rq_state()
+
+            click.secho("Migration complete!", fg="green")
+            click.echo("Next step: Run reconciliation job to unstick sites")
+            click.echo("  clerk reconcile-pipeline")
+        else:
+            click.echo()
+            click.secho("Dry run complete - run without --dry-run to apply changes", fg="yellow")
+    finally:
+        sys.path.pop(0)
+
+
+@cli.command()
+@click.option("--threshold-hours", default=2, help="Hours since update to consider stuck")
+@click.option(
+    "--dry-run", is_flag=True, default=False, help="Show what would be done without making changes"
+)
+def reconcile_pipeline(threshold_hours, dry_run):
+    """Detect and recover stuck sites in pipeline.
+
+    This command:
+    1. Finds sites with stale updated_at timestamps
+    2. Infers actual state from filesystem
+    3. Enqueues missing coordinators
+    4. Re-enqueues lost jobs
+
+    Run this periodically (every 15 minutes) via cron.
+
+    Examples:
+        # Check for sites stuck >2 hours
+        clerk reconcile-pipeline
+
+        # Check for sites stuck >6 hours (dry run)
+        clerk reconcile-pipeline --threshold-hours 6 --dry-run
+
+        # Preview what would be recovered
+        clerk reconcile-pipeline --dry-run
+    """
+    # Import from existing script to avoid code duplication
+    import sys
+    from datetime import UTC
+    from pathlib import Path
+
+    # Add scripts directory to path
+    scripts_dir = Path(__file__).parent.parent.parent / "scripts"
+    sys.path.insert(0, str(scripts_dir))
+
+    try:
+        from reconcile_pipeline import find_stuck_sites, recover_stuck_site
+
+        click.echo("=" * 80)
+        click.echo(f"RECONCILIATION: {datetime.now(UTC).isoformat()}")
+        click.echo("=" * 80)
+        click.echo()
+
+        if dry_run:
+            click.secho("DRY RUN MODE - no changes will be made", fg="yellow")
+            click.echo()
+
+        # Find stuck sites
+        stuck = find_stuck_sites(threshold_hours)
+
+        if not stuck:
+            click.echo("No stuck sites found")
+            return
+
+        click.echo(f"Found {len(stuck)} stuck sites:")
+        click.echo()
+
+        # Recover each stuck site
+        recovered = 0
+        for site in stuck:
+            if not dry_run:
+                recover_stuck_site(site.subdomain)
+                recovered += 1
+            else:
+                click.echo(f"  {site.subdomain}: Would recover (dry run)")
+
+        click.echo()
+        if dry_run:
+            click.secho(f"Would recover {len(stuck)} sites", fg="yellow")
+        else:
+            click.secho(f"Recovered {recovered} sites", fg="green")
+    finally:
+        sys.path.pop(0)
+
+
 cli.add_command(new)
 cli.add_command(update)
 cli.add_command(build_full_db)

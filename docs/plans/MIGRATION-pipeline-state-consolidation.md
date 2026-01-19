@@ -43,21 +43,15 @@ ls -lh backup_before_migration_*.sql
 ### Step 2: Apply Schema Migration (5 minutes)
 
 ```bash
-# On production server
-psql $DATABASE_URL < migrations/001_add_pipeline_state_columns.sql
+# On production server (no git checkout needed - shipped with pip install)
+clerk db upgrade
 ```
 
 **Expected output:**
 ```
-ALTER TABLE
-ALTER TABLE
-ALTER TABLE
-... (21 ALTER TABLE statements)
-CREATE INDEX
-CREATE INDEX
-CREATE INDEX
-COMMENT
-COMMENT
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade s9z7il1abnmz -> 9daf09ff2554, add_pipeline_state_columns
 ```
 
 **Verify schema changes:**
@@ -74,8 +68,8 @@ psql $DATABASE_URL -c "\d sites" | grep -E "(ocr_total|coordinator_enqueued|curr
 Test the migration script without making changes:
 
 ```bash
-# On production server, in clerk directory
-uv run python scripts/migrate_stuck_sites.py --dry-run
+# On production server (no git checkout needed)
+clerk migrate-stuck-sites --dry-run
 ```
 
 **Expected output:**
@@ -104,8 +98,8 @@ Dry run complete - run without --dry-run to apply changes
 ### Step 4: Run Migration Script (10 minutes)
 
 ```bash
-# On production server
-uv run python scripts/migrate_stuck_sites.py
+# On production server (no git checkout needed)
+clerk migrate-stuck-sites
 ```
 
 **Expected output:**
@@ -128,11 +122,9 @@ Clearing 82 deferred coordinators...
 Clearing 2695 failed OCR jobs...
   Deleted 2695 failed OCR jobs
 
-RQ cleanup complete
-
 Migration complete!
 Next step: Run reconciliation job to unstick sites
-  python scripts/reconcile_pipeline.py
+  clerk reconcile-pipeline
 ```
 
 **Verify migration:**
@@ -177,8 +169,8 @@ Failed OCR jobs: 0
 Trigger recovery for migrated sites:
 
 ```bash
-# On production server
-uv run python scripts/reconcile_pipeline.py
+# On production server (no git checkout needed)
+clerk reconcile-pipeline
 ```
 
 **Expected output:**
@@ -208,8 +200,8 @@ Add reconciliation to cron for automatic recovery:
 # On production server
 crontab -e
 
-# Add this line (runs every 15 minutes):
-*/15 * * * * cd /path/to/clerk && uv run python scripts/reconcile_pipeline.py >> /var/log/clerk-reconcile.log 2>&1
+# Add this line (runs every 15 minutes, no git checkout needed):
+*/15 * * * * cd /path/to/civic-band && clerk reconcile-pipeline >> /var/log/clerk-reconcile.log 2>&1
 ```
 
 **Verify cron entry:**
@@ -358,8 +350,8 @@ git revert <commit-sha>
 # Check how many sites were migrated before error
 psql $DATABASE_URL -c "SELECT COUNT(*) FROM sites WHERE current_stage = 'ocr' AND ocr_total > 0;"
 
-# Re-run migration script (idempotent)
-uv run python scripts/migrate_stuck_sites.py
+# Re-run migration script (idempotent, no git checkout needed)
+clerk migrate-stuck-sites
 ```
 
 ### Issue: Reconciliation keeps finding same stuck sites
