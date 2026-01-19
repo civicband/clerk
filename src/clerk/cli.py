@@ -2797,29 +2797,32 @@ def debug_recent_sites(scraper, days, limit):
     cutoff = datetime.now(UTC) - timedelta(days=days)
 
     with civic_db_connection() as conn:
-        query = select(sites_table).where(sites_table.c.created_at >= cutoff)
+        # Use started_at as proxy for creation time (when pipeline first ran)
+        query = select(sites_table).where(
+            sites_table.c.started_at >= cutoff, sites_table.c.started_at.isnot(None)
+        )
 
         if scraper:
             query = query.where(sites_table.c.scraper.like(f"%{scraper}%"))
 
-        query = query.order_by(sites_table.c.created_at.desc()).limit(limit)
+        query = query.order_by(sites_table.c.started_at.desc()).limit(limit)
 
         sites = conn.execute(query).fetchall()
 
     if not sites:
-        click.echo(f"No sites found created in last {days} days")
+        click.echo(f"No sites found started in last {days} days")
         if scraper:
             click.echo(f"(filtered by scraper: {scraper})")
         return
 
-    click.echo(f"Found {len(sites)} sites created in last {days} days:")
+    click.echo(f"Found {len(sites)} sites started in last {days} days:")
     if scraper:
         click.echo(f"(filtered by scraper: {scraper})")
     click.echo()
 
     for site in sites:
         click.echo(f"Site: {site.subdomain}")
-        click.echo(f"  Created: {site.created_at}")
+        click.echo(f"  Started: {site.started_at}")
         click.echo(f"  Scraper: {site.scraper}")
         click.echo(f"  Current stage: {site.current_stage or 'none'}")
         click.echo(f"  Status: {site.status}")
