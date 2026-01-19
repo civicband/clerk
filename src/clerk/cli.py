@@ -23,8 +23,10 @@ load_dotenv()
 from datetime import UTC
 
 from . import output
+from .fetcher import Fetcher
 from .output import log
 from .plugin_loader import load_plugins_from_directory
+from .queue import generate_run_id
 from .sentry import init_sentry
 from .utils import assert_db_exists, build_db_from_text_internal, build_table_from_text, pm
 
@@ -149,7 +151,10 @@ def cli(ctx, plugins_dir, quiet):
     default="tesseract",
     help="OCR backend to use (tesseract or vision). Defaults to tesseract.",
 )
-def new(ocr_backend="tesseract"):
+@click.option(
+    "--fetch-local", is_flag=True, default=False, help="Fetch inline instead of sending through RQ"
+)
+def new(ocr_backend="tesseract", fetch_local=False):
     """Create a new site"""
     from .db import civic_db_connection, get_site_by_subdomain
     from .queue import enqueue_job
@@ -204,14 +209,26 @@ def new(ocr_backend="tesseract"):
 
     click.echo(f"Site {subdomain} created")
     click.echo(f"Enqueueing new site {subdomain} with high priority")
-    enqueue_job(
-        "fetch-site",
-        subdomain,
-        priority="high",
-        all_years=True,
-        all_agendas=all_agendas,
-        ocr_backend=ocr_backend,
-    )
+    if fetch_local:
+        from .queue import generate_run_id
+        from .workers import fetch_site_job
+
+        fetch_site_job(
+            subdomain=subdomain,
+            run_id=generate_run_id(subdomain),
+            all_years=True,
+            all_agendas=all_agendas,
+            ocr_backend=ocr_backend,
+        )
+    else:
+        enqueue_job(
+            "fetch-site",
+            subdomain,
+            priority="high",
+            all_years=True,
+            all_agendas=all_agendas,
+            ocr_backend=ocr_backend,
+        )
     pm.hook.post_create(subdomain=subdomain)
 
 
@@ -223,12 +240,17 @@ def new(ocr_backend="tesseract"):
 @click.option("--all-agendas", is_flag=True)
 @click.option("--backfill", is_flag=True)
 @click.option(
+    "--fetch-local", is_flag=True, default=False, help="Fetch inline instead of sending through RQ"
+)
+@click.option(
     "--ocr-backend",
     type=click.Choice(["tesseract", "vision"], case_sensitive=False),
     default="tesseract",
     help="OCR backend to use (tesseract or vision). Defaults to tesseract.",
 )
-def update(subdomain, next_site, all_years, skip_fetch, all_agendas, backfill, ocr_backend):
+def update(
+    subdomain, next_site, all_years, skip_fetch, all_agendas, backfill, fetch_local, ocr_backend
+):
     """Update a site."""
     import datetime
 
@@ -255,7 +277,12 @@ def update(subdomain, next_site, all_years, skip_fetch, all_agendas, backfill, o
                 },
             )
 
-        enqueue_job("fetch-site", oldest_subdomain, priority="normal")
+        if fetch_local:
+            from .workers import fetch_site_job
+
+            fetch_site_job(oldest_subdomain, generate_run_id(oldest_subdomain))
+        else:
+            enqueue_job("fetch-site", oldest_subdomain, priority="normal")
         return
 
     if subdomain:
@@ -281,115 +308,19 @@ def update(subdomain, next_site, all_years, skip_fetch, all_agendas, backfill, o
         if skip_fetch:
             job_kwargs["skip_fetch"] = True
 
-        enqueue_job("fetch-site", subdomain, priority="high", **job_kwargs)
+        if fetch_local:
+            from .workers import fetch_site_job
+
+            fetch_site_job(subdomain, run_id=generate_run_id(subdomain), **job_kwargs)
+        else:
+            enqueue_job("fetch-site", subdomain, priority="high", **job_kwargs)
         return
 
     # Error: must specify --subdomain or --next-site
     raise click.UsageError("Must specify --subdomain or --next-site")
 
 
-def update_site_internal(
-    subdomain,
-    next_site=False,
-    all_years=False,
-    skip_fetch=False,
-    all_agendas=False,
-    backfill=False,
-    ocr_backend="tesseract",
-):
-    from sqlalchemy import text
-
-    from .db import civic_db_connection, get_site_by_subdomain, update_site
-
-    engine = assert_db_exists()
-    logger.info(
-        "Starting site update subdomain=%s all_years=%s all_agendas=%s",
-        subdomain,
-        all_years,
-        all_agendas,
-    )
-
-    query_normal = (
-        "select subdomain from sites where status = 'deployed' order by last_updated asc limit 1"
-    )
-    query_backfill = "select subdomain from sites order by last_updated asc limit 1"
-
-    query = query_normal
-    if backfill:
-        query = query_backfill
-
-    # Get site to operate on
-    if next_site:
-        with engine.connect() as conn:
-            num_sites_in_ocr = conn.execute(
-                text("select count(*) from sites where status = 'needs_ocr'")
-            ).fetchone()[0]
-            num_sites_in_extraction = conn.execute(
-                text("select count(*) from sites where status = 'needs_extraction'")
-            ).fetchone()[0]
-            total_processing = num_sites_in_ocr + num_sites_in_extraction
-            if total_processing >= 5:
-                log("Too many sites in progress. Going to sleep.")
-                return
-            subdomain_query = conn.execute(text(query)).fetchone()
-            if not subdomain_query:
-                log("No more sites to update today")
-                return
-            subdomain = subdomain_query[0]
-
-    with civic_db_connection() as conn:
-        site = get_site_by_subdomain(conn, subdomain)
-    if not site:
-        log("No site found matching criteria", level="warning")
-        return
-
-    # Fetch and OCR
-    log(f"Updating site {site['subdomain']}")
-    fetcher = get_fetcher(site, all_years=all_years, all_agendas=all_agendas)
-    if not skip_fetch:
-        fetch_internal(subdomain, fetcher)
-    fetcher.ocr(backend=ocr_backend)  # type: ignore
-
-    # Update status after OCR, before extraction
-    with civic_db_connection() as conn:
-        update_site(
-            conn,
-            subdomain,
-            {
-                "status": "needs_extraction",
-                "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-            },
-        )
-
-    fetcher.transform()  # type: ignore
-
-    update_page_count(subdomain)
-    with civic_db_connection() as conn:
-        update_site(
-            conn,
-            subdomain,
-            {
-                "status": "needs_deploy",
-                "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-            },
-        )
-    with civic_db_connection() as conn:
-        site = get_site_by_subdomain(conn, subdomain)
-    rebuild_site_fts_internal(subdomain)
-    pm.hook.deploy_municipality(subdomain=subdomain)
-    with civic_db_connection() as conn:
-        update_site(
-            conn,
-            subdomain,
-            {
-                "status": "deployed",
-                "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-            },
-        )
-    pm.hook.post_deploy(site=site)
-
-
-def get_fetcher(site, all_years=False, all_agendas=False):
+def get_fetcher(site, all_years=False, all_agendas=False) -> Fetcher:  # type: ignore
     start_year = site["start_year"]
     fetcher_class = None
     try:
@@ -414,7 +345,7 @@ def get_fetcher(site, all_years=False, all_agendas=False):
         return fetcher.custom_fetcher(site, start_year, all_agendas)
 
 
-def fetch_internal(subdomain, fetcher):
+def fetch_internal(subdomain: str, fetcher: Fetcher):
     from .db import civic_db_connection, update_site
 
     logger.info("Starting fetch subdomain=%s", subdomain)
@@ -706,7 +637,7 @@ def extract_entities_internal(subdomain, next_site=False):
     with engine.connect() as conn:
         num_in_progress = conn.execute(
             text("SELECT COUNT(*) FROM sites WHERE extraction_status = 'in_progress'")
-        ).fetchone()[0]
+        ).fetchone()[0]  # type: ignore
 
     if num_in_progress > 0:
         log("Extraction already in progress, exiting")
@@ -1099,7 +1030,6 @@ def history():
 def enqueue(subdomains, priority):
     """Enqueue sites for processing"""
     import redis
-
     from sqlalchemy import update
 
     from .db import civic_db_connection
@@ -1413,7 +1343,7 @@ def worker(worker_type, num_workers, burst):
             num_workers=num_workers,
             connection=get_redis(),
             default_worker_ttl=default_timeout,
-        ) as pool:
+        ) as pool:  # type: ignore
             pool.start()
 
 
@@ -1874,8 +1804,8 @@ def health(output_json, verbose):
         }
         if verbose:
             info = redis_client.info()
-            health_status["checks"]["redis"]["version"] = info.get("redis_version")
-            health_status["checks"]["redis"]["uptime_seconds"] = info.get("uptime_in_seconds")
+            health_status["checks"]["redis"]["version"] = info.get("redis_version")  # type: ignore
+            health_status["checks"]["redis"]["uptime_seconds"] = info.get("uptime_in_seconds")  # type: ignore
     except (redis.ConnectionError, redis.TimeoutError) as e:
         health_status["status"] = "unhealthy"
         health_status["checks"]["redis"] = {
@@ -2891,9 +2821,9 @@ def pipeline_status():
             .group_by(sites_table.c.current_stage)
         ).fetchall()
 
-        total_in_pipeline = sum(row.count for row in stage_counts)
+        total_in_pipeline = sum(row.count for row in stage_counts)  # type: ignore
 
-        for row in sorted(stage_counts, key=lambda x: x.count, reverse=True):
+        for row in sorted(stage_counts, key=lambda x: x.count, reverse=True):  # type: ignore
             stage = row.current_stage or "none"
             count = row.count
             pct = (count / total_in_pipeline * 100) if total_in_pipeline > 0 else 0
@@ -2908,7 +2838,7 @@ def pipeline_status():
             .where(sites_table.c.status == "no_documents")
         ).scalar()
 
-        if no_docs_count > 0:
+        if no_docs_count and no_docs_count > 0:
             click.secho(f"Sites with No Documents: {no_docs_count}", fg="yellow")
             click.echo()
 
@@ -2924,7 +2854,7 @@ def pipeline_status():
             )
         ).scalar()
 
-        if stuck > 0:
+        if stuck and stuck > 0:
             click.secho(f"⚠️  Stuck Sites (>2h no update): {stuck}", fg="yellow")
             click.echo("  Run: clerk reconcile-pipeline")
             click.echo()
@@ -2986,7 +2916,7 @@ def pipeline_status():
                 .where(sites_table.c.current_stage == stage)
             ).scalar()
 
-            if count > 0:
+            if count and count > 0:
                 click.echo(f"  {stage.capitalize():15s}: {count:4d} sites processing")
 
     click.echo()

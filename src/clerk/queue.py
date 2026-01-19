@@ -50,6 +50,12 @@ def get_redis():
     return _redis_client
 
 
+def generate_run_id(subdomain):
+    timestamp = int(time.time())
+    random_suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
+    return f"{subdomain}_{timestamp}_{random_suffix}"
+
+
 def get_high_queue():
     """Get high-priority queue (express lane)."""
     return Queue("high", connection=get_redis())
@@ -95,9 +101,7 @@ def enqueue_job(job_type, site_id, priority="normal", run_id=None, **kwargs):
     """
     # Generate run_id if not provided
     if run_id is None:
-        timestamp = int(time.time())
-        random_suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
-        run_id = f"{site_id}_{timestamp}_{random_suffix}"
+        run_id = generate_run_id(site_id)
 
     # Pass run_id to job function
     kwargs["run_id"] = run_id

@@ -125,7 +125,7 @@ def fetch_site_job(
         log_with_context("Created fetch progress", subdomain=subdomain, run_id=run_id, stage=stage)
 
         # Perform fetch using existing logic
-        fetcher = get_fetcher(site, all_years=all_years, all_agendas=all_agendas)
+        fetcher: Fetcher = get_fetcher(site, all_years=all_years, all_agendas=all_agendas)
         log_with_context("Starting PDF fetch", subdomain=subdomain, run_id=run_id, stage=stage)
         fetch_internal(subdomain, fetcher)
         log_with_context("Completed PDF fetch", subdomain=subdomain, run_id=run_id, stage=stage)
