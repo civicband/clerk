@@ -242,7 +242,9 @@ def recover_stuck_site(subdomain: str) -> bool:
 
             # Atomic claim to prevent duplicate coordinators
             if claim_coordinator_enqueue(subdomain):
-                click.echo(f"  {subdomain}: Found {completed_docs} completed documents, enqueueing coordinator")
+                click.echo(
+                    f"  {subdomain}: Found {completed_docs} completed documents, enqueueing coordinator"
+                )
 
                 # Enqueue coordinator
                 get_compilation_queue().enqueue(
@@ -258,7 +260,9 @@ def recover_stuck_site(subdomain: str) -> bool:
                 return False
 
         elif completed_docs == 0:
-            click.secho(f"  {subdomain}: No completed OCR documents found - ALL OCR failed", fg="yellow")
+            click.secho(
+                f"  {subdomain}: No completed OCR documents found - ALL OCR failed", fg="yellow"
+            )
             return False
 
         else:
