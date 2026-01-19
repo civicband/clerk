@@ -1100,7 +1100,10 @@ def enqueue(subdomains, priority):
     """Enqueue sites for processing"""
     import redis
 
+    from sqlalchemy import update
+
     from .db import civic_db_connection
+    from .models import sites_table
     from .queue import enqueue_job, get_redis
     from .queue_db import create_site_progress, track_job
 
@@ -1125,6 +1128,18 @@ def enqueue(subdomains, priority):
             with civic_db_connection() as conn:
                 track_job(conn, job_id, subdomain, "fetch-site", "fetch")
                 create_site_progress(conn, subdomain, "fetch")
+
+                # Initialize new pipeline state in sites table
+                conn.execute(
+                    update(sites_table)
+                    .where(sites_table.c.subdomain == subdomain)
+                    .values(
+                        current_stage="fetch",
+                        started_at=datetime.datetime.now(UTC),
+                        updated_at=datetime.datetime.now(UTC),
+                        coordinator_enqueued=False,
+                    )
+                )
         except Exception as e:
             click.secho(f"Warning: Failed to track job in database: {e}", fg="yellow")
 
