@@ -81,7 +81,122 @@
         }
       ]
     },
-    "panels": [],
+    "panels": [
+      {
+        "id": 1,
+        "type": "row",
+        "title": "At-a-Glance Health",
+        "collapsed": false,
+        "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }
+      },
+      {
+        "id": 2,
+        "type": "stat",
+        "title": "Stuck Sites",
+        "datasource": {
+          "type": "postgres",
+          "uid": "${DS_CIVIC_DB}"
+        },
+        "gridPos": { "x": 0, "y": 1, "w": 8, "h": 4 },
+        "targets": [
+          {
+            "refId": "A",
+            "format": "table",
+            "rawSql": "SELECT COUNT(*) as stuck_count FROM sites WHERE current_stage != 'completed' AND current_stage IS NOT NULL AND updated_at < NOW() - INTERVAL '2 hours' AND updated_at > NOW() - INTERVAL '$__range';"
+          }
+        ],
+        "options": {
+          "graphMode": "none",
+          "colorMode": "background",
+          "justifyMode": "auto",
+          "textMode": "value_and_name",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"]
+          }
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 5, "color": "yellow" },
+                { "value": 11, "color": "red" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "type": "gauge",
+        "title": "Health Score",
+        "datasource": {
+          "type": "postgres",
+          "uid": "${DS_CIVIC_DB}"
+        },
+        "gridPos": { "x": 8, "y": 1, "w": 8, "h": 4 },
+        "targets": [
+          {
+            "refId": "A",
+            "format": "table",
+            "rawSql": "SELECT ROUND(100.0 * COUNT(*) FILTER (WHERE current_stage = 'completed' OR updated_at >= NOW() - INTERVAL '2 hours') / NULLIF(COUNT(*), 0), 1) as health_score FROM sites WHERE current_stage IS NOT NULL AND started_at > NOW() - INTERVAL '$__range';"
+          }
+        ],
+        "options": {
+          "showThresholdLabels": false,
+          "showThresholdMarkers": true
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 0,
+            "max": 100,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "red" },
+                { "value": 85, "color": "yellow" },
+                { "value": 95, "color": "green" }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "type": "piechart",
+        "title": "Stage Distribution",
+        "datasource": {
+          "type": "postgres",
+          "uid": "${DS_CIVIC_DB}"
+        },
+        "gridPos": { "x": 16, "y": 1, "w": 8, "h": 4 },
+        "targets": [
+          {
+            "refId": "A",
+            "format": "table",
+            "rawSql": "SELECT current_stage, COUNT(*) as count FROM sites WHERE current_stage IS NOT NULL AND updated_at > NOW() - INTERVAL '$__range' GROUP BY current_stage ORDER BY count DESC;"
+          }
+        ],
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "right",
+            "values": ["value", "percent"]
+          },
+          "pieType": "pie",
+          "displayLabels": ["percent"]
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short"
+          }
+        }
+      }
+    ],
     "editable": true,
     "fiscalYearStartMonth": 0,
     "graphTooltip": 0,
