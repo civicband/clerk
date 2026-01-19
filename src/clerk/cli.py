@@ -2695,6 +2695,73 @@ def debug_failed_ocr(limit):
         click.echo(f"Run with --limit {total_failed} to see all")
 
 
+@cli.command()
+@click.option("--limit", default=10, help="Number of sites to show")
+def debug_ocr_errors(limit):
+    """Show error messages from sites with failed OCR.
+
+    This command queries the database for sites with OCR failures and shows
+    the error messages that were recorded when OCR jobs failed.
+
+    Examples:
+        # Show first 10 sites with OCR errors
+        clerk debug-ocr-errors
+
+        # Show first 20 sites with OCR errors
+        clerk debug-ocr-errors --limit 20
+    """
+    from sqlalchemy import select
+
+    from .db import civic_db_connection
+    from .models import sites_table
+
+    click.echo("=" * 80)
+    click.echo("DEBUG: OCR Error Messages from Database")
+    click.echo("=" * 80)
+    click.echo()
+
+    with civic_db_connection() as conn:
+        # Get sites with OCR failures
+        sites = conn.execute(
+            select(sites_table)
+            .where(
+                sites_table.c.current_stage == "ocr",
+                sites_table.c.ocr_failed > 0,
+            )
+            .limit(limit)
+        ).fetchall()
+
+    if not sites:
+        click.echo("No sites with OCR failures found")
+        return
+
+    click.echo(f"Found {len(sites)} sites with OCR failures:")
+    click.echo()
+
+    for i, site in enumerate(sites):
+        click.echo(f"Site {i + 1}/{len(sites)}: {site.subdomain}")
+        click.echo(
+            f"  OCR stats: {site.ocr_completed}/{site.ocr_total} completed, {site.ocr_failed} failed"
+        )
+
+        if site.last_error_stage:
+            click.echo(f"  Last error stage: {site.last_error_stage}")
+
+        if site.last_error_message:
+            # Truncate long error messages
+            error_msg = site.last_error_message
+            if len(error_msg) > 200:
+                error_msg = error_msg[:200] + "..."
+            click.secho(f"  Error: {error_msg}", fg="red")
+        else:
+            click.echo("  Error: (no error message recorded)")
+
+        if site.last_error_at:
+            click.echo(f"  Error time: {site.last_error_at}")
+
+        click.echo()
+
+
 cli.add_command(new)
 cli.add_command(update)
 cli.add_command(build_full_db)
