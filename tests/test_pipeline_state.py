@@ -1,6 +1,5 @@
 """Tests for pipeline state management helpers."""
 
-
 import pytest
 
 from clerk.db import civic_db_connection
@@ -35,6 +34,7 @@ def test_site(tmp_path, monkeypatch):
     # Cleanup
     with civic_db_connection() as conn:
         from sqlalchemy import delete
+
         conn.execute(delete(sites_table).where(sites_table.c.subdomain == "test-site"))
 
 
@@ -44,6 +44,7 @@ def test_initialize_stage(test_site):
 
     with civic_db_connection() as conn:
         from sqlalchemy import select
+
         site = conn.execute(
             select(sites_table).where(sites_table.c.subdomain == test_site)
         ).fetchone()
@@ -64,6 +65,7 @@ def test_increment_completed(test_site):
 
     with civic_db_connection() as conn:
         from sqlalchemy import select
+
         site = conn.execute(
             select(sites_table).where(sites_table.c.subdomain == test_site)
         ).fetchone()
@@ -76,15 +78,11 @@ def test_increment_failed(test_site):
     """Test incrementing failed counter and recording error."""
     initialize_stage(test_site, "ocr", total_jobs=3)
 
-    increment_failed(
-        test_site,
-        "ocr",
-        error_message="PDF corrupted",
-        error_class="PdfReadError"
-    )
+    increment_failed(test_site, "ocr", error_message="PDF corrupted", error_class="PdfReadError")
 
     with civic_db_connection() as conn:
         from sqlalchemy import select
+
         site = conn.execute(
             select(sites_table).where(sites_table.c.subdomain == test_site)
         ).fetchone()
@@ -129,6 +127,7 @@ def test_claim_coordinator_enqueue_success(test_site):
 
     with civic_db_connection() as conn:
         from sqlalchemy import select
+
         site = conn.execute(
             select(sites_table).where(sites_table.c.subdomain == test_site)
         ).fetchone()

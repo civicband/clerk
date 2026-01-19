@@ -552,10 +552,10 @@ def ocr_complete_coordinator(subdomain, run_id):
         # Update progress: transition to next stage
         with civic_db_connection() as conn:
             conn.execute(
-                update(sites_table).where(
-                    sites_table.c.subdomain == subdomain
-                ).values(
-                    current_stage='extraction',
+                update(sites_table)
+                .where(sites_table.c.subdomain == subdomain)
+                .values(
+                    current_stage="extraction",
                     compilation_total=1,
                     extraction_total=1,
                     coordinator_enqueued=False,  # Reset flag for next stage

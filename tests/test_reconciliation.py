@@ -33,11 +33,9 @@ def stuck_site(tmp_path, monkeypatch):
     # Mark as updated 3 hours ago (stuck!)
     with civic_db_connection() as conn:
         conn.execute(
-            update(sites_table).where(
-                sites_table.c.subdomain == subdomain
-            ).values(
-                updated_at=datetime.now(UTC) - timedelta(hours=3)
-            )
+            update(sites_table)
+            .where(sites_table.c.subdomain == subdomain)
+            .values(updated_at=datetime.now(UTC) - timedelta(hours=3))
         )
 
     # Create txt files (work was done)
@@ -52,6 +50,7 @@ def stuck_site(tmp_path, monkeypatch):
     # Cleanup
     with civic_db_connection() as conn:
         from sqlalchemy import delete
+
         conn.execute(delete(sites_table).where(sites_table.c.subdomain == subdomain))
 
 
@@ -74,7 +73,7 @@ def test_recover_stuck_site_with_txt_files(stuck_site):
     # Mock queue.enqueue to verify coordinator gets enqueued
     mock_queue = MagicMock()
 
-    with patch('scripts.reconcile_pipeline.get_compilation_queue', return_value=mock_queue):
+    with patch("scripts.reconcile_pipeline.get_compilation_queue", return_value=mock_queue):
         recover_stuck_site(stuck_site)
 
     # Verify coordinator was enqueued
@@ -111,11 +110,9 @@ def test_skip_recently_updated_sites():
     # Updated recently (30 min ago)
     with civic_db_connection() as conn:
         conn.execute(
-            update(sites_table).where(
-                sites_table.c.subdomain == subdomain
-            ).values(
-                updated_at=datetime.now(UTC) - timedelta(minutes=30)
-            )
+            update(sites_table)
+            .where(sites_table.c.subdomain == subdomain)
+            .values(updated_at=datetime.now(UTC) - timedelta(minutes=30))
         )
 
     stuck = find_stuck_sites()
@@ -126,4 +123,5 @@ def test_skip_recently_updated_sites():
     # Cleanup
     with civic_db_connection() as conn:
         from sqlalchemy import delete
+
         conn.execute(delete(sites_table).where(sites_table.c.subdomain == subdomain))
