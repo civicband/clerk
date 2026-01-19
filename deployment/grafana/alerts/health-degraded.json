@@ -1,0 +1,85 @@
+{
+  "uid": "clerk_health_degraded",
+  "title": "Clerk: Health Score Degraded",
+  "condition": "C",
+  "data": [
+    {
+      "refId": "A",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 600,
+        "to": 0
+      },
+      "datasourceUid": "${DS_CIVIC_DB}",
+      "model": {
+        "refId": "A",
+        "rawSql": "SELECT ROUND(100.0 * COUNT(*) FILTER (WHERE current_stage = 'completed' OR updated_at >= NOW() - INTERVAL '2 hours') / NULLIF(COUNT(*), 0), 1) as health_score FROM sites WHERE current_stage IS NOT NULL AND started_at > NOW() - INTERVAL '24 hours';"
+      }
+    },
+    {
+      "refId": "B",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 600,
+        "to": 0
+      },
+      "datasourceUid": "__expr__",
+      "model": {
+        "datasource": {
+          "type": "__expr__",
+          "uid": "__expr__"
+        },
+        "expression": "A",
+        "reducer": "last",
+        "refId": "B",
+        "type": "reduce"
+      }
+    },
+    {
+      "refId": "C",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 600,
+        "to": 0
+      },
+      "datasourceUid": "__expr__",
+      "model": {
+        "conditions": [
+          {
+            "evaluator": {
+              "params": [85, 0],
+              "type": "lt"
+            },
+            "operator": {
+              "type": "and"
+            },
+            "query": {
+              "params": []
+            },
+            "type": "query"
+          }
+        ],
+        "datasource": {
+          "name": "Expression",
+          "type": "__expr__",
+          "uid": "__expr__"
+        },
+        "expression": "B",
+        "refId": "C",
+        "type": "threshold"
+      }
+    }
+  ],
+  "noDataState": "NoData",
+  "execErrState": "Alerting",
+  "for": "10m",
+  "annotations": {
+    "description": "Pipeline health score is {{ $values.health_score }}% (threshold: 85%).\n\nDashboard: https://grafana/d/clerk-pipeline",
+    "summary": "Clerk Pipeline Alert: Health Degraded"
+  },
+  "labels": {
+    "severity": "warning",
+    "component": "clerk-pipeline"
+  },
+  "isPaused": false
+}

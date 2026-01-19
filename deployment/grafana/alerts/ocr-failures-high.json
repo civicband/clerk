@@ -1,0 +1,85 @@
+{
+  "uid": "clerk_ocr_failures_high",
+  "title": "Clerk: High OCR Failure Rate",
+  "condition": "C",
+  "data": [
+    {
+      "refId": "A",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 3600,
+        "to": 0
+      },
+      "datasourceUid": "${DS_CIVIC_DB}",
+      "model": {
+        "refId": "A",
+        "rawSql": "SELECT 'ocr' as stage, ROUND(100.0 * SUM(ocr_failed) / NULLIF(SUM(ocr_total), 0), 1) as failure_rate FROM sites WHERE ocr_total > 0 AND updated_at >= NOW() - INTERVAL '1 hour';"
+      }
+    },
+    {
+      "refId": "B",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 3600,
+        "to": 0
+      },
+      "datasourceUid": "__expr__",
+      "model": {
+        "datasource": {
+          "type": "__expr__",
+          "uid": "__expr__"
+        },
+        "expression": "A",
+        "reducer": "last",
+        "refId": "B",
+        "type": "reduce"
+      }
+    },
+    {
+      "refId": "C",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 3600,
+        "to": 0
+      },
+      "datasourceUid": "__expr__",
+      "model": {
+        "conditions": [
+          {
+            "evaluator": {
+              "params": [20, 0],
+              "type": "gt"
+            },
+            "operator": {
+              "type": "and"
+            },
+            "query": {
+              "params": []
+            },
+            "type": "query"
+          }
+        ],
+        "datasource": {
+          "name": "Expression",
+          "type": "__expr__",
+          "uid": "__expr__"
+        },
+        "expression": "B",
+        "refId": "C",
+        "type": "threshold"
+      }
+    }
+  ],
+  "noDataState": "NoData",
+  "execErrState": "Alerting",
+  "for": "15m",
+  "annotations": {
+    "description": "OCR failure rate is {{ $values.failure_rate }}% in the last hour (threshold: 20%).\n\nThis may indicate:\n- Batch of corrupted PDFs\n- OCR service issues\n- Tesseract configuration problem\n\nDashboard: https://grafana/d/clerk-pipeline",
+    "summary": "Clerk Pipeline Alert: High OCR Failure Rate"
+  },
+  "labels": {
+    "severity": "warning",
+    "component": "clerk-pipeline"
+  },
+  "isPaused": false
+}

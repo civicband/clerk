@@ -1,0 +1,107 @@
+{
+  "uid": "clerk_stuck_sites_critical",
+  "title": "Clerk: Stuck Sites Critical",
+  "condition": "A",
+  "data": [
+    {
+      "refId": "A",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 600,
+        "to": 0
+      },
+      "datasourceUid": "${DS_CIVIC_DB}",
+      "model": {
+        "expr": "",
+        "intervalMs": 1000,
+        "maxDataPoints": 43200,
+        "refId": "A",
+        "rawSql": "SELECT COUNT(*) as stuck_count FROM sites WHERE current_stage != 'completed' AND current_stage IS NOT NULL AND updated_at < NOW() - INTERVAL '2 hours';"
+      }
+    },
+    {
+      "refId": "B",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 600,
+        "to": 0
+      },
+      "datasourceUid": "__expr__",
+      "model": {
+        "conditions": [
+          {
+            "evaluator": {
+              "params": [10],
+              "type": "gt"
+            },
+            "operator": {
+              "type": "and"
+            },
+            "query": {
+              "params": ["A"]
+            },
+            "type": "query"
+          }
+        ],
+        "datasource": {
+          "type": "__expr__",
+          "uid": "__expr__"
+        },
+        "expression": "A",
+        "intervalMs": 1000,
+        "maxDataPoints": 43200,
+        "reducer": "last",
+        "refId": "B",
+        "type": "reduce"
+      }
+    },
+    {
+      "refId": "C",
+      "queryType": "",
+      "relativeTimeRange": {
+        "from": 600,
+        "to": 0
+      },
+      "datasourceUid": "__expr__",
+      "model": {
+        "conditions": [
+          {
+            "evaluator": {
+              "params": [10, 0],
+              "type": "gt"
+            },
+            "operator": {
+              "type": "and"
+            },
+            "query": {
+              "params": []
+            },
+            "type": "query"
+          }
+        ],
+        "datasource": {
+          "name": "Expression",
+          "type": "__expr__",
+          "uid": "__expr__"
+        },
+        "expression": "B",
+        "intervalMs": 1000,
+        "maxDataPoints": 43200,
+        "refId": "C",
+        "type": "threshold"
+      }
+    }
+  ],
+  "noDataState": "NoData",
+  "execErrState": "Alerting",
+  "for": "15m",
+  "annotations": {
+    "description": "{{ $values.stuck_count }} sites have been stuck for >2 hours.\n\nDashboard: https://grafana/d/clerk-pipeline\nRunbook: https://docs/runbook",
+    "summary": "Clerk Pipeline Alert: Stuck Sites Critical"
+  },
+  "labels": {
+    "severity": "critical",
+    "component": "clerk-pipeline"
+  },
+  "isPaused": false
+}
