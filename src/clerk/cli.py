@@ -2839,6 +2839,145 @@ def debug_recent_sites(scraper, days, limit):
         click.echo()
 
 
+@cli.command()
+def pipeline_status():
+    """Show comprehensive pipeline health and status.
+
+    Shows:
+    - Pipeline stage distribution
+    - Sites marked as no_documents
+    - Stuck sites (not updated in 2+ hours)
+    - Success metrics and completion rates
+
+    Examples:
+        # Show current pipeline status
+        clerk pipeline-status
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import func, select
+
+    from .db import civic_db_connection
+    from .models import sites_table
+
+    click.echo("=" * 80)
+    click.echo("PIPELINE STATUS")
+    click.echo("=" * 80)
+    click.echo()
+
+    with civic_db_connection() as conn:
+        # 1. Stage distribution
+        click.echo("Pipeline Stage Distribution:")
+        click.echo("-" * 40)
+
+        stage_counts = conn.execute(
+            select(sites_table.c.current_stage, func.count().label("count"))
+            .where(sites_table.c.current_stage.isnot(None))
+            .group_by(sites_table.c.current_stage)
+        ).fetchall()
+
+        total_in_pipeline = sum(row.count for row in stage_counts)
+
+        for row in sorted(stage_counts, key=lambda x: x.count, reverse=True):
+            stage = row.current_stage or "none"
+            count = row.count
+            pct = (count / total_in_pipeline * 100) if total_in_pipeline > 0 else 0
+            click.echo(f"  {stage:20s}: {count:4d} ({pct:5.1f}%)")
+
+        click.echo()
+
+        # 2. No documents sites
+        no_docs_count = conn.execute(
+            select(func.count())
+            .select_from(sites_table)
+            .where(sites_table.c.status == "no_documents")
+        ).scalar()
+
+        if no_docs_count > 0:
+            click.secho(f"Sites with No Documents: {no_docs_count}", fg="yellow")
+            click.echo()
+
+        # 3. Stuck sites (not updated in 2+ hours, not completed)
+        cutoff = datetime.now(UTC) - timedelta(hours=2)
+        stuck = conn.execute(
+            select(func.count())
+            .select_from(sites_table)
+            .where(
+                sites_table.c.current_stage != "completed",
+                sites_table.c.current_stage.isnot(None),
+                sites_table.c.updated_at < cutoff,
+            )
+        ).scalar()
+
+        if stuck > 0:
+            click.secho(f"⚠️  Stuck Sites (>2h no update): {stuck}", fg="yellow")
+            click.echo("  Run: clerk reconcile-pipeline")
+            click.echo()
+        else:
+            click.secho("✓ No stuck sites found", fg="green")
+            click.echo()
+
+        # 4. Success metrics
+        click.echo("OCR Success Metrics:")
+        click.echo("-" * 40)
+
+        ocr_stats = conn.execute(
+            select(
+                func.sum(sites_table.c.ocr_total).label("total_jobs"),
+                func.sum(sites_table.c.ocr_completed).label("completed"),
+                func.sum(sites_table.c.ocr_failed).label("failed"),
+            ).where(sites_table.c.ocr_total > 0)
+        ).fetchone()
+
+        if ocr_stats and ocr_stats.total_jobs:
+            total = ocr_stats.total_jobs or 0
+            completed = ocr_stats.completed or 0
+            failed = ocr_stats.failed or 0
+
+            success_rate = (completed / total * 100) if total > 0 else 0
+            failure_rate = (failed / total * 100) if total > 0 else 0
+
+            click.echo(f"  Total OCR jobs:    {total:6d}")
+            click.echo(f"  Completed:         {completed:6d} ({success_rate:5.1f}%)")
+            click.echo(f"  Failed:            {failed:6d} ({failure_rate:5.1f}%)")
+        else:
+            click.echo("  No OCR jobs found")
+
+        click.echo()
+
+        # 5. Recent completions
+        click.echo("Recent Activity (last 24h):")
+        click.echo("-" * 40)
+
+        day_ago = datetime.now(UTC) - timedelta(hours=24)
+        recently_completed = conn.execute(
+            select(func.count())
+            .select_from(sites_table)
+            .where(sites_table.c.current_stage == "completed", sites_table.c.updated_at >= day_ago)
+        ).scalar()
+
+        click.echo(f"  Sites completed: {recently_completed or 0}")
+        click.echo()
+
+        # 6. Sites in active stages
+        click.echo("Active Processing:")
+        click.echo("-" * 40)
+
+        active_stages = ["ocr", "compilation", "extraction", "deploy"]
+        for stage in active_stages:
+            count = conn.execute(
+                select(func.count())
+                .select_from(sites_table)
+                .where(sites_table.c.current_stage == stage)
+            ).scalar()
+
+            if count > 0:
+                click.echo(f"  {stage.capitalize():15s}: {count:4d} sites processing")
+
+    click.echo()
+    click.echo("=" * 80)
+
+
 cli.add_command(new)
 cli.add_command(update)
 cli.add_command(build_full_db)
