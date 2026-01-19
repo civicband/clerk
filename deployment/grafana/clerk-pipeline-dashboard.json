@@ -1,0 +1,91 @@
+{
+  "dashboard": {
+    "title": "Clerk Pipeline",
+    "uid": "clerk-pipeline",
+    "timezone": "browser",
+    "schemaVersion": 38,
+    "version": 1,
+    "refresh": "1m",
+    "time": {
+      "from": "now-24h",
+      "to": "now"
+    },
+    "timepicker": {
+      "refresh_intervals": ["1m", "5m", "15m", "30m", "1h"],
+      "time_options": ["1h", "6h", "24h", "7d", "30d"]
+    },
+    "tags": ["clerk", "pipeline", "monitoring"],
+    "templating": {
+      "list": [
+        {
+          "name": "subdomain",
+          "label": "Subdomain",
+          "type": "query",
+          "datasource": {
+            "type": "postgres",
+            "uid": "${DS_CIVIC_DB}"
+          },
+          "query": "SELECT DISTINCT subdomain FROM sites WHERE updated_at > NOW() - INTERVAL '24 hours' ORDER BY subdomain;",
+          "multi": true,
+          "includeAll": true,
+          "allValue": ".*",
+          "regex": "",
+          "refresh": 1,
+          "current": {
+            "selected": true,
+            "text": "All",
+            "value": "$__all"
+          }
+        },
+        {
+          "name": "stage",
+          "label": "Stage",
+          "type": "custom",
+          "multi": true,
+          "includeAll": true,
+          "allValue": ".*",
+          "options": [
+            { "text": "All", "value": "$__all", "selected": true },
+            { "text": "fetch", "value": "fetch", "selected": false },
+            { "text": "ocr", "value": "ocr", "selected": false },
+            { "text": "compilation", "value": "compilation", "selected": false },
+            { "text": "extraction", "value": "extraction", "selected": false },
+            { "text": "deploy", "value": "deploy", "selected": false },
+            { "text": "completed", "value": "completed", "selected": false }
+          ],
+          "current": {
+            "selected": true,
+            "text": "All",
+            "value": "$__all"
+          }
+        },
+        {
+          "name": "run_id",
+          "label": "Run ID",
+          "type": "query",
+          "datasource": {
+            "type": "loki",
+            "uid": "${DS_LOKI}"
+          },
+          "query": "label_values({job=\"clerk\", subdomain=~\"$subdomain\"}, run_id)",
+          "multi": false,
+          "includeAll": true,
+          "allValue": ".*",
+          "regex": "",
+          "refresh": 2,
+          "current": {
+            "selected": true,
+            "text": "All",
+            "value": "$__all"
+          }
+        }
+      ]
+    },
+    "panels": [],
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 0,
+    "links": []
+  },
+  "overwrite": true
+}
