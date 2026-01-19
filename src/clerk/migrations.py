@@ -83,6 +83,12 @@ def migrate_stuck_sites(dry_run: bool = False) -> int:
                 ocr_total = 1  # avoid division by zero
 
             ocr_completed = txt_count
+
+            # Ensure total is at least as large as completed
+            # (can happen if PDFs were deleted after OCR, or if some PDFs generated multiple txt files)
+            if ocr_completed > ocr_total:
+                ocr_total = ocr_completed
+
             ocr_failed = max(0, ocr_total - ocr_completed)
 
             # Update sites table (skip in dry-run mode)
