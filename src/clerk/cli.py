@@ -2512,6 +2512,111 @@ def reconcile_pipeline(threshold_hours, dry_run):
         click.secho(f"Recovered {recovered} sites", fg="green")
 
 
+@cli.command()
+@click.option("--limit", default=10, help="Number of sites to investigate in detail")
+def investigate_failed_ocr(limit):
+    """Investigate sites with no completed OCR documents.
+
+    This command helps diagnose why sites show "No completed OCR documents found".
+    It checks filesystem structure, database state, and identifies common failure patterns.
+
+    Examples:
+        # Investigate first 10 failed sites
+        clerk investigate-failed-ocr
+
+        # Investigate first 20 failed sites
+        clerk investigate-failed-ocr --limit 20
+    """
+    from . import migrations
+
+    click.echo("=" * 80)
+    click.echo("INVESTIGATION: Sites with No Completed OCR Documents")
+    click.echo("=" * 80)
+    click.echo()
+
+    patterns = migrations.investigate_failed_ocr_sites(limit)
+
+    if patterns["total_count"] == 0:
+        click.echo("No sites found with ocr_completed = 0")
+        return
+
+    click.echo(f"Found {patterns['total_count']} sites with ocr_completed = 0")
+    click.echo(f"Investigating first {patterns['investigated_count']} sites in detail...")
+    click.echo()
+
+    # Show details for each site
+    for i, info in enumerate(patterns["sites"]):
+        subdomain = info["subdomain"]
+        click.echo(f"Site {i + 1}/{patterns['investigated_count']}: {subdomain}")
+        click.echo("-" * 80)
+
+        # Database state
+        click.echo("Database:")
+        db = info["db_state"]
+        click.echo(f"  current_stage: {db.get('current_stage')}")
+        click.echo(f"  ocr_total: {db.get('ocr_total')}")
+        click.echo(f"  ocr_completed: {db.get('ocr_completed')}")
+        click.echo(f"  ocr_failed: {db.get('ocr_failed')}")
+        if db.get("last_error_message"):
+            error_msg = db.get("last_error_message", "")[:100]
+            click.echo(f"  last_error: {error_msg}")
+
+        # Filesystem state
+        click.echo("Filesystem:")
+        click.echo(f"  site_dir exists: {info['site_dir_exists']}")
+        click.echo(f"  pdf_count: {info['pdf_count']}")
+        if info["pdf_files"]:
+            click.echo(f"  sample PDFs: {info['pdf_files'][:3]}")
+        click.echo(f"  txt_base exists: {info['txt_base_exists']}")
+        click.echo(f"  has_any_txt_files: {info['has_any_txt_files']}")
+
+        # Txt structure analysis
+        if info["txt_structure"]:
+            click.echo("  txt structure:")
+            for meeting, docs in info["txt_structure"].items():
+                docs_with_files = sum(1 for d in docs if d["has_files"])
+                total_docs = len(docs)
+                click.echo(f"    {meeting}: {docs_with_files}/{total_docs} docs with txt files")
+                if docs_with_files == 0 and total_docs > 0:
+                    click.secho(
+                        f"      ⚠️ {total_docs} document dirs but no txt files!", fg="yellow"
+                    )
+
+        # Diagnosis
+        click.echo("Diagnosis:")
+        if not info["site_dir_exists"]:
+            click.secho("  ❌ Site directory doesn't exist - storage issue", fg="red")
+        elif info["pdf_count"] == 0:
+            click.secho("  ⚠️ No PDFs found - fetch stage may have failed", fg="yellow")
+        elif not info["txt_base_exists"]:
+            click.secho("  ⚠️ No txt directory - OCR never ran or output lost", fg="yellow")
+        elif info["has_any_txt_files"]:
+            click.secho("  ⚠️ Has txt files but wrong structure - investigate above", fg="yellow")
+        else:
+            click.secho("  ❌ OCR truly failed for all documents", fg="red")
+
+        click.echo()
+
+    # Summary statistics
+    click.echo("=" * 80)
+    click.echo("SUMMARY")
+    click.echo("=" * 80)
+    click.echo(f"Patterns found (from {patterns['investigated_count']} sites):")
+    click.echo(f"  No site directory: {patterns['no_site_dir']}")
+    click.echo(f"  No PDFs found: {patterns['no_pdfs']}")
+    click.echo(f"  No txt directory: {patterns['no_txt_base']}")
+    click.echo(f"  Has txt files but wrong structure: {patterns['has_txt_wrong_structure']}")
+    click.echo(f"  True OCR failure (all docs failed): {patterns['true_ocr_failure']}")
+    click.echo()
+
+    if patterns["true_ocr_failure"] > 0:
+        click.echo("Recommendations:")
+        click.echo("  - Check last_error_message for common error patterns")
+        click.echo("  - Investigate sample PDFs to see if they're corrupted")
+        click.echo("  - Consider if OCR backend (tesseract/vision) needs tuning")
+        click.echo("  - Sites may need manual intervention or different OCR approach")
+
+
 cli.add_command(new)
 cli.add_command(update)
 cli.add_command(build_full_db)

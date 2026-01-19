@@ -201,6 +201,132 @@ def find_stuck_sites(threshold_hours: int = 2) -> list[Any]:
     return cast(list[Any], stuck)
 
 
+def investigate_failed_ocr_site(subdomain: str) -> dict[str, Any]:
+    """Investigate why a site has no completed OCR documents.
+
+    Args:
+        subdomain: Site subdomain
+
+    Returns:
+        Dictionary with diagnostic information
+    """
+    storage_dir = os.getenv("STORAGE_DIR", "../sites")
+    site_dir = Path(f"{storage_dir}/{subdomain}")
+
+    result: dict[str, Any] = {
+        "subdomain": subdomain,
+        "site_dir_exists": site_dir.exists(),
+        "pdf_count": 0,
+        "pdf_files": [],
+        "txt_base_exists": False,
+        "txt_structure": {},
+        "has_any_txt_files": False,
+        "db_state": {},
+    }
+
+    # Check PDFs
+    pdf_dir = site_dir / "pdfs"
+    if pdf_dir.exists():
+        pdf_files = list(pdf_dir.glob("**/*.pdf"))
+        result["pdf_count"] = len(pdf_files)
+        result["pdf_files"] = [str(p.relative_to(site_dir)) for p in pdf_files[:5]]
+
+    # Check txt directory structure
+    txt_base = site_dir / "txt"
+    result["txt_base_exists"] = txt_base.exists()
+
+    if txt_base.exists():
+        # Check if any txt files exist at all
+        all_txt_files = list(txt_base.glob("**/*.txt"))
+        result["has_any_txt_files"] = len(all_txt_files) > 0
+
+        # Map out directory structure
+        txt_structure: dict[str, list[dict[str, Any]]] = {}
+        for item in txt_base.iterdir():
+            if item.is_dir():
+                meeting_name = item.name
+                txt_structure[meeting_name] = []
+                for doc_dir in item.iterdir():
+                    if doc_dir.is_dir():
+                        txt_files = list(doc_dir.glob("*.txt"))
+                        txt_structure[meeting_name].append(
+                            {
+                                "dir": doc_dir.name,
+                                "txt_count": len(txt_files),
+                                "has_files": len(txt_files) > 0,
+                            }
+                        )
+        result["txt_structure"] = txt_structure
+
+    # Check database state
+    with civic_db_connection() as conn:
+        site = conn.execute(
+            select(sites_table).where(sites_table.c.subdomain == subdomain)
+        ).fetchone()
+
+        if site:
+            result["db_state"] = {
+                "current_stage": site.current_stage,
+                "ocr_total": site.ocr_total,
+                "ocr_completed": site.ocr_completed,
+                "ocr_failed": site.ocr_failed,
+                "coordinator_enqueued": site.coordinator_enqueued,
+                "last_error_stage": site.last_error_stage,
+                "last_error_message": site.last_error_message,
+                "updated_at": str(site.updated_at) if site.updated_at else None,
+            }
+
+    return result
+
+
+def investigate_failed_ocr_sites(limit: int = 10) -> dict[str, Any]:
+    """Investigate sites with no completed OCR documents.
+
+    Args:
+        limit: Number of sites to investigate in detail
+
+    Returns:
+        Dictionary with summary statistics and patterns
+    """
+    # Find sites with ocr_completed = 0
+    with civic_db_connection() as conn:
+        failed_sites = conn.execute(
+            select(sites_table).where(
+                sites_table.c.current_stage == "ocr",
+                sites_table.c.ocr_completed == 0,
+            )
+        ).fetchall()
+
+    patterns = {
+        "total_count": len(failed_sites),
+        "investigated_count": min(limit, len(failed_sites)),
+        "no_site_dir": 0,
+        "no_pdfs": 0,
+        "no_txt_base": 0,
+        "has_txt_wrong_structure": 0,
+        "true_ocr_failure": 0,
+        "sites": [],
+    }
+
+    for site in failed_sites[:limit]:
+        info = investigate_failed_ocr_site(site.subdomain)
+        patterns["sites"].append(info)
+
+        # Classify the failure pattern
+        if not info["site_dir_exists"]:
+            patterns["no_site_dir"] += 1
+        elif info["pdf_count"] == 0:
+            patterns["no_pdfs"] += 1
+        elif not info["txt_base_exists"]:
+            patterns["no_txt_base"] += 1
+        elif info["has_any_txt_files"]:
+            patterns["has_txt_wrong_structure"] += 1
+        else:
+            patterns["true_ocr_failure"] += 1
+
+    return patterns
+
+
 def recover_stuck_site(subdomain: str) -> bool:
     """Recover a stuck site by inferring state and enqueueing coordinator.
 
