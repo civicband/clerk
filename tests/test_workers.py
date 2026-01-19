@@ -479,3 +479,136 @@ def test_extraction_job_logs_extraction_started(mocker):
 
     started_calls = [call for call in mock_log.call_args_list if "extraction_started" in call[0][0]]
     assert len(started_calls) >= 1
+
+
+def test_ocr_job_updates_counters_on_success(mocker):
+    """Test that ocr_page_job updates atomic counters on success."""
+    from clerk.workers import ocr_page_job
+
+    # Mock dependencies
+    mocker.patch("clerk.workers.civic_db_connection")
+    mocker.patch("clerk.workers.get_site_by_subdomain", return_value={"subdomain": "test"})
+    mock_fetcher = mocker.MagicMock()
+    mocker.patch("clerk.cli.get_fetcher", return_value=mock_fetcher)
+    mocker.patch("clerk.workers.log_with_context")
+
+    # Mock atomic counter functions
+    mock_increment_completed = mocker.patch("clerk.workers.increment_completed")
+    mock_should_trigger = mocker.patch(
+        "clerk.workers.should_trigger_coordinator", return_value=False
+    )
+    _mock_claim = mocker.patch("clerk.workers.claim_coordinator_enqueue")
+
+    # Run OCR job
+    ocr_page_job(
+        "test.civic.band", "/path/to/meeting/2024-01-01.pdf", "tesseract", run_id="test_123"
+    )
+
+    # Verify increment_completed was called
+    mock_increment_completed.assert_called_once_with("test.civic.band", "ocr")
+
+    # Verify should_trigger_coordinator was called
+    mock_should_trigger.assert_called_once_with("test.civic.band", "ocr")
+
+
+def test_ocr_job_updates_counters_on_failure(mocker):
+    """Test that ocr_page_job updates atomic counters on failure."""
+    from clerk.workers import ocr_page_job
+
+    # Mock dependencies
+    mocker.patch("clerk.workers.civic_db_connection")
+    mocker.patch("clerk.workers.get_site_by_subdomain", return_value={"subdomain": "test"})
+
+    # Mock fetcher to raise an error
+    mock_fetcher = mocker.MagicMock()
+    mock_fetcher.do_ocr_job.side_effect = RuntimeError("OCR processing failed")
+    mocker.patch("clerk.cli.get_fetcher", return_value=mock_fetcher)
+    mocker.patch("clerk.workers.log_with_context")
+
+    # Mock atomic counter functions
+    mock_increment_failed = mocker.patch("clerk.workers.increment_failed")
+    mock_should_trigger = mocker.patch(
+        "clerk.workers.should_trigger_coordinator", return_value=False
+    )
+
+    # Run OCR job (should not raise - errors are caught)
+    ocr_page_job(
+        "test.civic.band", "/path/to/meeting/2024-01-01.pdf", "tesseract", run_id="test_123"
+    )
+
+    # Verify increment_failed was called with error details
+    mock_increment_failed.assert_called_once()
+    call_kwargs = mock_increment_failed.call_args[1]
+    assert call_kwargs["error_message"] == "OCR processing failed"
+    assert call_kwargs["error_class"] == "RuntimeError"
+
+    # Verify positional args
+    call_args = mock_increment_failed.call_args[0]
+    assert call_args[0] == "test.civic.band"
+    assert call_args[1] == "ocr"
+
+    # Verify should_trigger_coordinator was still called
+    mock_should_trigger.assert_called_once_with("test.civic.band", "ocr")
+
+
+def test_coordinator_resets_enqueued_flag(mock_site, tmp_path, monkeypatch, mocker):
+    """Coordinator should reset coordinator_enqueued flag for next stage."""
+    from pathlib import Path
+
+    from sqlalchemy import select
+
+    from clerk.db import civic_db_connection, upsert_site
+    from clerk.models import sites_table
+    from clerk.pipeline_state import (
+        claim_coordinator_enqueue,
+        increment_completed,
+        initialize_stage,
+    )
+    from clerk.workers import ocr_complete_coordinator
+
+    subdomain = "test-site"
+    mock_site["subdomain"] = subdomain
+
+    # Setup site in database
+    with civic_db_connection() as conn:
+        upsert_site(conn, mock_site)
+
+    initialize_stage(subdomain, "ocr", total_jobs=1)
+    increment_completed(subdomain, "ocr")
+    claim_coordinator_enqueue(subdomain)
+
+    # Create txt files (OCR succeeded)
+    monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+    txt_dir = Path(tmp_path) / subdomain / "txt" / "Meeting"
+    txt_dir.mkdir(parents=True)
+    (txt_dir / "2024-01-01.txt").write_text("test content")
+
+    # Mock queue operations (coordinator enqueues compilation, extraction and deploy jobs)
+    mock_compilation_queue = mocker.MagicMock()
+    mock_compilation_queue.enqueue.return_value = mocker.MagicMock(id="comp-job")
+    mocker.patch("clerk.queue.get_compilation_queue", return_value=mock_compilation_queue)
+
+    mock_extraction_queue = mocker.MagicMock()
+    mock_extraction_queue.enqueue.return_value = mocker.MagicMock(id="ext-job")
+    mocker.patch("clerk.queue.get_extraction_queue", return_value=mock_extraction_queue)
+
+    mock_deploy_queue = mocker.MagicMock()
+    mock_deploy_queue.enqueue.return_value = mocker.MagicMock(id="deploy-job")
+    mocker.patch("clerk.queue.get_deploy_queue", return_value=mock_deploy_queue)
+
+    # Mock job tracking to avoid database conflicts
+    mocker.patch("clerk.workers.track_job")
+
+    # Run coordinator
+    ocr_complete_coordinator(subdomain, run_id="test_run")
+
+    # Verify flag reset and stage transitioned
+    with civic_db_connection() as conn:
+        site = conn.execute(
+            select(sites_table).where(sites_table.c.subdomain == subdomain)
+        ).fetchone()
+
+    assert site.current_stage == "extraction"  # Moved to next stage
+    assert site.coordinator_enqueued is False  # Flag reset
+    assert site.compilation_total == 1  # Next stage initialized
+    assert site.extraction_total == 1

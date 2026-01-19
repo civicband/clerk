@@ -229,8 +229,14 @@ class TestDatabaseOperations:
         monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
         monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
 
-        # Create civic.db with multiple sites
-        civic_db = sqlite_utils.Database("civic.db")
+        # Create civic.db with proper schema
+        from tests.conftest import create_sites_table_with_schema
+
+        db_path = tmp_path / "civic.db"
+        create_sites_table_with_schema(db_path)
+
+        # Insert test sites
+        civic_db = sqlite_utils.Database(db_path)
         sites = [
             {
                 "subdomain": "site1.civic.band",
@@ -269,7 +275,7 @@ class TestDatabaseOperations:
                 "last_extracted": None,
             },
         ]
-        civic_db["sites"].insert_all(sites, pk="subdomain")
+        civic_db["sites"].insert_all(sites)
 
         # Create text files for each site
         for site in sites:

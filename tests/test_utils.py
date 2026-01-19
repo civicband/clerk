@@ -41,7 +41,7 @@ class TestAssertDbExists:
         inspector = inspect(engine)
         assert "sites" in inspector.get_table_names()
 
-        # Check column names
+        # Check column names (including pipeline state columns)
         expected_columns = {
             "subdomain",
             "name",
@@ -59,6 +59,29 @@ class TestAssertDbExists:
             "lng",
             "extraction_status",
             "last_extracted",
+            # Pipeline state columns
+            "current_stage",
+            "started_at",
+            "updated_at",
+            "fetch_total",
+            "fetch_completed",
+            "fetch_failed",
+            "ocr_total",
+            "ocr_completed",
+            "ocr_failed",
+            "compilation_total",
+            "compilation_completed",
+            "compilation_failed",
+            "extraction_total",
+            "extraction_completed",
+            "extraction_failed",
+            "deploy_total",
+            "deploy_completed",
+            "deploy_failed",
+            "coordinator_enqueued",
+            "last_error_stage",
+            "last_error_message",
+            "last_error_at",
         }
         actual_columns = {col["name"] for col in inspector.get_columns("sites")}
         assert actual_columns == expected_columns
