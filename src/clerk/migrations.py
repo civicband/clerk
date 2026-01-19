@@ -112,15 +112,34 @@ def migrate_stuck_sites(dry_run: bool = False) -> int:
 
             # Conservative estimate of totals
             ocr_total = total_docs if total_docs > 0 else site_prog.stage_total
-            if ocr_total == 0:
-                ocr_total = 1  # avoid division by zero
-
             ocr_completed = completed_docs
 
             # Ensure total is at least as large as completed
             # (can happen if PDFs were deleted after OCR completed)
             if ocr_completed > ocr_total:
                 ocr_total = ocr_completed
+
+            # Handle sites with no PDFs - skip OCR entirely
+            if ocr_total == 0 and ocr_completed == 0:
+                if not dry_run:
+                    conn.execute(
+                        update(sites_table)
+                        .where(sites_table.c.subdomain == subdomain)
+                        .values(
+                            current_stage="completed",
+                            last_error_stage="fetch",
+                            last_error_message="No PDFs found - site may have no documents or fetch failed",
+                            last_error_at=datetime.now(UTC),
+                            ocr_total=0,
+                            ocr_completed=0,
+                            ocr_failed=0,
+                            started_at=site_prog.started_at,
+                            updated_at=datetime.now(UTC),
+                        )
+                    )
+                migrated += 1
+                click.echo(f"  {subdomain}: No PDFs found, marking as completed with error")
+                continue
 
             ocr_failed = max(0, ocr_total - ocr_completed)
 
@@ -409,10 +428,35 @@ def recover_stuck_site(subdomain: str) -> bool:
                 return False
 
         elif completed_docs == 0:
-            click.secho(
-                f"  {subdomain}: No completed OCR documents found - ALL OCR failed", fg="yellow"
-            )
-            return False
+            # Check if there are actually any PDFs to process
+            total_pdfs = count_pdf_files(subdomain)
+
+            if total_pdfs == 0:
+                # No PDFs exist - site should not be in OCR stage
+                click.echo(f"  {subdomain}: No PDFs found, marking as completed with error")
+
+                with civic_db_connection() as conn:
+                    conn.execute(
+                        update(sites_table)
+                        .where(sites_table.c.subdomain == subdomain)
+                        .values(
+                            current_stage="completed",
+                            last_error_stage="fetch",
+                            last_error_message="No PDFs found - site may have no documents or fetch failed",
+                            last_error_at=datetime.now(UTC),
+                            ocr_total=0,
+                            ocr_completed=0,
+                            ocr_failed=0,
+                            updated_at=datetime.now(UTC),
+                        )
+                    )
+                return True
+            else:
+                # PDFs exist but OCR failed - real failure
+                click.secho(
+                    f"  {subdomain}: No completed OCR documents found - ALL OCR failed ({total_pdfs} PDFs exist)", fg="yellow"
+                )
+                return False
 
         else:
             click.echo(f"  {subdomain}: Already has coordinator enqueued, skipping")
