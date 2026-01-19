@@ -47,7 +47,7 @@ def find_stuck_sites(threshold_hours=2):
     with civic_db_connection() as conn:
         stuck = conn.execute(
             select(sites_table).where(
-                sites_table.c.current_stage != 'completed',
+                sites_table.c.current_stage != "completed",
                 sites_table.c.current_stage.isnot(None),
                 sites_table.c.updated_at < cutoff,
             )
@@ -74,7 +74,7 @@ def recover_stuck_site(subdomain):
 
     stage = site.current_stage
 
-    if stage == 'ocr':
+    if stage == "ocr":
         # Infer state from filesystem
         txt_count = count_txt_files(subdomain)
 
@@ -84,9 +84,9 @@ def recover_stuck_site(subdomain):
             # Update database to match reality (ocr_completed)
             with civic_db_connection() as conn:
                 conn.execute(
-                    update(sites_table).where(
-                        sites_table.c.subdomain == subdomain
-                    ).values(
+                    update(sites_table)
+                    .where(sites_table.c.subdomain == subdomain)
+                    .values(
                         ocr_completed=txt_count,
                         updated_at=datetime.now(UTC),
                     )
@@ -114,7 +114,7 @@ def recover_stuck_site(subdomain):
         else:
             click.echo(f"  {subdomain}: Already has coordinator enqueued, skipping")
 
-    elif stage in ['compilation', 'extraction', 'deploy']:
+    elif stage in ["compilation", "extraction", "deploy"]:
         # These are 1:1 jobs - simpler recovery
         # For now just log, could implement re-enqueue logic
         click.echo(f"  {subdomain}: Stuck in {stage} stage (TODO: implement recovery)")
@@ -124,8 +124,10 @@ def recover_stuck_site(subdomain):
 
 
 @click.command()
-@click.option('--threshold-hours', default=2, help='Hours since update to consider stuck')
-@click.option('--dry-run', is_flag=True, default=False, help='Show what would be done without making changes')
+@click.option("--threshold-hours", default=2, help="Hours since update to consider stuck")
+@click.option(
+    "--dry-run", is_flag=True, default=False, help="Show what would be done without making changes"
+)
 def main(threshold_hours, dry_run):
     """Run pipeline reconciliation."""
 

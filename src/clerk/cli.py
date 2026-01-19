@@ -2432,7 +2432,8 @@ def migrate_stuck_sites(dry_run):
     sys.path.insert(0, str(scripts_dir))
 
     try:
-        from migrate_stuck_sites import clear_rq_state, migrate_stuck_sites as migrate_impl
+        from migrate_stuck_sites import clear_rq_state
+        from migrate_stuck_sites import migrate_stuck_sites as migrate_impl
 
         click.echo("=" * 80)
         click.echo("MIGRATION: Stuck Sites to Atomic Counter System")
