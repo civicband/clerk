@@ -2564,7 +2564,9 @@ def investigate_failed_ocr(limit):
         # Filesystem state
         click.echo("Filesystem:")
         click.echo(f"  site_dir exists: {info['site_dir_exists']}")
-        click.echo(f"  pdf_count: {info['pdf_count']}")
+        click.echo(f"  minutes_pdf_count: {info.get('minutes_pdf_count', 0)}")
+        click.echo(f"  agendas_pdf_count: {info.get('agendas_pdf_count', 0)}")
+        click.echo(f"  total_pdf_count: {info['pdf_count']}")
         if info["pdf_files"]:
             click.echo(f"  sample PDFs: {info['pdf_files'][:3]}")
         click.echo(f"  txt_base exists: {info['txt_base_exists']}")

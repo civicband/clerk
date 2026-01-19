@@ -59,6 +59,8 @@ def count_txt_files(subdomain: str) -> int:
 def count_pdf_files(subdomain: str) -> int:
     """Count PDF files on filesystem.
 
+    Checks both minutes PDFs and agenda PDFs.
+
     Args:
         subdomain: Site subdomain
 
@@ -66,10 +68,20 @@ def count_pdf_files(subdomain: str) -> int:
         Number of PDF files found
     """
     storage_dir = os.getenv("STORAGE_DIR", "../sites")
-    pdf_dir = Path(f"{storage_dir}/{subdomain}/pdfs")
-    if not pdf_dir.exists():
-        return 0
-    return len(list(pdf_dir.glob("**/*.pdf")))
+
+    total_pdfs = 0
+
+    # Check minutes PDFs
+    minutes_pdf_dir = Path(f"{storage_dir}/{subdomain}/pdfs")
+    if minutes_pdf_dir.exists():
+        total_pdfs += len(list(minutes_pdf_dir.glob("**/*.pdf")))
+
+    # Check agenda PDFs
+    agendas_pdf_dir = Path(f"{storage_dir}/{subdomain}/_agendas/pdfs")
+    if agendas_pdf_dir.exists():
+        total_pdfs += len(list(agendas_pdf_dir.glob("**/*.pdf")))
+
+    return total_pdfs
 
 
 def migrate_stuck_sites(dry_run: bool = False) -> int:
@@ -216,6 +228,8 @@ def investigate_failed_ocr_site(subdomain: str) -> dict[str, Any]:
     result: dict[str, Any] = {
         "subdomain": subdomain,
         "site_dir_exists": site_dir.exists(),
+        "minutes_pdf_count": 0,
+        "agendas_pdf_count": 0,
         "pdf_count": 0,
         "pdf_files": [],
         "txt_base_exists": False,
@@ -224,12 +238,21 @@ def investigate_failed_ocr_site(subdomain: str) -> dict[str, Any]:
         "db_state": {},
     }
 
-    # Check PDFs
-    pdf_dir = site_dir / "pdfs"
-    if pdf_dir.exists():
-        pdf_files = list(pdf_dir.glob("**/*.pdf"))
-        result["pdf_count"] = len(pdf_files)
-        result["pdf_files"] = [str(p.relative_to(site_dir)) for p in pdf_files[:5]]
+    # Check minutes PDFs
+    minutes_pdf_dir = site_dir / "pdfs"
+    if minutes_pdf_dir.exists():
+        minutes_pdfs = list(minutes_pdf_dir.glob("**/*.pdf"))
+        result["minutes_pdf_count"] = len(minutes_pdfs)
+        result["pdf_files"].extend([str(p.relative_to(site_dir)) for p in minutes_pdfs[:3]])
+
+    # Check agenda PDFs
+    agendas_pdf_dir = site_dir / "_agendas" / "pdfs"
+    if agendas_pdf_dir.exists():
+        agendas_pdfs = list(agendas_pdf_dir.glob("**/*.pdf"))
+        result["agendas_pdf_count"] = len(agendas_pdfs)
+        result["pdf_files"].extend([str(p.relative_to(site_dir)) for p in agendas_pdfs[:3]])
+
+    result["pdf_count"] = result["minutes_pdf_count"] + result["agendas_pdf_count"]
 
     # Check txt directory structure
     txt_base = site_dir / "txt"
