@@ -551,7 +551,7 @@ def test_ocr_job_updates_counters_on_failure(mocker):
     mock_should_trigger.assert_called_once_with("test.civic.band", "ocr")
 
 
-def test_coordinator_resets_enqueued_flag(mock_site, tmp_path, monkeypatch):
+def test_coordinator_resets_enqueued_flag(mock_site, tmp_path, monkeypatch, mocker):
     """Coordinator should reset coordinator_enqueued flag for next stage."""
     from pathlib import Path
 
@@ -582,6 +582,18 @@ def test_coordinator_resets_enqueued_flag(mock_site, tmp_path, monkeypatch):
     txt_dir = Path(tmp_path) / subdomain / "txt" / "Meeting"
     txt_dir.mkdir(parents=True)
     (txt_dir / "2024-01-01.txt").write_text("test content")
+
+    # Mock queue operations (coordinator enqueues extraction and deploy jobs)
+    mock_extraction_queue = mocker.MagicMock()
+    mock_extraction_queue.enqueue.return_value = mocker.MagicMock(id="ext-job")
+    mocker.patch("clerk.queue.get_extraction_queue", return_value=mock_extraction_queue)
+
+    mock_deploy_queue = mocker.MagicMock()
+    mock_deploy_queue.enqueue.return_value = mocker.MagicMock(id="deploy-job")
+    mocker.patch("clerk.queue.get_deploy_queue", return_value=mock_deploy_queue)
+
+    # Mock job tracking to avoid database conflicts
+    mocker.patch("clerk.workers.track_job")
 
     # Run coordinator
     ocr_complete_coordinator(subdomain, run_id="test_run")

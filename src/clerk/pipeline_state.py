@@ -138,4 +138,4 @@ def claim_coordinator_enqueue(subdomain: str) -> bool:
             )
         )
 
-        return result.rowcount == 1
+        return bool(result.rowcount == 1)
