@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from rq import get_current_job
-from sqlalchemy import update
+from sqlalchemy import select, update
 
 from .db import civic_db_connection, get_site_by_subdomain, update_site
 from .fetcher import Fetcher
@@ -252,21 +252,28 @@ def fetch_site_job(
             job_count=len(ocr_job_ids),
         )
 
-        # Initialize atomic counters for OCR stage
-        if ocr_job_ids:
-            initialize_stage(subdomain, stage="ocr", total_jobs=len(ocr_job_ids))
+        # Initialize atomic counters for OCR stage (even if 0 jobs)
+        # This ensures the coordinator can trigger immediately for empty stages
+        initialize_stage(subdomain, stage="ocr", total_jobs=len(ocr_job_ids))
+        log_with_context(
+            "Initialized OCR stage with atomic counters",
+            subdomain=subdomain,
+            run_id=run_id,
+            stage=stage,
+            total_jobs=len(ocr_job_ids),
+            has_jobs=len(ocr_job_ids) > 0,
+        )
+
+        if len(ocr_job_ids) == 0:
             log_with_context(
-                "Initialized OCR stage with atomic counters",
+                "No PDFs found after fetch - OCR stage initialized with total=0",
                 subdomain=subdomain,
                 run_id=run_id,
                 stage=stage,
-                total_jobs=len(ocr_job_ids),
+                level="warning",
             )
-        else:
-            logger.warning(
-                "No OCR jobs to spawn for subdomain=%s - no PDFs found",
-                subdomain,
-            )
+            # Immediately try to enqueue coordinator since (0 completed + 0 failed) == 0 total
+            _attempt_coordinator_enqueue(subdomain, "ocr", run_id)
 
         duration = time.time() - start_time
         log_with_context(
@@ -531,6 +538,52 @@ def ocr_complete_coordinator(subdomain, run_id):
         # Verify OCR completed by checking for txt files
         storage_dir = os.getenv("STORAGE_DIR", "../sites")
         txt_dir = Path(f"{storage_dir}/{subdomain}/txt")
+
+        # Check if this is a "no documents" case (fetch found 0 PDFs)
+        with civic_db_connection() as conn:
+            site = conn.execute(
+                select(sites_table).where(sites_table.c.subdomain == subdomain)
+            ).fetchone()
+
+        if site and site.ocr_total == 0:
+            # No PDFs were fetched - mark site as completed with error
+            log_with_context(
+                "No documents to process - fetch found 0 PDFs",
+                subdomain=subdomain,
+                run_id=run_id,
+                stage=stage,
+                level="warning",
+            )
+
+            with civic_db_connection() as conn:
+                conn.execute(
+                    update(sites_table)
+                    .where(sites_table.c.subdomain == subdomain)
+                    .values(
+                        current_stage="completed",
+                        last_error_stage="fetch",
+                        last_error_message="No PDFs found during fetch - site may have no documents or fetch failed",
+                        last_error_at=datetime.now(UTC),
+                        updated_at=datetime.now(UTC),
+                    )
+                )
+                # Update legacy status
+                update_site(
+                    conn,
+                    subdomain,
+                    {
+                        "status": "no_documents",
+                        "last_updated": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                    },
+                )
+
+            log_with_context(
+                "Marked site as completed with no_documents status",
+                subdomain=subdomain,
+                run_id=run_id,
+                stage=stage,
+            )
+            return  # Exit coordinator successfully
 
         if not txt_dir.exists():
             raise FileNotFoundError(
