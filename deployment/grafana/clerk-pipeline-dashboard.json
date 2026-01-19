@@ -195,6 +195,139 @@
             "unit": "short"
           }
         }
+      },
+      {
+        "id": 5,
+        "type": "row",
+        "title": "Trends (Last 24h)",
+        "collapsed": false,
+        "gridPos": { "x": 0, "y": 5, "w": 24, "h": 1 }
+      },
+      {
+        "id": 6,
+        "type": "timeseries",
+        "title": "Completions per Hour",
+        "datasource": {
+          "type": "postgres",
+          "uid": "${DS_CIVIC_DB}"
+        },
+        "gridPos": { "x": 0, "y": 6, "w": 24, "h": 6 },
+        "targets": [
+          {
+            "refId": "A",
+            "format": "time_series",
+            "rawSql": "SELECT DATE_TRUNC('hour', updated_at) as time, COUNT(*) as completions FROM sites WHERE current_stage = 'completed' AND updated_at >= NOW() - INTERVAL '$__range' AND updated_at <= NOW() GROUP BY time ORDER BY time;"
+          }
+        ],
+        "options": {
+          "tooltip": {
+            "mode": "single"
+          },
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom"
+          }
+        },
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "fillOpacity": 20,
+              "lineWidth": 2,
+              "showPoints": "never"
+            },
+            "unit": "short",
+            "color": {
+              "mode": "palette-classic"
+            }
+          }
+        }
+      },
+      {
+        "id": 7,
+        "type": "timeseries",
+        "title": "Failure Rate by Stage",
+        "datasource": {
+          "type": "postgres",
+          "uid": "${DS_CIVIC_DB}"
+        },
+        "gridPos": { "x": 0, "y": 12, "w": 24, "h": 6 },
+        "targets": [
+          {
+            "refId": "OCR",
+            "format": "time_series",
+            "rawSql": "SELECT DATE_TRUNC('hour', updated_at) as time, 'ocr' as stage, ROUND(100.0 * SUM(ocr_failed) / NULLIF(SUM(ocr_total), 0), 1) as failure_rate FROM sites WHERE ocr_total > 0 AND updated_at >= NOW() - INTERVAL '$__range' GROUP BY time ORDER BY time;"
+          },
+          {
+            "refId": "Compilation",
+            "format": "time_series",
+            "rawSql": "SELECT DATE_TRUNC('hour', updated_at) as time, 'compilation' as stage, ROUND(100.0 * SUM(compilation_failed) / NULLIF(SUM(compilation_total), 0), 1) as failure_rate FROM sites WHERE compilation_total > 0 AND updated_at >= NOW() - INTERVAL '$__range' GROUP BY time ORDER BY time;"
+          },
+          {
+            "refId": "Extraction",
+            "format": "time_series",
+            "rawSql": "SELECT DATE_TRUNC('hour', updated_at) as time, 'extraction' as stage, ROUND(100.0 * SUM(extraction_failed) / NULLIF(SUM(extraction_total), 0), 1) as failure_rate FROM sites WHERE extraction_total > 0 AND updated_at >= NOW() - INTERVAL '$__range' GROUP BY time ORDER BY time;"
+          },
+          {
+            "refId": "Deploy",
+            "format": "time_series",
+            "rawSql": "SELECT DATE_TRUNC('hour', updated_at) as time, 'deploy' as stage, ROUND(100.0 * SUM(deploy_failed) / NULLIF(SUM(deploy_total), 0), 1) as failure_rate FROM sites WHERE deploy_total > 0 AND updated_at >= NOW() - INTERVAL '$__range' GROUP BY time ORDER BY time;"
+          }
+        ],
+        "options": {
+          "tooltip": {
+            "mode": "multi"
+          },
+          "legend": {
+            "displayMode": "table",
+            "placement": "bottom",
+            "values": ["min", "max", "mean"]
+          }
+        },
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "lineWidth": 2
+            },
+            "unit": "percent",
+            "min": 0,
+            "max": 100
+          }
+        }
+      },
+      {
+        "id": 8,
+        "type": "barchart",
+        "title": "Average Time in Stage (Hours)",
+        "datasource": {
+          "type": "postgres",
+          "uid": "${DS_CIVIC_DB}"
+        },
+        "gridPos": { "x": 0, "y": 18, "w": 24, "h": 6 },
+        "targets": [
+          {
+            "refId": "A",
+            "format": "table",
+            "rawSql": "SELECT current_stage as stage, AVG(EXTRACT(EPOCH FROM (updated_at - started_at))/3600) as avg_hours FROM sites WHERE started_at IS NOT NULL AND updated_at > NOW() - INTERVAL '$__range' AND current_stage IS NOT NULL GROUP BY current_stage ORDER BY avg_hours DESC;"
+          }
+        ],
+        "options": {
+          "orientation": "horizontal",
+          "xTickLabelRotation": 0,
+          "showValue": "always",
+          "legend": {
+            "displayMode": "hidden"
+          }
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "h",
+            "decimals": 1
+          }
+        }
       }
     ],
     "editable": true,
