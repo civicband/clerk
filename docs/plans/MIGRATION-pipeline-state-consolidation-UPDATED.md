@@ -452,6 +452,55 @@ After migration completes:
 
 ---
 
+## After Migration: Baking Period (1-2 Weeks)
+
+**STATUS:** Migration completed 2026-01-19. Now monitoring for stability.
+
+### What to Monitor
+
+Run daily during baking period:
+
+```bash
+# Quick health check
+clerk pipeline-status
+
+# Stuck sites count (should be <5)
+psql $DATABASE_URL -c "
+SELECT COUNT(*) as stuck_sites
+FROM sites
+WHERE current_stage != 'completed'
+  AND current_stage IS NOT NULL
+  AND updated_at < NOW() - INTERVAL '2 hours';"
+```
+
+### Success Criteria for Cleanup
+
+After 1-2 weeks, verify these criteria before proceeding with cleanup:
+
+- ✅ Stuck sites <1% for entire monitoring period
+- ✅ Health score >95% consistently
+- ✅ Reconciliation finding <5 stuck sites per run
+- ✅ No manual intervention needed for 7+ days
+
+**SQL queries:** See "Pre-Flight Verification" in `docs/plans/2026-01-19-state-cleanup.md`
+
+### Next Step: Infrastructure Cleanup
+
+Once success criteria are met, execute the cleanup plan:
+
+**Plan:** `docs/plans/2026-01-19-state-cleanup.md`
+
+**What gets removed:**
+- `site_progress` table (entire table)
+- Legacy columns: `status`, `extraction_status`, `last_updated`, `last_deployed`, `last_extracted`
+- All dual-write code maintaining old state
+
+**Why wait:** The old infrastructure is your safety net. If atomic counters have bugs, you can still inspect site_progress and legacy status fields. Once dropped, rollback is harder.
+
+**Timeline:** Wait minimum 1 week, preferably 2 weeks, before cleanup.
+
+---
+
 ## Support
 
 **Questions during migration:**
