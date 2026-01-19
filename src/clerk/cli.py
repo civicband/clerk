@@ -2762,6 +2762,80 @@ def debug_ocr_errors(limit):
         click.echo()
 
 
+@cli.command()
+@click.option("--scraper", default=None, help="Filter by scraper type (e.g., agendacenter)")
+@click.option("--days", default=7, help="Sites created in last N days")
+@click.option("--limit", default=20, help="Number of sites to show")
+def debug_recent_sites(scraper, days, limit):
+    """Show recently created sites and their pipeline status.
+
+    Useful for debugging issues with new sites, like "why are new agendacenter
+    sites fetching nothing?"
+
+    Examples:
+        # Show all sites created in last 7 days
+        clerk debug-recent-sites
+
+        # Show agendacenter sites created in last 3 days
+        clerk debug-recent-sites --scraper agendacenter --days 3
+
+        # Show last 50 sites
+        clerk debug-recent-sites --limit 50
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import select
+
+    from .db import civic_db_connection
+    from .models import sites_table
+
+    click.echo("=" * 80)
+    click.echo("DEBUG: Recent Sites")
+    click.echo("=" * 80)
+    click.echo()
+
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+
+    with civic_db_connection() as conn:
+        query = select(sites_table).where(sites_table.c.created_at >= cutoff)
+
+        if scraper:
+            query = query.where(sites_table.c.scraper.like(f"%{scraper}%"))
+
+        query = query.order_by(sites_table.c.created_at.desc()).limit(limit)
+
+        sites = conn.execute(query).fetchall()
+
+    if not sites:
+        click.echo(f"No sites found created in last {days} days")
+        if scraper:
+            click.echo(f"(filtered by scraper: {scraper})")
+        return
+
+    click.echo(f"Found {len(sites)} sites created in last {days} days:")
+    if scraper:
+        click.echo(f"(filtered by scraper: {scraper})")
+    click.echo()
+
+    for site in sites:
+        click.echo(f"Site: {site.subdomain}")
+        click.echo(f"  Created: {site.created_at}")
+        click.echo(f"  Scraper: {site.scraper}")
+        click.echo(f"  Current stage: {site.current_stage or 'none'}")
+        click.echo(f"  Status: {site.status}")
+
+        if site.current_stage == "ocr":
+            click.echo(
+                f"  OCR: {site.ocr_completed}/{site.ocr_total} completed, {site.ocr_failed} failed"
+            )
+
+        if site.last_error_message:
+            error_preview = site.last_error_message[:100]
+            click.secho(f"  Last error: {error_preview}", fg="yellow")
+
+        click.echo()
+
+
 cli.add_command(new)
 cli.add_command(update)
 cli.add_command(build_full_db)
