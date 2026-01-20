@@ -14,10 +14,11 @@ from sqlite3 import OperationalError
 
 import click
 import sqlite_utils
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 
 # Load .env file BEFORE local imports so extraction.py can read env vars
-load_dotenv()
+# Use find_dotenv() to search parent directories for .env file
+load_dotenv(find_dotenv())
 
 # ruff: noqa: E402
 from datetime import UTC
@@ -1498,7 +1499,7 @@ def diagnose_workers():
     # 3. Check Redis connection
     print_section("3. Checking Redis connection")
     if env_path.exists():
-        load_dotenv()
+        load_dotenv(find_dotenv())
         redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
         click.echo(f"   Redis URL: {redis_url}")
 
