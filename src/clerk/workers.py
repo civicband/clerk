@@ -223,13 +223,16 @@ def fetch_site_job(
         )
 
         for pdf_path in pdf_files:
+            # Allow timeout to be configured via env var, default to 20m
+            # Previous default was 10m, which was too short for large/complex PDFs
+            ocr_timeout = os.getenv("OCR_JOB_TIMEOUT", "20m")
             job = ocr_queue.enqueue(
                 ocr_page_job,
                 subdomain=subdomain,
                 pdf_path=str(pdf_path),
                 backend=ocr_backend,
                 run_id=run_id,
-                job_timeout="10m",
+                job_timeout=ocr_timeout,
                 description=f"OCR ({ocr_backend}): {pdf_path.name}",
             )
             ocr_job_ids.append(job.id)
