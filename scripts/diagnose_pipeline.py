@@ -64,7 +64,7 @@ queues = {
     "fetch": get_fetch_queue(),
     "ocr": get_ocr_queue(),
     "compilation": get_compilation_queue(),
-    "extraction": get_extraction_queue(),
+    # "extraction": get_extraction_queue(),
     "deploy": get_deploy_queue(),
 }
 

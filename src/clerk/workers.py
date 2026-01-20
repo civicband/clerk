@@ -647,7 +647,7 @@ def ocr_complete_coordinator(subdomain, run_id):
         )
 
         compilation_queue = get_compilation_queue()
-        extraction_queue = get_extraction_queue()
+        # extraction_queue = get_extraction_queue()
 
         # Path 1: Database compilation WITHOUT entity extraction (fast path) - core pipeline
         db_job = compilation_queue.enqueue(
@@ -672,24 +672,24 @@ def ocr_complete_coordinator(subdomain, run_id):
         )
 
         # Path 2: Entity extraction job (which will spawn db compilation WITH entities)
-        extract_job = extraction_queue.enqueue(
-            extraction_job,
-            subdomain=subdomain,
-            run_id=run_id,
-            job_timeout="2h",
-            description=f"Extract entities: {subdomain}",
-        )
+        # extract_job = extraction_queue.enqueue(
+        #     extraction_job,
+        #     subdomain=subdomain,
+        #     run_id=run_id,
+        #     job_timeout="2h",
+        #     description=f"Extract entities: {subdomain}",
+        # )
 
         # Track in PostgreSQL
-        with civic_db_connection() as conn:
-            track_job(conn, extract_job.id, subdomain, "extract-site", "extraction")
-        log_with_context(
-            "Enqueued entity extraction job",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
-            job_id=extract_job.id,
-        )
+        # with civic_db_connection() as conn:
+        #     track_job(conn, extract_job.id, subdomain, "extract-site", "extraction")
+        # log_with_context(
+        #     "Enqueued entity extraction job",
+        #     subdomain=subdomain,
+        #     run_id=run_id,
+        #     stage=stage,
+        #     job_id=extract_job.id,
+        # )
 
         duration = time.time() - start_time
         log_with_context(
