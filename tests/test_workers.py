@@ -613,7 +613,7 @@ def test_coordinator_resets_enqueued_flag(mock_site, tmp_path, monkeypatch, mock
             select(sites_table).where(sites_table.c.subdomain == subdomain)
         ).fetchone()
 
-    assert site.current_stage == "extraction"  # Moved to next stage
+    assert site.current_stage == "compilation"  # Moved to compilation stage
     assert site.coordinator_enqueued is False  # Flag reset
     assert site.compilation_total == 1  # Next stage initialized
     assert site.extraction_total == 1

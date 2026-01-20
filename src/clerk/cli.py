@@ -2128,7 +2128,7 @@ def cleanup_orphaned(reset, reenqueue, max_age, output_json):
         query = text("""
             SELECT subdomain, status, last_updated
             FROM sites
-            WHERE status IN ('fetching', 'needs_ocr', 'needs_extraction', 'needs_deploy', 'extracting')
+            WHERE status IN ('fetching', 'needs_ocr', 'needs_compilation', 'needs_deploy', 'extracting')
               AND last_updated::timestamp < :cutoff_time
             ORDER BY last_updated ASC
         """)
@@ -2922,6 +2922,80 @@ def pipeline_status():
 
     click.echo()
     click.echo("=" * 80)
+
+
+@cli.command()
+@click.option(
+    "--dry-run", is_flag=True, default=False, help="Show what would be done without making changes"
+)
+def fix_extraction_stage(dry_run):
+    """Fix sites stuck at 'extraction' stage but already deployed.
+
+    This fixes a bug where ocr_complete_coordinator set stage to 'extraction'
+    but deploy_job didn't update sites.current_stage to 'completed'.
+
+    Finds sites with current_stage='extraction' but status='deployed'
+    and updates their current_stage to 'completed'.
+
+    Examples:
+        # Preview what would be fixed
+        clerk fix-extraction-stage --dry-run
+
+        # Apply the fix
+        clerk fix-extraction-stage
+    """
+    from sqlalchemy import select, update
+
+    from .db import civic_db_connection
+    from .models import sites_table
+
+    click.echo("=" * 80)
+    click.echo("FIX: Sites stuck at 'extraction' stage but deployed")
+    click.echo("=" * 80)
+    click.echo()
+
+    if dry_run:
+        click.secho("DRY RUN MODE - no changes will be made", fg="yellow")
+        click.echo()
+
+    with civic_db_connection() as conn:
+        # Find sites stuck at extraction but actually deployed
+        stuck = conn.execute(
+            select(sites_table).where(
+                sites_table.c.current_stage == "extraction",
+                sites_table.c.status == "deployed",
+            )
+        ).fetchall()
+
+        click.echo(f"Found {len(stuck)} sites stuck at 'extraction' stage but deployed")
+        click.echo()
+
+        fixed = 0
+        for site in stuck:
+            subdomain = site.subdomain
+            status = site.status
+
+            click.echo(f"  {subdomain}: status={status}, current_stage=extraction → completed")
+
+            # Update current_stage to completed (skip in dry-run mode)
+            if not dry_run:
+                conn.execute(
+                    update(sites_table)
+                    .where(sites_table.c.subdomain == subdomain)
+                    .values(current_stage="completed")
+                )
+
+            fixed += 1
+
+        click.echo()
+        click.echo(f"{'Would fix' if dry_run else 'Fixed'} {fixed} sites")
+
+    if not dry_run:
+        click.echo()
+        click.secho("Migration complete!", fg="green")
+    else:
+        click.echo()
+        click.secho("Dry run complete - run without --dry-run to apply changes", fg="yellow")
 
 
 cli.add_command(new)

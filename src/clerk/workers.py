@@ -621,7 +621,7 @@ def ocr_complete_coordinator(subdomain, run_id):
                 update(sites_table)
                 .where(sites_table.c.subdomain == subdomain)
                 .values(
-                    current_stage="extraction",
+                    current_stage="compilation",
                     compilation_total=1,
                     extraction_total=1,
                     coordinator_enqueued=False,  # Reset flag for next stage
@@ -634,16 +634,16 @@ def ocr_complete_coordinator(subdomain, run_id):
                 conn,
                 subdomain,
                 {
-                    "status": "needs_extraction",
+                    "status": "needs_compilation",
                     "last_updated": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
                 },
             )
         log_with_context(
-            "Updated progress to extraction stage",
+            "Updated progress to compilation stage",
             subdomain=subdomain,
             run_id=run_id,
             stage=stage,
-            next_stage="extraction",
+            next_stage="compilation",
         )
 
         compilation_queue = get_compilation_queue()
@@ -661,7 +661,7 @@ def ocr_complete_coordinator(subdomain, run_id):
 
         # Track in PostgreSQL
         with civic_db_connection() as conn:
-            track_job(conn, db_job.id, subdomain, "db-compilation-no-entities", "extraction")
+            track_job(conn, db_job.id, subdomain, "db-compilation-no-entities", "compilation")
         log_with_context(
             "Enqueued DB compilation job (no entities)",
             subdomain=subdomain,
@@ -1071,6 +1071,15 @@ def deploy_job(subdomain, run_id=None):
         with civic_db_connection() as conn:
             update_site_progress(conn, subdomain, stage="completed", stage_total=1)
             increment_stage_progress(conn, subdomain)
+            # Update sites.current_stage to completed
+            conn.execute(
+                update(sites_table)
+                .where(sites_table.c.subdomain == subdomain)
+                .values(
+                    current_stage="completed",
+                    updated_at=datetime.now(UTC),
+                )
+            )
             # Update legacy status field for backward compatibility
             update_site(
                 conn,
