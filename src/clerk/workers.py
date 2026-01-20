@@ -540,7 +540,7 @@ def ocr_complete_coordinator(subdomain, run_id):
         subdomain: Site subdomain
         run_id: Pipeline run identifier
     """
-    from .queue import get_compilation_queue, get_extraction_queue
+    from .queue import get_compilation_queue
 
     stage = "ocr"
     start_time = time.time()
