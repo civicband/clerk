@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from rq import get_current_job
+from rq.utils import parse_timeout
 from sqlalchemy import select, update
 
 from .db import civic_db_connection, get_site_by_subdomain, update_site
@@ -25,6 +26,7 @@ from .queue_db import (
     create_site_progress,
     increment_stage_progress,
     track_job,
+    track_jobs_bulk,
     update_site_progress,
 )
 
@@ -209,7 +211,6 @@ def fetch_site_job(
 
         # Spawn OCR jobs (fan-out)
         ocr_queue = get_ocr_queue()
-        ocr_job_ids = []
 
         # Use parameter if provided, otherwise fall back to environment variable
         if ocr_backend is None:
@@ -222,52 +223,61 @@ def fetch_site_job(
             backend=ocr_backend,
         )
 
+        # Allow timeout to be configured via env var, default to 20m
+        # Previous default was 10m, which was too short for large/complex PDFs
+        ocr_timeout_str = os.getenv("OCR_JOB_TIMEOUT", "20m")
+        ocr_timeout_seconds = parse_timeout(ocr_timeout_str)
+
+        # Phase 1: Prepare all job data (no I/O, just data structure creation)
+        job_datas = []
         for pdf_path in pdf_files:
-            # Allow timeout to be configured via env var, default to 20m
-            # Previous default was 10m, which was too short for large/complex PDFs
-            ocr_timeout = os.getenv("OCR_JOB_TIMEOUT", "20m")
-            job = ocr_queue.enqueue(
+            job_data = ocr_queue.prepare_data(
                 ocr_page_job,
-                subdomain=subdomain,
-                pdf_path=str(pdf_path),
-                backend=ocr_backend,
-                run_id=run_id,
-                job_timeout=ocr_timeout,
+                kwargs={
+                    "subdomain": subdomain,
+                    "pdf_path": str(pdf_path),
+                    "backend": ocr_backend,
+                    "run_id": run_id,
+                },
+                timeout=ocr_timeout_seconds,
                 description=f"OCR ({ocr_backend}): {pdf_path.name}",
             )
-            ocr_job_ids.append(job.id)
-            logger.debug(
-                "Enqueued OCR job %s for PDF %s (subdomain=%s)",
-                job.id,
-                pdf_path.name,
-                subdomain,
-            )
+            job_datas.append(job_data)
 
-            # Track in PostgreSQL
-            with civic_db_connection() as conn:
-                track_job(conn, job.id, subdomain, "ocr-page", "ocr")
+        # Phase 2: Batch enqueue all jobs to RQ in a single Redis pipeline
+        # This is much faster than individual enqueue() calls for large batches
+        ocr_jobs = ocr_queue.enqueue_many(job_datas) if job_datas else []
 
         log_with_context(
-            "Enqueued OCR jobs",
+            "Batch enqueued OCR jobs to RQ",
             subdomain=subdomain,
             run_id=run_id,
             stage=stage,
-            job_count=len(ocr_job_ids),
+            job_count=len(ocr_jobs),
         )
 
-        # Initialize atomic counters for OCR stage (even if 0 jobs)
-        # This ensures the coordinator can trigger immediately for empty stages
-        initialize_stage(subdomain, stage="ocr", total_jobs=len(ocr_job_ids))
+        # Phase 3: Atomically update database in a single transaction
+        # This prevents partial state if DB connection fails mid-operation
+        with civic_db_connection() as conn:
+            # Update site progress
+            update_site_progress(conn, subdomain, stage="ocr", stage_total=len(ocr_jobs))
+
+            # Bulk insert all job tracking rows
+            track_jobs_bulk(conn, ocr_jobs, subdomain, "ocr-page", "ocr")
+
+            # Initialize atomic counters for OCR stage (even if 0 jobs)
+            # This ensures the coordinator can trigger immediately for empty stages
+            initialize_stage(subdomain, stage="ocr", total_jobs=len(ocr_jobs))
         log_with_context(
             "Initialized OCR stage with atomic counters",
             subdomain=subdomain,
             run_id=run_id,
             stage=stage,
-            total_jobs=len(ocr_job_ids),
-            has_jobs=len(ocr_job_ids) > 0,
+            total_jobs=len(ocr_jobs),
+            has_jobs=len(ocr_jobs) > 0,
         )
 
-        if len(ocr_job_ids) == 0:
+        if len(ocr_jobs) == 0:
             log_with_context(
                 "No PDFs found after fetch - OCR stage initialized with total=0",
                 subdomain=subdomain,
