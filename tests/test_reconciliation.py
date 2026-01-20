@@ -39,11 +39,16 @@ def stuck_site(tmp_path, monkeypatch):
         )
 
     # Create txt files (work was done)
+    # Structure: txt/{meeting}/{date}/*.txt
     monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
-    txt_dir = tmp_path / subdomain / "txt" / "Meeting"
-    txt_dir.mkdir(parents=True)
-    (txt_dir / "2024-01-01.txt").write_text("test content")
-    (txt_dir / "2024-01-02.txt").write_text("test content")
+    meeting_dir = tmp_path / subdomain / "txt" / "Meeting"
+    # Create two document directories (one per date)
+    doc1_dir = meeting_dir / "2024-01-01"
+    doc1_dir.mkdir(parents=True)
+    (doc1_dir / "1.txt").write_text("test content page 1")
+    doc2_dir = meeting_dir / "2024-01-02"
+    doc2_dir.mkdir(parents=True)
+    (doc2_dir / "1.txt").write_text("test content page 1")
 
     yield subdomain
 

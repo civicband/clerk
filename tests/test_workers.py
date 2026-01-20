@@ -259,11 +259,16 @@ def test_fetch_site_job_passes_run_id_to_ocr_jobs(mocker):
     mock_path_instance.glob.return_value = [mock_pdf]
     mock_path_class.return_value = mock_path_instance
 
-    # Mock OCR queue
+    # Mock OCR queue with batch enqueueing
     mock_ocr_queue = mocker.MagicMock()
     mock_job = mocker.MagicMock(id="ocr-job-123")
-    mock_ocr_queue.enqueue.return_value = mock_job
+    mock_job_data = mocker.MagicMock()
+    mock_ocr_queue.prepare_data.return_value = mock_job_data
+    mock_ocr_queue.enqueue_many.return_value = [mock_job]
     mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_ocr_queue)
+
+    # Mock track_jobs_bulk instead of track_job
+    mocker.patch("clerk.workers.track_jobs_bulk")
 
     # Mock compilation queue for coordinator
     mock_compilation_queue = mocker.MagicMock()
@@ -273,9 +278,9 @@ def test_fetch_site_job_passes_run_id_to_ocr_jobs(mocker):
 
     fetch_site_job("test.civic.band", run_id="test_123_abc")
 
-    # Verify OCR job was enqueued with run_id
-    mock_ocr_queue.enqueue.assert_called()
-    call_kwargs = mock_ocr_queue.enqueue.call_args[1]
+    # Verify OCR jobs were batch enqueued with run_id
+    mock_ocr_queue.prepare_data.assert_called()
+    call_kwargs = mock_ocr_queue.prepare_data.call_args[1]["kwargs"]
     assert call_kwargs["run_id"] == "test_123_abc"
 
 

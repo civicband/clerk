@@ -1,0 +1,28 @@
+[Unit]
+Description=Clerk Pipeline Reconciliation
+Documentation=https://github.com/civicband/clerk
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=deploy
+Group=deploy
+WorkingDirectory=/home/deploy/civic-band
+Environment="STORAGE_DIR=/Volumes/CivicBandData/sites"
+Environment="PATH=/home/deploy/civic-band/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+
+# Run reconciliation to detect and recover stuck sites
+ExecStart=/home/deploy/civic-band/.venv/bin/clerk reconcile-pipeline --threshold-hours 2
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=clerk-reconcile
+
+# Resource limits
+MemoryMax=512M
+CPUQuota=50%
+
+[Install]
+WantedBy=multi-user.target

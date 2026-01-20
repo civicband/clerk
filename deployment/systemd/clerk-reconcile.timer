@@ -1,0 +1,15 @@
+[Unit]
+Description=Clerk Pipeline Reconciliation Timer
+Documentation=https://github.com/civicband/clerk
+Requires=clerk-reconcile.service
+
+[Timer]
+# Run every 15 minutes
+OnCalendar=*:0/15
+# Run immediately if system was off when scheduled
+Persistent=true
+# Randomize start time by up to 1 minute to avoid thundering herd
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

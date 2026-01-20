@@ -27,6 +27,38 @@ def track_job(conn, rq_job_id, subdomain, job_type, stage):
     conn.execute(stmt)
 
 
+def track_jobs_bulk(conn, jobs, subdomain, job_type, stage):
+    """Track multiple RQ jobs in PostgreSQL in a single bulk insert.
+
+    This is much more efficient than calling track_job() in a loop,
+    especially for large numbers of jobs (e.g., 500+ OCR jobs).
+
+    Args:
+        conn: SQLAlchemy connection
+        jobs: List of RQ Job objects (with .id attribute)
+        subdomain: Site subdomain
+        job_type: Job type (fetch-site, ocr-page, etc.)
+        stage: Processing stage (fetch, ocr, extraction, deploy)
+    """
+    if not jobs:
+        return
+
+    now = datetime.now(UTC)
+    job_records = [
+        {
+            "rq_job_id": job.id,
+            "subdomain": subdomain,
+            "job_type": job_type,
+            "stage": stage,
+            "created_at": now,
+        }
+        for job in jobs
+    ]
+
+    stmt = insert(job_tracking_table)
+    conn.execute(stmt, job_records)
+
+
 def create_site_progress(conn, subdomain, stage):
     """Create or update site progress tracking.
 

@@ -25,12 +25,37 @@ from clerk.workers import ocr_complete_coordinator
 
 
 def count_txt_files(subdomain):
-    """Count txt files on filesystem."""
+    """Count completed OCR documents on filesystem.
+
+    Note: Despite the name, this counts DOCUMENTS (not individual txt pages).
+    Each OCR job processes one PDF document and creates a directory with
+    multiple txt files (one per page). A document is considered complete
+    if its directory exists and contains at least one txt file.
+
+    Returns:
+        Number of completed OCR documents (not pages)
+    """
     storage_dir = os.getenv("STORAGE_DIR", "../sites")
-    txt_dir = Path(f"{storage_dir}/{subdomain}/txt")
-    if not txt_dir.exists():
+    txt_base = Path(f"{storage_dir}/{subdomain}/txt")
+
+    if not txt_base.exists():
         return 0
-    return len(list(txt_dir.glob("**/*.txt")))
+
+    # Count document directories that have at least one txt file
+    # Structure: txt/{meeting}/{date}/*.txt
+    completed_docs = 0
+    for meeting_dir in txt_base.iterdir():
+        if not meeting_dir.is_dir():
+            continue
+        for doc_dir in meeting_dir.iterdir():
+            if not doc_dir.is_dir():
+                continue
+            # Check if this document has any txt files (at least one page completed)
+            txt_files = list(doc_dir.glob("*.txt"))
+            if txt_files:
+                completed_docs += 1
+
+    return completed_docs
 
 
 def find_stuck_sites(threshold_hours=2):

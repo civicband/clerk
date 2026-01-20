@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.civicband.reconcile</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{VENV_PATH}}/bin/clerk</string>
+        <string>reconcile-pipeline</string>
+        <string>--threshold-hours</string>
+        <string>2</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>{{WORKING_DIR}}</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>STORAGE_DIR</key>
+        <string>{{STORAGE_DIR}}</string>
+        <key>PATH</key>
+        <string>{{VENV_PATH}}/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>StartInterval</key>
+    <integer>900</integer> <!-- Run every 15 minutes (900 seconds) -->
+
+    <key>StandardOutPath</key>
+    <string>{{LOG_DIR}}/reconcile.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>{{LOG_DIR}}/reconcile.error.log</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>
