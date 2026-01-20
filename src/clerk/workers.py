@@ -762,8 +762,8 @@ def db_compilation_job(subdomain, run_id=None, extract_entities=False, ignore_ca
 
         # Update progress counter
         with civic_db_connection() as conn:
-            update_site_progress(conn, subdomain, stage="extraction", stage_total=len(txt_files))
-        logger.debug("Updated extraction progress with %d total files", len(txt_files))
+            update_site_progress(conn, subdomain, stage="compilation", stage_total=len(txt_files))
+        logger.debug("Updated compilation progress with %d total files", len(txt_files))
 
         # Build database
         log_with_context(
