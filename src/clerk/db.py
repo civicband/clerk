@@ -4,7 +4,6 @@ Supports both SQLite (dev) and PostgreSQL (production) based on DATABASE_URL.
 """
 
 import os
-import sys
 from contextlib import contextmanager
 
 from sqlalchemy import create_engine, delete, insert, select, update
@@ -43,9 +42,11 @@ def get_civic_db():
                 conn.execute(text("SELECT 1"))
             return engine
         except OperationalError as e:
-            print(f"ERROR: Cannot connect to database: {e}")
+            error_msg = f"Cannot connect to database: {e}"
+            print(f"ERROR: {error_msg}")
             print("DATABASE_URL is set but connection failed.")
-            sys.exit(1)
+            # Raise exception instead of sys.exit() so RQ workers can handle job failure properly
+            raise RuntimeError(error_msg) from e
     else:
         # Development: SQLite
         return create_engine("sqlite:///civic.db")

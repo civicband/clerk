@@ -380,11 +380,17 @@ def ocr_page_job(subdomain, pdf_path, backend="tesseract", run_id=None):
         backend: OCR backend (tesseract or vision)
         run_id: Pipeline run identifier
     """
+    from rq import get_current_job
+
     from .cli import get_fetcher
 
     stage = "ocr"
     start_time = time.time()
     path_obj = Path(pdf_path)
+
+    # Get RQ job ID for correlation with worker logs
+    current_job = get_current_job()
+    rq_job_id = current_job.id if current_job else "unknown"
 
     log_with_context(
         "ocr_started",
@@ -439,20 +445,19 @@ def ocr_page_job(subdomain, pdf_path, backend="tesseract", run_id=None):
         )
 
         # Run OCR job without manifest (RQ tracks job failures)
-        job_id = f"worker_ocr_{int(time.time())}"
         log_with_context(
             "Running OCR",
             subdomain=subdomain,
             run_id=run_id,
             stage=stage,
-            ocr_job_id=job_id,
+            rq_job_id=rq_job_id,
             pdf_name=path_obj.name,
             backend=backend,
         )
 
         # Wrap do_ocr_job in try/except to handle failures gracefully
         try:
-            fetcher.do_ocr_job(job, None, job_id, backend=backend)  # type: ignore
+            fetcher.do_ocr_job(job, None, rq_job_id, backend=backend, run_id=run_id)  # type: ignore
 
             duration = time.time() - start_time
             log_with_context(
@@ -460,7 +465,7 @@ def ocr_page_job(subdomain, pdf_path, backend="tesseract", run_id=None):
                 subdomain=subdomain,
                 run_id=run_id,
                 stage=stage,
-                ocr_job_id=job_id,
+                rq_job_id=rq_job_id,
                 pdf_name=path_obj.name,
                 duration_seconds=round(duration, 2),
             )
