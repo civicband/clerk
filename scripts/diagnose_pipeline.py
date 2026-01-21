@@ -10,7 +10,6 @@ from clerk.models import site_progress_table, sites_table
 from clerk.queue import (
     get_compilation_queue,
     get_deploy_queue,
-    get_extraction_queue,
     get_fetch_queue,
     get_ocr_queue,
 )
