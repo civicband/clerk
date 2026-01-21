@@ -136,7 +136,7 @@ def _safe_pdf_read(doc_path, timeout=PDF_READ_TIMEOUT):
             else:
                 # Exception in subprocess
                 return (False, None, f"{result[1]}: {result[2]}")
-        except:
+        except Exception:
             # Queue was empty or get timed out
             return (False, None, "PDF read failed with unknown error")
 
@@ -225,7 +225,7 @@ def _safe_pdf_to_images(doc_path, doc_image_dir_path, chunk_start, chunk_end, pr
             else:
                 # Exception in subprocess
                 return (False, None, f"{result[1]}: {result[2]}")
-        except:
+        except Exception:
             # Queue was empty or get timed out
             return (False, None, "PDF conversion failed with unknown error")
 
@@ -1007,7 +1007,7 @@ class Fetcher:
                 chunk_end = min(chunk_start + PDF_CHUNK_SIZE - 1, total_pages)
 
                 if USE_PDF_SUBPROCESS_ISOLATION:
-                    success, pages_converted, error_msg = _safe_pdf_to_images(
+                    success, _, error_msg = _safe_pdf_to_images(
                         doc_path,
                         doc_image_dir_path,
                         chunk_start,
@@ -1035,11 +1035,9 @@ class Fetcher:
                                     continue
                                 page.save(page_image_path, "PNG")
                         success = True
-                        pages_converted = len(pages)
                         error_msg = None
                     except Exception as e:
                         success = False
-                        pages_converted = None
                         error_msg = str(e)
 
                 if not success:
