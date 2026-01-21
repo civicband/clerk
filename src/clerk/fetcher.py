@@ -100,33 +100,50 @@ def _safe_pdf_read(doc_path, timeout=PDF_READ_TIMEOUT):
         args=(doc_path, result_queue)
     )
 
-    process.start()
-    process.join(timeout=timeout)
+    try:
+        process.start()
+        process.join(timeout=timeout)
 
-    if process.is_alive():
-        # Timeout - kill the process
-        process.terminate()
-        process.join(timeout=5)
         if process.is_alive():
-            process.kill()
-            process.join()
-        return (False, None, f"PDF read timed out after {timeout}s")
+            # Timeout - kill the process
+            process.terminate()
+            process.join(timeout=5)
+            if process.is_alive():
+                process.kill()
+                process.join()
+            return (False, None, f"PDF read timed out after {timeout}s")
 
-    if process.exitcode != 0:
-        # Process crashed (segfault or other signal)
-        signal_name = "SIGSEGV" if process.exitcode == -11 else f"signal {abs(process.exitcode)}"
-        return (False, None, f"PDF read crashed with {signal_name}")
+        # Check exit code (can be None if process never started properly)
+        if process.exitcode is None:
+            return (False, None, "PDF read process failed to start")
 
-    # Check result
-    if not result_queue.empty():
-        result = result_queue.get()
-        if result[0] == "success":
-            return (True, result[1], None)
-        else:
-            # Exception in subprocess
-            return (False, None, f"{result[1]}: {result[2]}")
+        if process.exitcode != 0:
+            # Process crashed (segfault or other signal)
+            # Negative exit codes indicate signals (e.g., -11 for SIGSEGV)
+            if process.exitcode == -11:
+                signal_name = "SIGSEGV"
+            elif process.exitcode < 0:
+                signal_name = f"signal {abs(process.exitcode)}"
+            else:
+                signal_name = f"exit code {process.exitcode}"
+            return (False, None, f"PDF read crashed with {signal_name}")
 
-    return (False, None, "PDF read failed with unknown error")
+        # Process succeeded - get result with timeout to avoid hanging
+        try:
+            result = result_queue.get(timeout=1)
+            if result[0] == "success":
+                return (True, result[1], None)
+            else:
+                # Exception in subprocess
+                return (False, None, f"{result[1]}: {result[2]}")
+        except:
+            # Queue was empty or get timed out
+            return (False, None, "PDF read failed with unknown error")
+
+    finally:
+        # Clean up resources
+        result_queue.close()
+        result_queue.join_thread()
 
 
 def _pdf_convert_worker(doc_path, doc_image_dir_path, chunk_start, chunk_end, prefix, result_queue):
@@ -172,33 +189,50 @@ def _safe_pdf_to_images(doc_path, doc_image_dir_path, chunk_start, chunk_end, pr
         args=(doc_path, doc_image_dir_path, chunk_start, chunk_end, prefix, result_queue)
     )
 
-    process.start()
-    process.join(timeout=timeout)
+    try:
+        process.start()
+        process.join(timeout=timeout)
 
-    if process.is_alive():
-        # Timeout - kill the process
-        process.terminate()
-        process.join(timeout=5)
         if process.is_alive():
-            process.kill()
-            process.join()
-        return (False, None, f"PDF conversion timed out after {timeout}s")
+            # Timeout - kill the process
+            process.terminate()
+            process.join(timeout=5)
+            if process.is_alive():
+                process.kill()
+                process.join()
+            return (False, None, f"PDF conversion timed out after {timeout}s")
 
-    if process.exitcode != 0:
-        # Process crashed (segfault or other signal)
-        signal_name = "SIGSEGV" if process.exitcode == -11 else f"signal {abs(process.exitcode)}"
-        return (False, None, f"PDF conversion crashed with {signal_name}")
+        # Check exit code (can be None if process never started properly)
+        if process.exitcode is None:
+            return (False, None, "PDF conversion process failed to start")
 
-    # Check result
-    if not result_queue.empty():
-        result = result_queue.get()
-        if result[0] == "success":
-            return (True, result[1], None)
-        else:
-            # Exception in subprocess
-            return (False, None, f"{result[1]}: {result[2]}")
+        if process.exitcode != 0:
+            # Process crashed (segfault or other signal)
+            # Negative exit codes indicate signals (e.g., -11 for SIGSEGV)
+            if process.exitcode == -11:
+                signal_name = "SIGSEGV"
+            elif process.exitcode < 0:
+                signal_name = f"signal {abs(process.exitcode)}"
+            else:
+                signal_name = f"exit code {process.exitcode}"
+            return (False, None, f"PDF conversion crashed with {signal_name}")
 
-    return (False, None, "PDF conversion failed with unknown error")
+        # Process succeeded - get result with timeout to avoid hanging
+        try:
+            result = result_queue.get(timeout=1)
+            if result[0] == "success":
+                return (True, result[1], None)
+            else:
+                # Exception in subprocess
+                return (False, None, f"{result[1]}: {result[2]}")
+        except:
+            # Queue was empty or get timed out
+            return (False, None, "PDF conversion failed with unknown error")
+
+    finally:
+        # Clean up resources
+        result_queue.close()
+        result_queue.join_thread()
 
 
 class Fetcher:
