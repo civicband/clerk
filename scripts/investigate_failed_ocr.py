@@ -122,7 +122,7 @@ def main(limit):
         info = investigate_site(site.subdomain)
 
         # Database state
-        click.echo(f"Database:")
+        click.echo("Database:")
         click.echo(f"  current_stage: {info['db_state'].get('current_stage')}")
         click.echo(f"  ocr_total: {info['db_state'].get('ocr_total')}")
         click.echo(f"  ocr_completed: {info['db_state'].get('ocr_completed')}")
@@ -131,7 +131,7 @@ def main(limit):
             click.echo(f"  last_error: {info['db_state'].get('last_error_message')[:100]}")
 
         # Filesystem state
-        click.echo(f"Filesystem:")
+        click.echo("Filesystem:")
         click.echo(f"  site_dir exists: {info['site_dir_exists']}")
         click.echo(f"  pdf_count: {info['pdf_count']}")
         if info["pdf_files"]:
@@ -141,7 +141,7 @@ def main(limit):
 
         # Txt structure analysis
         if info["txt_structure"]:
-            click.echo(f"  txt structure:")
+            click.echo("  txt structure:")
             for meeting, docs in info["txt_structure"].items():
                 docs_with_files = sum(1 for d in docs if d["has_files"])
                 total_docs = len(docs)
@@ -151,7 +151,7 @@ def main(limit):
                     click.secho(f"      ⚠️ {total_docs} document dirs but no txt files!", fg="yellow")
 
         # Diagnosis
-        click.echo(f"Diagnosis:")
+        click.echo("Diagnosis:")
         if not info["site_dir_exists"]:
             click.secho("  ❌ Site directory doesn't exist - storage issue", fg="red")
         elif info["pdf_count"] == 0:
