@@ -25,8 +25,14 @@ def get_redis():
     Thread-safe initialization with double-checked locking.
     Validates connection on initialization (fail-fast).
 
+    Connection parameters (configurable via environment):
+    - REDIS_SOCKET_CONNECT_TIMEOUT: Connection timeout in seconds (default: 30)
+    - REDIS_SOCKET_TIMEOUT: Socket read/write timeout in seconds (default: 30)
+    - REDIS_SOCKET_KEEPALIVE: Enable TCP keepalive (default: true)
+    - REDIS_CONNECTION_RETRIES: Number of connection attempts (default: 3)
+
     Raises:
-        SystemExit: If Redis connection cannot be established.
+        RuntimeError: If Redis connection cannot be established after retries.
     """
     global _redis_client
 
@@ -35,17 +41,58 @@ def get_redis():
             # Double-check: another thread might have initialized
             if _redis_client is None:
                 redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
-                try:
-                    # NOTE: Do NOT use decode_responses=True - RQ is incompatible
-                    # RQ stores pickled binary data, which causes UnicodeDecodeError
-                    # when Redis tries to decode it as UTF-8
-                    client = redis.from_url(redis_url)
-                    client.ping()  # Test connection
-                    _redis_client = client
-                except (redis.ConnectionError, redis.TimeoutError) as e:
-                    print(f"ERROR: Cannot connect to Redis: {e}", file=sys.stderr)
-                    print(f"REDIS_URL: {redis_url}", file=sys.stderr)
-                    sys.exit(1)
+
+                # Configurable connection parameters
+                socket_connect_timeout = int(os.getenv("REDIS_SOCKET_CONNECT_TIMEOUT", "30"))
+                socket_timeout = int(os.getenv("REDIS_SOCKET_TIMEOUT", "30"))
+                socket_keepalive = os.getenv("REDIS_SOCKET_KEEPALIVE", "true").lower() == "true"
+                max_retries = int(os.getenv("REDIS_CONNECTION_RETRIES", "3"))
+
+                # Build connection with resilience settings
+                connection_kwargs = {
+                    "socket_connect_timeout": socket_connect_timeout,
+                    "socket_timeout": socket_timeout,
+                    "socket_keepalive": socket_keepalive,
+                    "retry_on_timeout": True,  # Retry reads/writes on timeout
+                    "health_check_interval": 30,  # Check connection health every 30s
+                }
+
+                last_error = None
+                for attempt in range(1, max_retries + 1):
+                    try:
+                        # NOTE: Do NOT use decode_responses=True - RQ is incompatible
+                        # RQ stores pickled binary data, which causes UnicodeDecodeError
+                        # when Redis tries to decode it as UTF-8
+                        client = redis.from_url(redis_url, **connection_kwargs)
+                        client.ping()  # Test connection
+                        _redis_client = client
+
+                        if attempt > 1:
+                            print(
+                                f"Successfully connected to Redis on attempt {attempt}",
+                                file=sys.stderr,
+                            )
+                        return _redis_client
+                    except (redis.ConnectionError, redis.TimeoutError) as e:
+                        last_error = e
+                        if attempt < max_retries:
+                            wait_time = 2**attempt  # Exponential backoff: 2, 4, 8 seconds
+                            print(
+                                f"Redis connection attempt {attempt}/{max_retries} failed: {e}",
+                                file=sys.stderr,
+                            )
+                            print(f"Retrying in {wait_time}s...", file=sys.stderr)
+                            time.sleep(wait_time)
+                        else:
+                            print(
+                                f"ERROR: Cannot connect to Redis after {max_retries} attempts: {e}",
+                                file=sys.stderr,
+                            )
+                            print(f"REDIS_URL: {redis_url}", file=sys.stderr)
+
+                # All retries exhausted
+                error_msg = f"Failed to connect to Redis after {max_retries} attempts: {last_error}"
+                raise RuntimeError(error_msg) from last_error
 
     return _redis_client
 
