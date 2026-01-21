@@ -383,10 +383,10 @@ class TestDoOCRJobEnhanced:
             # Verify log calls
             log_calls = [str(call) for call in mock_log.call_args_list]
 
-            # Should log: Processing document, PDF read, Image conversion, OCR completed, Document completed
-            assert any("Processing document" in str(call) for call in log_calls)
+            # Should log: OCR job started, PDF read, Image conversion, OCR completed, Document completed
+            assert any("OCR job started" in str(call) for call in log_calls)
             assert any("PDF read" in str(call) for call in log_calls)
-            assert any("operation='pdf_read'" in str(call) for call in log_calls)
+            assert any("operation='pdf_read" in str(call) for call in log_calls)
             assert any("duration_ms=" in str(call) for call in log_calls)
 
         manifest.close()

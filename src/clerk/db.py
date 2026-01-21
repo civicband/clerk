@@ -4,7 +4,6 @@ Supports both SQLite (dev) and PostgreSQL (production) based on DATABASE_URL.
 """
 
 import os
-import sys
 from contextlib import contextmanager
 
 from sqlalchemy import create_engine, delete, insert, select, update

@@ -906,21 +906,34 @@ class Fetcher:
         meeting = job[1]
         date = job[2]
 
+        # Build paths early for diagnostics
+        doc_path = f"{self.dir_prefix}{prefix}/pdfs/{meeting}/{date}.pdf"
+        doc_image_dir_path = f"{self.dir_prefix}{prefix}/images/{meeting}/{date}"
+        doc_txt_dir_path = f"{self.dir_prefix}{prefix}/txt/{meeting}/{date}"
+
+        # Log job start with all context immediately
         output_log(
-            "Processing document",
+            "OCR job started",
             subdomain=self.subdomain,
-            operation="document_start",
+            operation="ocr_job_start",
             job_id=job_id,
             meeting=meeting,
             date=date,
             backend=backend,
             prefix=prefix,
+            doc_path=doc_path,
+            subprocess_isolation_enabled=USE_PDF_SUBPROCESS_ISOLATION,
         )
 
         try:
-            doc_path = f"{self.dir_prefix}{prefix}/pdfs/{meeting}/{date}.pdf"
-            doc_image_dir_path = f"{self.dir_prefix}{prefix}/images/{meeting}/{date}"
-            doc_txt_dir_path = f"{self.dir_prefix}{prefix}/txt/{meeting}/{date}"
+            # Log before file system checks
+            output_log(
+                "Checking PDF file existence",
+                subdomain=self.subdomain,
+                operation="check_file_exists",
+                job_id=job_id,
+                doc_path=doc_path,
+            )
 
             # Check if PDF file exists before attempting to read
             if not os.path.exists(doc_path):
@@ -936,8 +949,19 @@ class Fetcher:
                 )
                 return  # Skip this job without raising exception
 
-            # Check for empty/corrupted PDF before attempting to read
+            # Log file metadata before reading
             file_size = os.path.getsize(doc_path)
+            output_log(
+                "PDF file metadata",
+                subdomain=self.subdomain,
+                operation="check_file_metadata",
+                job_id=job_id,
+                doc_path=doc_path,
+                file_size_bytes=file_size,
+                file_size_mb=round(file_size / (1024 * 1024), 2),
+            )
+
+            # Check for empty/corrupted PDF before attempting to read
             if file_size == 0:
                 output_log(
                     f"Skipping empty PDF file (0 bytes): {doc_path}. "
@@ -955,13 +979,17 @@ class Fetcher:
             # PDF reading with timing (isolated subprocess to prevent segfaults in production)
             read_st = time.time()
 
+            output_log(
+                "About to read PDF",
+                subdomain=self.subdomain,
+                operation="pdf_read_start",
+                job_id=job_id,
+                doc_path=doc_path,
+                file_size_mb=round(file_size / (1024 * 1024), 2),
+                subprocess_isolation=USE_PDF_SUBPROCESS_ISOLATION,
+            )
+
             if USE_PDF_SUBPROCESS_ISOLATION:
-                output_log(
-                    "Using subprocess isolation for PDF reading",
-                    subdomain=self.subdomain,
-                    operation="pdf_read_isolated",
-                    doc_path=doc_path,
-                )
                 success, total_pages, error_msg = _safe_pdf_read(doc_path, timeout=PDF_READ_TIMEOUT)
             else:
                 # Direct call (for tests or when subprocess isolation is disabled)
@@ -1004,9 +1032,10 @@ class Fetcher:
             assert total_pages is not None, "total_pages should not be None after successful read"
 
             output_log(
-                "PDF read",
+                "PDF read successfully",
                 subdomain=self.subdomain,
-                operation="pdf_read",
+                operation="pdf_read_complete",
+                job_id=job_id,
                 meeting=meeting,
                 date=date,
                 page_count=total_pages,
@@ -1016,6 +1045,17 @@ class Fetcher:
 
             # Image conversion with timing
             conv_st = time.time()
+
+            output_log(
+                "Starting PDF to images conversion",
+                subdomain=self.subdomain,
+                operation="pdf_convert_start",
+                job_id=job_id,
+                doc_path=doc_path,
+                total_pages=total_pages,
+                chunk_size=PDF_CHUNK_SIZE,
+                subprocess_isolation=USE_PDF_SUBPROCESS_ISOLATION,
+            )
 
             # Create images directory if it doesn't exist
             # Handles both minutes (no prefix) and agendas (prefix="/_agendas")
@@ -1115,6 +1155,18 @@ class Fetcher:
 
             # OCR with timing
             ocr_st = time.time()
+
+            output_log(
+                "Starting OCR processing",
+                subdomain=self.subdomain,
+                operation="ocr_start",
+                job_id=job_id,
+                doc_path=doc_path,
+                total_pages=total_pages,
+                backend=backend,
+            )
+
+            pages_processed = 0
             for page_image in os.listdir(f"{doc_image_dir_path}"):
                 page_image_path = f"{doc_image_dir_path}/{page_image}"
                 remote_storage_path = f"/{self.subdomain}{prefix}/{meeting}/{date}/{page_image}"
@@ -1122,6 +1174,18 @@ class Fetcher:
                 txt_filepath = f"{doc_txt_dir_path}/{txt_filename}"
 
                 if not os.path.exists(txt_filepath):
+                    # Log every 10th page to track progress
+                    if pages_processed % 10 == 0:
+                        output_log(
+                            f"OCR progress: processing page {pages_processed}/{total_pages}",
+                            subdomain=self.subdomain,
+                            operation="ocr_progress",
+                            job_id=job_id,
+                            pages_processed=pages_processed,
+                            total_pages=total_pages,
+                            current_page=page_image,
+                        )
+
                     try:
                         if backend == "vision":
                             try:
@@ -1141,6 +1205,7 @@ class Fetcher:
 
                         with open(txt_filepath, "w", encoding="utf-8") as textfile:
                             textfile.write(text)
+                        pages_processed += 1
                     except Exception as e:
                         output_log(
                             f"error processing {page_image_path}, {e}",
