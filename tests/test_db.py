@@ -248,7 +248,7 @@ class TestErrorHandling:
         """Test that invalid DATABASE_URL causes immediate failure."""
         monkeypatch.setenv("DATABASE_URL", "postgresql://badhost:5432/baddb")
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(RuntimeError, match="Cannot connect to database"):
             get_civic_db()
 
     def test_postgres_url_normalized_to_postgresql(self, monkeypatch, mocker):
