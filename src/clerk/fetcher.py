@@ -60,6 +60,140 @@ NUM_WORKERS = int(os.environ.get("NUM_WORKERS", 10))
 # 10 workers × 20 pages = 200 file handles (under macOS 256 limit)
 PDF_CHUNK_SIZE = int(os.environ.get("PDF_CHUNK_SIZE", 20))
 
+# Timeout for PDF operations that might segfault (in seconds)
+PDF_READ_TIMEOUT = int(os.environ.get("PDF_READ_TIMEOUT", 60))
+PDF_CONVERT_TIMEOUT = int(os.environ.get("PDF_CONVERT_TIMEOUT", 300))  # 5 minutes
+
+# Enable subprocess isolation for PDF operations (disable for tests)
+USE_PDF_SUBPROCESS_ISOLATION = os.environ.get("USE_PDF_SUBPROCESS_ISOLATION", "true").lower() == "true"
+
+
+def _pdf_read_worker(doc_path, result_queue):
+    """Worker function to read PDF in subprocess (can segfault safely)."""
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(doc_path)
+        total_pages = len(reader.pages)
+        result_queue.put(("success", total_pages))
+    except Exception as e:
+        result_queue.put(("error", type(e).__name__, str(e)))
+
+
+def _safe_pdf_read(doc_path, timeout=PDF_READ_TIMEOUT):
+    """Read PDF in isolated subprocess to protect against segfaults.
+
+    Returns:
+        tuple: (success: bool, page_count: int | None, error_msg: str | None)
+    """
+    import multiprocessing
+
+    result_queue = multiprocessing.Queue()
+    process = multiprocessing.Process(
+        target=_pdf_read_worker,
+        args=(doc_path, result_queue)
+    )
+
+    process.start()
+    process.join(timeout=timeout)
+
+    if process.is_alive():
+        # Timeout - kill the process
+        process.terminate()
+        process.join(timeout=5)
+        if process.is_alive():
+            process.kill()
+            process.join()
+        return (False, None, f"PDF read timed out after {timeout}s")
+
+    if process.exitcode != 0:
+        # Process crashed (segfault or other signal)
+        signal_name = "SIGSEGV" if process.exitcode == -11 else f"signal {abs(process.exitcode)}"
+        return (False, None, f"PDF read crashed with {signal_name}")
+
+    # Check result
+    if not result_queue.empty():
+        result = result_queue.get()
+        if result[0] == "success":
+            return (True, result[1], None)
+        else:
+            # Exception in subprocess
+            return (False, None, f"{result[1]}: {result[2]}")
+
+    return (False, None, "PDF read failed with unknown error")
+
+
+def _pdf_convert_worker(doc_path, doc_image_dir_path, chunk_start, chunk_end, prefix, result_queue):
+    """Worker function to convert PDF to images in subprocess (can segfault safely)."""
+    import tempfile
+    try:
+        from pdf2image import convert_from_path
+
+        with tempfile.TemporaryDirectory() as temp_path:
+            pages = convert_from_path(
+                doc_path,
+                fmt="png",
+                size=(1276, 1648),
+                dpi=150,
+                output_folder=temp_path,
+                first_page=chunk_start,
+                last_page=chunk_end,
+            )
+            # Save pages to final destination
+            for idx, page in enumerate(pages):
+                page_number = chunk_start + idx
+                page_image_path = f"{doc_image_dir_path}/{page_number}.png"
+                # Skip if exists (unless it's an agenda - agendas have prefix)
+                if not (os.path.exists(page_image_path) and not prefix):
+                    page.save(page_image_path, "PNG")
+
+        result_queue.put(("success", len(pages)))
+    except Exception as e:
+        result_queue.put(("error", type(e).__name__, str(e)))
+
+
+def _safe_pdf_to_images(doc_path, doc_image_dir_path, chunk_start, chunk_end, prefix, timeout=PDF_CONVERT_TIMEOUT):
+    """Convert PDF chunk to images in isolated subprocess to protect against segfaults.
+
+    Returns:
+        tuple: (success: bool, page_count: int | None, error_msg: str | None)
+    """
+    import multiprocessing
+
+    result_queue = multiprocessing.Queue()
+    process = multiprocessing.Process(
+        target=_pdf_convert_worker,
+        args=(doc_path, doc_image_dir_path, chunk_start, chunk_end, prefix, result_queue)
+    )
+
+    process.start()
+    process.join(timeout=timeout)
+
+    if process.is_alive():
+        # Timeout - kill the process
+        process.terminate()
+        process.join(timeout=5)
+        if process.is_alive():
+            process.kill()
+            process.join()
+        return (False, None, f"PDF conversion timed out after {timeout}s")
+
+    if process.exitcode != 0:
+        # Process crashed (segfault or other signal)
+        signal_name = "SIGSEGV" if process.exitcode == -11 else f"signal {abs(process.exitcode)}"
+        return (False, None, f"PDF conversion crashed with {signal_name}")
+
+    # Check result
+    if not result_queue.empty():
+        result = result_queue.get()
+        if result[0] == "success":
+            return (True, result[1], None)
+        else:
+            # Exception in subprocess
+            return (False, None, f"{result[1]}: {result[2]}")
+
+    return (False, None, "PDF conversion failed with unknown error")
+
 
 class Fetcher:
     def __init__(
@@ -760,12 +894,24 @@ class Fetcher:
                 )
                 return  # Skip this job without raising exception
 
-            # PDF reading with timing
+            # PDF reading with timing (isolated subprocess to prevent segfaults in production)
             read_st = time.time()
-            try:
-                reader = PdfReader(doc_path)
-                total_pages = len(reader.pages)
-            except Exception as e:
+
+            if USE_PDF_SUBPROCESS_ISOLATION:
+                success, total_pages, error_msg = _safe_pdf_read(doc_path, timeout=PDF_READ_TIMEOUT)
+            else:
+                # Direct call (for tests or when subprocess isolation is disabled)
+                try:
+                    reader = PdfReader(doc_path)
+                    total_pages = len(reader.pages)
+                    success = True
+                    error_msg = None
+                except Exception as e:
+                    success = False
+                    total_pages = None
+                    error_msg = str(e)
+
+            if not success:
                 # Record failure in manifest if available
                 if manifest:
                     manifest.record_failure(
@@ -774,21 +920,24 @@ class Fetcher:
                         meeting=meeting,
                         date=date,
                         error_type="permanent",
-                        error_class=type(e).__name__,
-                        error_message=str(e),
+                        error_class="PdfReadError",  # Match exception name for consistency
+                        error_message=error_msg or "Unknown error",
                         retry_count=0,
                     )
 
                 output_log(
-                    f"{doc_path} failed to read: {e}. "
-                    "PDF may be corrupted. Skipping this document.",
+                    f"{doc_path} failed to read: {error_msg}. "
+                    "PDF may be corrupted or too large. Skipping this document.",
                     subdomain=self.subdomain,
                     level="error",
                     doc_path=doc_path,
-                    error_message=str(e),
+                    error_message=error_msg,
                     error_type="corrupted_pdf",
                 )
                 return  # Skip this job without raising exception
+
+            # At this point, total_pages is guaranteed to be an int (not None)
+            assert total_pages is not None, "total_pages should not be None after successful read"
 
             output_log(
                 "PDF read",
@@ -812,48 +961,76 @@ class Fetcher:
             # Handles both minutes (no prefix) and agendas (prefix="/_agendas")
             os.makedirs(doc_txt_dir_path, exist_ok=True)
 
-            try:
-                for chunk_start in range(1, total_pages + 1, PDF_CHUNK_SIZE):
-                    chunk_end = min(chunk_start + PDF_CHUNK_SIZE - 1, total_pages)
-                    with tempfile.TemporaryDirectory() as path:
-                        pages = convert_from_path(
-                            doc_path,
-                            fmt="png",
-                            size=(1276, 1648),
-                            dpi=150,
-                            output_folder=path,
-                            first_page=chunk_start,
-                            last_page=chunk_end,
-                        )
-                        for idx, page in enumerate(pages):
-                            page_number = chunk_start + idx
-                            page_image_path = f"{doc_image_dir_path}/{page_number}.png"
-                            if os.path.exists(page_image_path) and not prefix:
-                                continue
-                            page.save(page_image_path, "PNG")
-            except Exception as e:
-                # Record failure in manifest if available
-                if manifest:
-                    manifest.record_failure(
-                        job_id=job_id,
-                        document_path=doc_path,
-                        meeting=meeting,
-                        date=date,
-                        error_type="permanent",
-                        error_class=type(e).__name__,
-                        error_message=str(e),
-                        retry_count=0,
-                    )
+            # Convert PDF to images in chunks (isolated subprocess to prevent segfaults in production)
+            conversion_failed = False
+            for chunk_start in range(1, total_pages + 1, PDF_CHUNK_SIZE):
+                chunk_end = min(chunk_start + PDF_CHUNK_SIZE - 1, total_pages)
 
-                output_log(
-                    f"{doc_path} failed to process: {e}. "
-                    "PDF conversion to images failed. Skipping this document.",
-                    subdomain=self.subdomain,
-                    level="error",
-                    doc_path=doc_path,
-                    error_message=str(e),
-                    error_type="pdf_processing_failed",
-                )
+                if USE_PDF_SUBPROCESS_ISOLATION:
+                    success, pages_converted, error_msg = _safe_pdf_to_images(
+                        doc_path,
+                        doc_image_dir_path,
+                        chunk_start,
+                        chunk_end,
+                        prefix,
+                        timeout=PDF_CONVERT_TIMEOUT,
+                    )
+                else:
+                    # Direct call (for tests or when subprocess isolation is disabled)
+                    try:
+                        with tempfile.TemporaryDirectory() as temp_path:
+                            pages = convert_from_path(
+                                doc_path,
+                                fmt="png",
+                                size=(1276, 1648),
+                                dpi=150,
+                                output_folder=temp_path,
+                                first_page=chunk_start,
+                                last_page=chunk_end,
+                            )
+                            for idx, page in enumerate(pages):
+                                page_number = chunk_start + idx
+                                page_image_path = f"{doc_image_dir_path}/{page_number}.png"
+                                if os.path.exists(page_image_path) and not prefix:
+                                    continue
+                                page.save(page_image_path, "PNG")
+                        success = True
+                        pages_converted = len(pages)
+                        error_msg = None
+                    except Exception as e:
+                        success = False
+                        pages_converted = None
+                        error_msg = str(e)
+
+                if not success:
+                    conversion_failed = True
+                    # Record failure in manifest if available
+                    if manifest:
+                        manifest.record_failure(
+                            job_id=job_id,
+                            document_path=doc_path,
+                            meeting=meeting,
+                            date=date,
+                            error_type="permanent",
+                            error_class="PdfProcessingError",  # Generic error for PDF conversion issues
+                            error_message=error_msg or "Unknown error",
+                            retry_count=0,
+                        )
+
+                    output_log(
+                        f"{doc_path} failed to process (chunk {chunk_start}-{chunk_end}): {error_msg}. "
+                        "PDF conversion to images failed. Skipping this document.",
+                        subdomain=self.subdomain,
+                        level="error",
+                        doc_path=doc_path,
+                        error_message=error_msg,
+                        error_type="pdf_processing_failed",
+                        chunk_start=chunk_start,
+                        chunk_end=chunk_end,
+                    )
+                    break
+
+            if conversion_failed:
                 return  # Skip this job without raising exception
 
             output_log(

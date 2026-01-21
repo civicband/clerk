@@ -2,6 +2,7 @@
 
 import datetime
 import json
+import os
 import sys
 
 import pluggy
@@ -11,6 +12,10 @@ from sqlalchemy import create_engine
 
 from clerk.hookspecs import ClerkSpec
 from tests.mocks.mock_plugins import TestPlugin
+
+
+# Disable PDF subprocess isolation for tests (avoids subprocess overhead in test environment)
+os.environ.setdefault("USE_PDF_SUBPROCESS_ISOLATION", "false")
 
 
 def create_sites_table_with_schema(db_path):
