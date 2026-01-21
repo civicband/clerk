@@ -13,6 +13,7 @@ import os
 import shutil
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import time
 from datetime import datetime
@@ -64,8 +65,13 @@ PDF_CHUNK_SIZE = int(os.environ.get("PDF_CHUNK_SIZE", 20))
 PDF_READ_TIMEOUT = int(os.environ.get("PDF_READ_TIMEOUT", 60))
 PDF_CONVERT_TIMEOUT = int(os.environ.get("PDF_CONVERT_TIMEOUT", 300))  # 5 minutes
 
-# Enable subprocess isolation for PDF operations (disable for tests)
-USE_PDF_SUBPROCESS_ISOLATION = os.environ.get("USE_PDF_SUBPROCESS_ISOLATION", "true").lower() == "true"
+# Detect if running under pytest (tests disable subprocess isolation for mocking)
+# In production, ALWAYS use subprocess isolation to prevent segfaults
+def _is_test_environment():
+    """Check if code is running in test environment."""
+    return "pytest" in sys.modules or os.environ.get("PYTEST_CURRENT_TEST") is not None
+
+USE_PDF_SUBPROCESS_ISOLATION = not _is_test_environment()
 
 
 def _pdf_read_worker(doc_path, result_queue):
