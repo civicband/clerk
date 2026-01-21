@@ -956,6 +956,12 @@ class Fetcher:
             read_st = time.time()
 
             if USE_PDF_SUBPROCESS_ISOLATION:
+                output_log(
+                    "Using subprocess isolation for PDF reading",
+                    subdomain=self.subdomain,
+                    operation="pdf_read_isolated",
+                    doc_path=doc_path,
+                )
                 success, total_pages, error_msg = _safe_pdf_read(doc_path, timeout=PDF_READ_TIMEOUT)
             else:
                 # Direct call (for tests or when subprocess isolation is disabled)
@@ -1025,6 +1031,13 @@ class Fetcher:
                 chunk_end = min(chunk_start + PDF_CHUNK_SIZE - 1, total_pages)
 
                 if USE_PDF_SUBPROCESS_ISOLATION:
+                    output_log(
+                        f"Using subprocess isolation for PDF to images (pages {chunk_start}-{chunk_end})",
+                        subdomain=self.subdomain,
+                        operation="pdf_convert_isolated",
+                        chunk_start=chunk_start,
+                        chunk_end=chunk_end,
+                    )
                     success, _, error_msg = _safe_pdf_to_images(
                         doc_path,
                         doc_image_dir_path,
