@@ -65,11 +65,13 @@ PDF_CHUNK_SIZE = int(os.environ.get("PDF_CHUNK_SIZE", 20))
 PDF_READ_TIMEOUT = int(os.environ.get("PDF_READ_TIMEOUT", 60))
 PDF_CONVERT_TIMEOUT = int(os.environ.get("PDF_CONVERT_TIMEOUT", 300))  # 5 minutes
 
+
 # Detect if running under pytest (tests disable subprocess isolation for mocking)
 # In production, ALWAYS use subprocess isolation to prevent segfaults
 def _is_test_environment():
     """Check if code is running in test environment."""
     return "pytest" in sys.modules or os.environ.get("PYTEST_CURRENT_TEST") is not None
+
 
 USE_PDF_SUBPROCESS_ISOLATION = not _is_test_environment()
 
@@ -95,10 +97,7 @@ def _safe_pdf_read(doc_path, timeout=PDF_READ_TIMEOUT):
     import multiprocessing
 
     result_queue = multiprocessing.Queue()
-    process = multiprocessing.Process(
-        target=_pdf_read_worker,
-        args=(doc_path, result_queue)
-    )
+    process = multiprocessing.Process(target=_pdf_read_worker, args=(doc_path, result_queue))
 
     try:
         process.start()
@@ -149,6 +148,7 @@ def _safe_pdf_read(doc_path, timeout=PDF_READ_TIMEOUT):
 def _pdf_convert_worker(doc_path, doc_image_dir_path, chunk_start, chunk_end, prefix, result_queue):
     """Worker function to convert PDF to images in subprocess (can segfault safely)."""
     import tempfile
+
     try:
         from pdf2image import convert_from_path
 
@@ -175,7 +175,9 @@ def _pdf_convert_worker(doc_path, doc_image_dir_path, chunk_start, chunk_end, pr
         result_queue.put(("error", type(e).__name__, str(e)))
 
 
-def _safe_pdf_to_images(doc_path, doc_image_dir_path, chunk_start, chunk_end, prefix, timeout=PDF_CONVERT_TIMEOUT):
+def _safe_pdf_to_images(
+    doc_path, doc_image_dir_path, chunk_start, chunk_end, prefix, timeout=PDF_CONVERT_TIMEOUT
+):
     """Convert PDF chunk to images in isolated subprocess to protect against segfaults.
 
     Returns:
@@ -186,7 +188,7 @@ def _safe_pdf_to_images(doc_path, doc_image_dir_path, chunk_start, chunk_end, pr
     result_queue = multiprocessing.Queue()
     process = multiprocessing.Process(
         target=_pdf_convert_worker,
-        args=(doc_path, doc_image_dir_path, chunk_start, chunk_end, prefix, result_queue)
+        args=(doc_path, doc_image_dir_path, chunk_start, chunk_end, prefix, result_queue),
     )
 
     try:
