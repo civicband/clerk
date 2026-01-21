@@ -502,33 +502,49 @@ class Fetcher:
                     level="error",
                     url=url,
                 )
-        try:
-            PdfReader(output_path)
-        except PdfReadError:
-            output_log(
-                f"PDF downloaded from {url} errored on read, removing {output_path}",
-                subdomain=self.subdomain,
-                level="error",
-                url=url,
-                output_path=output_path,
-            )
-            os.remove(output_path)
-        except FileNotFoundError:
-            output_log(
-                f"PDF from {url} not found at {output_path}",
-                subdomain=self.subdomain,
-                level="error",
-                url=url,
-                output_path=output_path,
-            )
-        except ValueError:
-            output_log(
-                f"PDF downloaded from {url} errored on read, removing {output_path}",
-                subdomain=self.subdomain,
-                level="error",
-                url=url,
-                output_path=output_path,
-            )
+        # Validate PDF is readable (use subprocess isolation to prevent segfaults)
+        if USE_PDF_SUBPROCESS_ISOLATION:
+            success, _, error_msg = _safe_pdf_read(output_path, timeout=PDF_READ_TIMEOUT)
+            if not success:
+                output_log(
+                    f"PDF downloaded from {url} failed validation: {error_msg}, removing {output_path}",
+                    subdomain=self.subdomain,
+                    level="error",
+                    url=url,
+                    output_path=output_path,
+                    error=error_msg,
+                )
+                if os.path.exists(output_path):
+                    os.remove(output_path)
+        else:
+            # Direct validation (for tests)
+            try:
+                PdfReader(output_path)
+            except PdfReadError:
+                output_log(
+                    f"PDF downloaded from {url} errored on read, removing {output_path}",
+                    subdomain=self.subdomain,
+                    level="error",
+                    url=url,
+                    output_path=output_path,
+                )
+                os.remove(output_path)
+            except FileNotFoundError:
+                output_log(
+                    f"PDF from {url} not found at {output_path}",
+                    subdomain=self.subdomain,
+                    level="error",
+                    url=url,
+                    output_path=output_path,
+                )
+            except ValueError:
+                output_log(
+                    f"PDF downloaded from {url} errored on read, removing {output_path}",
+                    subdomain=self.subdomain,
+                    level="error",
+                    url=url,
+                    output_path=output_path,
+                )
 
     def fetch_docs_from_page(
         self, page_number: int, meeting: str, date: str, prefix: str
