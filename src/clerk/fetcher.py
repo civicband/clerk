@@ -887,14 +887,16 @@ class Fetcher:
         manifest: FailureManifest | None,
         job_id: str,
         backend: str = "tesseract",
+        run_id: str | None = None,
     ) -> None:
         """Process a single PDF document through OCR pipeline.
 
         Args:
             job: Tuple of (prefix, meeting, date)
             manifest: FailureManifest for recording failures (optional)
-            job_id: Unique job identifier for logging
+            job_id: RQ job identifier for correlation with worker logs
             backend: OCR backend to use ('tesseract' or 'vision')
+            run_id: Pipeline run identifier for correlation across jobs (optional)
         """
         if not PDF_SUPPORT:
             raise ImportError(
@@ -916,7 +918,8 @@ class Fetcher:
             "OCR job started",
             subdomain=self.subdomain,
             operation="ocr_job_start",
-            job_id=job_id,
+            rq_job_id=job_id,
+            run_id=run_id,
             meeting=meeting,
             date=date,
             backend=backend,
@@ -931,7 +934,8 @@ class Fetcher:
                 "Checking PDF file existence",
                 subdomain=self.subdomain,
                 operation="check_file_exists",
-                job_id=job_id,
+                rq_job_id=job_id,
+                run_id=run_id,
                 doc_path=doc_path,
             )
 
@@ -955,7 +959,8 @@ class Fetcher:
                 "PDF file metadata",
                 subdomain=self.subdomain,
                 operation="check_file_metadata",
-                job_id=job_id,
+                rq_job_id=job_id,
+                run_id=run_id,
                 doc_path=doc_path,
                 file_size_bytes=file_size,
                 file_size_mb=round(file_size / (1024 * 1024), 2),
@@ -983,7 +988,8 @@ class Fetcher:
                 "About to read PDF",
                 subdomain=self.subdomain,
                 operation="pdf_read_start",
-                job_id=job_id,
+                rq_job_id=job_id,
+                run_id=run_id,
                 doc_path=doc_path,
                 file_size_mb=round(file_size / (1024 * 1024), 2),
                 subprocess_isolation=USE_PDF_SUBPROCESS_ISOLATION,
@@ -1035,7 +1041,8 @@ class Fetcher:
                 "PDF read successfully",
                 subdomain=self.subdomain,
                 operation="pdf_read_complete",
-                job_id=job_id,
+                rq_job_id=job_id,
+                run_id=run_id,
                 meeting=meeting,
                 date=date,
                 page_count=total_pages,
@@ -1050,7 +1057,8 @@ class Fetcher:
                 "Starting PDF to images conversion",
                 subdomain=self.subdomain,
                 operation="pdf_convert_start",
-                job_id=job_id,
+                rq_job_id=job_id,
+                run_id=run_id,
                 doc_path=doc_path,
                 total_pages=total_pages,
                 chunk_size=PDF_CHUNK_SIZE,
@@ -1160,7 +1168,8 @@ class Fetcher:
                 "Starting OCR processing",
                 subdomain=self.subdomain,
                 operation="ocr_start",
-                job_id=job_id,
+                rq_job_id=job_id,
+                run_id=run_id,
                 doc_path=doc_path,
                 total_pages=total_pages,
                 backend=backend,
@@ -1180,7 +1189,8 @@ class Fetcher:
                             f"OCR progress: processing page {pages_processed}/{total_pages}",
                             subdomain=self.subdomain,
                             operation="ocr_progress",
-                            job_id=job_id,
+                            rq_job_id=job_id,
+                            run_id=run_id,
                             pages_processed=pages_processed,
                             total_pages=total_pages,
                             current_page=page_image,
@@ -1226,6 +1236,8 @@ class Fetcher:
                 "OCR completed",
                 subdomain=self.subdomain,
                 operation="ocr_complete",
+                rq_job_id=job_id,
+                run_id=run_id,
                 backend=backend,
                 meeting=meeting,
                 date=date,
@@ -1249,7 +1261,8 @@ class Fetcher:
                 f"Document completed: {total_pages} pages in {total_duration:.2f}s",
                 subdomain=self.subdomain,
                 operation="document_complete",
-                job_id=job_id,
+                rq_job_id=job_id,
+                run_id=run_id,
                 backend=backend,
                 meeting=meeting,
                 date=date,
@@ -1274,7 +1287,8 @@ class Fetcher:
                 "Document failed with permanent error",
                 subdomain=self.subdomain,
                 operation="document_permanent_error",
-                job_id=job_id,
+                rq_job_id=job_id,
+                run_id=run_id,
                 backend=backend,
                 meeting=meeting,
                 date=date,
@@ -1289,7 +1303,8 @@ class Fetcher:
                 "Critical error in OCR job",
                 subdomain=self.subdomain,
                 operation="document_critical_error",
-                job_id=job_id,
+                rq_job_id=job_id,
+                run_id=run_id,
                 backend=backend,
                 error_class=e.__class__.__name__,
                 error_message=str(e),
