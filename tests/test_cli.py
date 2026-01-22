@@ -2243,16 +2243,14 @@ class TestWorkerCommand:
         mocker.patch("clerk.queue.get_high_queue", return_value=mock_high_queue)
         mocker.patch("clerk.queue.get_fetch_queue", return_value=mock_fetch_queue)
 
-        # Mock Worker class
-        mock_worker = mocker.MagicMock()
-        mocker.patch("rq.Worker", return_value=mock_worker)
+        # Mock Worker.work() method to prevent it from actually running
+        mock_work = mocker.patch("rq.Worker.work")
 
         result = cli_runner.invoke(cli, ["worker", "fetch"])
 
         assert result.exit_code == 0
-        # Verify worker.work() was called with scheduler and not burst
-        # Note: DiagnosticWorker inherits from mocked Worker, so work() is called on the mock
-        mock_worker.work.assert_called_once_with(with_scheduler=True, burst=False)
+        # Verify work() was called with scheduler and not burst
+        mock_work.assert_called_once_with(with_scheduler=True, burst=False)
 
     def test_worker_ocr_with_burst_mode(self, cli_runner, mocker):
         """Test starting OCR worker in burst mode."""
@@ -2266,15 +2264,14 @@ class TestWorkerCommand:
         mocker.patch("clerk.queue.get_high_queue", return_value=mock_high_queue)
         mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_ocr_queue)
 
-        # Mock Worker class
-        mock_worker = mocker.MagicMock()
-        mocker.patch("rq.Worker", return_value=mock_worker)
+        # Mock Worker.work() method to prevent it from actually running
+        mock_work = mocker.patch("rq.Worker.work")
 
         result = cli_runner.invoke(cli, ["worker", "ocr", "--burst"])
 
         assert result.exit_code == 0
         # Verify burst mode was enabled
-        mock_worker.work.assert_called_once_with(with_scheduler=True, burst=True)
+        mock_work.assert_called_once_with(with_scheduler=True, burst=True)
 
     def test_worker_extraction_multiple_workers(self, cli_runner, mocker):
         """Test starting multiple extraction workers with worker pool."""
@@ -2313,15 +2310,14 @@ class TestWorkerCommand:
         mocker.patch("clerk.queue.get_high_queue", return_value=mock_high_queue)
         mocker.patch("clerk.queue.get_deploy_queue", return_value=mock_deploy_queue)
 
-        # Mock Worker class
-        mock_worker = mocker.MagicMock()
-        mocker.patch("rq.Worker", return_value=mock_worker)
+        # Mock Worker.work() method to prevent it from actually running
+        mock_work = mocker.patch("rq.Worker.work")
 
         result = cli_runner.invoke(cli, ["worker", "deploy"])
 
         assert result.exit_code == 0
         # Verify worker.work() was called
-        mock_worker.work.assert_called_once_with(with_scheduler=True, burst=False)
+        mock_work.assert_called_once_with(with_scheduler=True, burst=False)
 
     def test_worker_handles_redis_connection_error(self, cli_runner, mocker):
         """Test that worker command handles Redis connection errors."""
