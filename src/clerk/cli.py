@@ -1303,8 +1303,11 @@ class DiagnosticWorker(Worker):
 
         # Log BEFORE forking work-horse (this is in parent process)
         try:
+            # Safely convert args to string (handles MagicMock in tests)
+            args_str = str(job.args) if job.args else "none"
+            args_preview = args_str[:50] if len(args_str) > 50 else args_str
             print(
-                f"[PRE-FORK] job_id={job.id} func={job.func_name} args={job.args[:50] if job.args else 'none'}",
+                f"[PRE-FORK] job_id={job.id} func={job.func_name} args={args_preview}",
                 file=sys.stderr,
             )
             sys.stderr.flush()
