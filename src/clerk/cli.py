@@ -17,7 +17,6 @@ from sqlite3 import OperationalError
 import click
 import sqlite_utils
 from dotenv import find_dotenv, load_dotenv
-from rq import Worker
 
 # Load .env file BEFORE local imports so extraction.py can read env vars
 # Use find_dotenv() to search parent directories for .env file
@@ -1294,39 +1293,6 @@ def purge_queue(queue_name):
         raise click.Abort() from e
 
 
-class DiagnosticWorker(Worker):
-    """Custom RQ Worker with pre-fork diagnostic logging."""
-
-    def perform_job(self, job, queue):
-        """Override to add logging before and after fork happens."""
-        import sys
-
-        # Log BEFORE forking work-horse (this is in parent process)
-        try:
-            # Safely convert args to string (handles MagicMock in tests)
-            args_str = str(job.args) if job.args else "none"
-            args_preview = args_str[:50] if len(args_str) > 50 else args_str
-            print(
-                f"[PRE-FORK] job_id={job.id} func={job.func_name} args={args_preview}",
-                file=sys.stderr,
-            )
-            sys.stderr.flush()
-        except Exception:
-            pass
-
-        # Call parent implementation (this will fork and execute job)
-        result = super().perform_job(job, queue)
-
-        # Log AFTER fork completes (back in parent process)
-        try:
-            print(f"[POST-FORK] job_id={job.id} completed", file=sys.stderr)
-            sys.stderr.flush()
-        except Exception:
-            pass
-
-        return result
-
-
 @cli.command()
 @click.argument(
     "worker_type", type=click.Choice(["fetch", "ocr", "compilation", "extraction", "deploy"])
@@ -1336,7 +1302,40 @@ class DiagnosticWorker(Worker):
 def worker(worker_type, num_workers, burst):
     """Start RQ workers."""
     import redis
+    from rq import Worker
     from rq.worker_pool import WorkerPool
+
+    class DiagnosticWorker(Worker):
+        """Custom RQ Worker with pre-fork diagnostic logging."""
+
+        def perform_job(self, job, queue):
+            """Override to add logging before and after fork happens."""
+            import sys
+
+            # Log BEFORE forking work-horse (this is in parent process)
+            try:
+                # Safely convert args to string (handles MagicMock in tests)
+                args_str = str(job.args) if job.args else "none"
+                args_preview = args_str[:50] if len(args_str) > 50 else args_str
+                print(
+                    f"[PRE-FORK] job_id={job.id} func={job.func_name} args={args_preview}",
+                    file=sys.stderr,
+                )
+                sys.stderr.flush()
+            except Exception:
+                pass
+
+            # Call parent implementation (this will fork and execute job)
+            result = super().perform_job(job, queue)
+
+            # Log AFTER fork completes (back in parent process)
+            try:
+                print(f"[POST-FORK] job_id={job.id} completed", file=sys.stderr)
+                sys.stderr.flush()
+            except Exception:
+                pass
+
+            return result
 
     from .queue import (
         get_compilation_queue,
