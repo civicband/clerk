@@ -2237,17 +2237,14 @@ class TestWorkerCommand:
         mock_redis = mocker.MagicMock()
         mocker.patch("clerk.queue.get_redis", return_value=mock_redis)
 
-        # Mock queues with comparison support (RQ Worker sorts queues)
-        from rq import Queue
-
-        mock_high_queue = mocker.MagicMock(spec=Queue)
-        mock_high_queue.__lt__ = mocker.Mock(return_value=False)
-        mock_fetch_queue = mocker.MagicMock(spec=Queue)
-        mock_fetch_queue.__lt__ = mocker.Mock(return_value=True)
+        # Mock queues
+        mock_high_queue = mocker.MagicMock()
+        mock_fetch_queue = mocker.MagicMock()
         mocker.patch("clerk.queue.get_high_queue", return_value=mock_high_queue)
         mocker.patch("clerk.queue.get_fetch_queue", return_value=mock_fetch_queue)
 
-        # Mock Worker.work() method to prevent it from actually running
+        # Mock Worker.__init__ to be a no-op and Worker.work() to do nothing
+        mocker.patch("rq.Worker.__init__", return_value=None)
         mock_work = mocker.patch("rq.Worker.work")
 
         result = cli_runner.invoke(cli, ["worker", "fetch"])
@@ -2262,17 +2259,14 @@ class TestWorkerCommand:
         mock_redis = mocker.MagicMock()
         mocker.patch("clerk.queue.get_redis", return_value=mock_redis)
 
-        # Mock queues with comparison support (RQ Worker sorts queues)
-        from rq import Queue
-
-        mock_high_queue = mocker.MagicMock(spec=Queue)
-        mock_high_queue.__lt__ = mocker.Mock(return_value=False)
-        mock_ocr_queue = mocker.MagicMock(spec=Queue)
-        mock_ocr_queue.__lt__ = mocker.Mock(return_value=True)
+        # Mock queues
+        mock_high_queue = mocker.MagicMock()
+        mock_ocr_queue = mocker.MagicMock()
         mocker.patch("clerk.queue.get_high_queue", return_value=mock_high_queue)
         mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_ocr_queue)
 
-        # Mock Worker.work() method to prevent it from actually running
+        # Mock Worker.__init__ to be a no-op and Worker.work() to do nothing
+        mocker.patch("rq.Worker.__init__", return_value=None)
         mock_work = mocker.patch("rq.Worker.work")
 
         result = cli_runner.invoke(cli, ["worker", "ocr", "--burst"])
@@ -2287,13 +2281,9 @@ class TestWorkerCommand:
         mock_redis = mocker.MagicMock()
         mocker.patch("clerk.queue.get_redis", return_value=mock_redis)
 
-        # Mock queues with comparison support (RQ Worker sorts queues)
-        from rq import Queue
-
-        mock_high_queue = mocker.MagicMock(spec=Queue)
-        mock_high_queue.__lt__ = mocker.Mock(return_value=False)
-        mock_extraction_queue = mocker.MagicMock(spec=Queue)
-        mock_extraction_queue.__lt__ = mocker.Mock(return_value=True)
+        # Mock queues
+        mock_high_queue = mocker.MagicMock()
+        mock_extraction_queue = mocker.MagicMock()
         mocker.patch("clerk.queue.get_high_queue", return_value=mock_high_queue)
         mocker.patch("clerk.queue.get_extraction_queue", return_value=mock_extraction_queue)
 
@@ -2316,17 +2306,14 @@ class TestWorkerCommand:
         mock_redis = mocker.MagicMock()
         mocker.patch("clerk.queue.get_redis", return_value=mock_redis)
 
-        # Mock queues with comparison support (RQ Worker sorts queues)
-        from rq import Queue
-
-        mock_high_queue = mocker.MagicMock(spec=Queue)
-        mock_high_queue.__lt__ = mocker.Mock(return_value=False)
-        mock_deploy_queue = mocker.MagicMock(spec=Queue)
-        mock_deploy_queue.__lt__ = mocker.Mock(return_value=True)
+        # Mock queues
+        mock_high_queue = mocker.MagicMock()
+        mock_deploy_queue = mocker.MagicMock()
         mocker.patch("clerk.queue.get_high_queue", return_value=mock_high_queue)
         mocker.patch("clerk.queue.get_deploy_queue", return_value=mock_deploy_queue)
 
-        # Mock Worker.work() method to prevent it from actually running
+        # Mock Worker.__init__ to be a no-op and Worker.work() to do nothing
+        mocker.patch("rq.Worker.__init__", return_value=None)
         mock_work = mocker.patch("rq.Worker.work")
 
         result = cli_runner.invoke(cli, ["worker", "deploy"])
@@ -2379,8 +2366,6 @@ class TestWorkerCommand:
 
     def test_worker_all_worker_types(self, cli_runner, mocker):
         """Test all valid worker types are accepted."""
-        from rq import Queue
-
         worker_types = ["fetch", "ocr", "extraction", "deploy"]
 
         for worker_type in worker_types:
@@ -2388,15 +2373,14 @@ class TestWorkerCommand:
             mock_redis = mocker.MagicMock()
             mocker.patch("clerk.queue.get_redis", return_value=mock_redis)
 
-            # Mock all queues with comparison support (RQ Worker sorts queues)
-            mock_high_queue = mocker.MagicMock(spec=Queue)
-            mock_high_queue.__lt__ = mocker.Mock(return_value=False)
-            mock_type_queue = mocker.MagicMock(spec=Queue)
-            mock_type_queue.__lt__ = mocker.Mock(return_value=True)
+            # Mock all queues
+            mock_high_queue = mocker.MagicMock()
+            mock_type_queue = mocker.MagicMock()
             mocker.patch("clerk.queue.get_high_queue", return_value=mock_high_queue)
             mocker.patch(f"clerk.queue.get_{worker_type}_queue", return_value=mock_type_queue)
 
-            # Mock Worker.work() method to prevent it from actually running
+            # Mock Worker.__init__ to be a no-op and Worker.work() to do nothing
+            mocker.patch("rq.Worker.__init__", return_value=None)
             mocker.patch("rq.Worker.work")
 
             result = cli_runner.invoke(cli, ["worker", worker_type])
