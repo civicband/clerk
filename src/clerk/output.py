@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 
 import click
 
@@ -75,6 +76,9 @@ def log(
     # Log to Python logging with extra fields
     log_func = getattr(logger, level, logger.info)
     log_func(message, extra=extra)
+    # Force flush to ensure logs reach disk before potential crash
+    sys.stderr.flush()
+    sys.stdout.flush()
 
     # Click output (unless quiet)
     if not _quiet:

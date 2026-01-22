@@ -380,9 +380,29 @@ def ocr_page_job(subdomain, pdf_path, backend="tesseract", run_id=None):
         backend: OCR backend (tesseract or vision)
         run_id: Pipeline run identifier
     """
-    from rq import get_current_job
+    import sys
+    import traceback
 
-    from .cli import get_fetcher
+    # Log IMMEDIATELY before any imports that might crash
+    try:
+        print(f"[EARLY] ocr_page_job starting: {subdomain}, {pdf_path}", file=sys.stderr)
+        sys.stderr.flush()
+    except:
+        pass
+
+    try:
+        from rq import get_current_job
+
+        from .cli import get_fetcher
+
+        print(f"[EARLY] imports successful", file=sys.stderr)
+        sys.stderr.flush()
+    except Exception as e:
+        # Crash during import - log with minimal dependencies
+        print(f"[EARLY] Import failed: {type(e).__name__}: {e}", file=sys.stderr)
+        print(f"[EARLY] Traceback: {traceback.format_exc()}", file=sys.stderr)
+        sys.stderr.flush()
+        raise
 
     stage = "ocr"
     start_time = time.time()
@@ -400,6 +420,7 @@ def ocr_page_job(subdomain, pdf_path, backend="tesseract", run_id=None):
         pdf_name=path_obj.name,
         backend=backend,
     )
+    sys.stderr.flush()  # Ensure early log reaches disk
 
     try:
         # Get site to create a fetcher instance
