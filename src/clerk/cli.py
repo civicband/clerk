@@ -17,6 +17,7 @@ from sqlite3 import OperationalError
 import click
 import sqlite_utils
 from dotenv import find_dotenv, load_dotenv
+from rq import Worker
 
 # Load .env file BEFORE local imports so extraction.py can read env vars
 # Use find_dotenv() to search parent directories for .env file
@@ -1297,12 +1298,38 @@ def purge_queue(queue_name):
 @click.argument(
     "worker_type", type=click.Choice(["fetch", "ocr", "compilation", "extraction", "deploy"])
 )
+class DiagnosticWorker(Worker):
+    """Custom RQ Worker with pre-fork diagnostic logging."""
+
+    def perform_job(self, job, queue):
+        """Override to add logging before and after fork happens."""
+        import sys
+
+        # Log BEFORE forking work-horse (this is in parent process)
+        try:
+            print(f"[PRE-FORK] job_id={job.id} func={job.func_name} args={job.args[:50] if job.args else 'none'}", file=sys.stderr)
+            sys.stderr.flush()
+        except Exception:
+            pass
+
+        # Call parent implementation (this will fork and execute job)
+        result = super().perform_job(job, queue)
+
+        # Log AFTER fork completes (back in parent process)
+        try:
+            print(f"[POST-FORK] job_id={job.id} completed", file=sys.stderr)
+            sys.stderr.flush()
+        except Exception:
+            pass
+
+        return result
+
+
 @click.option("--num-workers", "-n", type=int, default=1, help="Number of workers to start")
 @click.option("--burst", is_flag=True, help="Exit when queue empty (for testing)")
 def worker(worker_type, num_workers, burst):
     """Start RQ workers."""
     import redis
-    from rq import Worker
     from rq.worker_pool import WorkerPool
 
     from .queue import (
@@ -1345,17 +1372,18 @@ def worker(worker_type, num_workers, burst):
     default_timeout = timeout_map[worker_type]
 
     if num_workers == 1:
-        # Single worker
-        worker_instance = Worker(queues, connection=get_redis(), default_worker_ttl=default_timeout)
+        # Single worker with diagnostic logging
+        worker_instance = DiagnosticWorker(queues, connection=get_redis(), default_worker_ttl=default_timeout)
         worker_instance.work(with_scheduler=True, burst=burst)
     else:
         # Worker pool for multiple workers
-        # WorkerPool passes **kwargs to Worker constructor, so we can pass default_worker_ttl
+        # WorkerPool passes worker_class parameter to use our DiagnosticWorker
         with WorkerPool(
             queues,
             num_workers=num_workers,
             connection=get_redis(),
             default_worker_ttl=default_timeout,
+            worker_class=DiagnosticWorker,
         ) as pool:  # type: ignore
             pool.start()
 
