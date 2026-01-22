@@ -4,11 +4,13 @@ This module provides the main CLI commands for managing civic data pipelines,
 including site creation, data fetching, OCR processing, and database operations.
 """
 
+import atexit
 import datetime
 import json
 import logging
 import os
 import shutil
+import sys
 import time
 from sqlite3 import OperationalError
 
@@ -118,6 +120,16 @@ def configure_logging(command_name: str = "unknown"):
     # Suppress noisy httpx logs (we log requests ourselves)
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+    # Register atexit handler to flush logs on exit
+    def flush_logs_on_exit():
+        """Flush all log handlers on exit."""
+        sys.stderr.flush()
+        sys.stdout.flush()
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+
+    atexit.register(flush_logs_on_exit)
 
 
 STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")

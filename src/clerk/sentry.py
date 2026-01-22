@@ -5,6 +5,7 @@ Initializes Sentry SDK if SENTRY_DSN environment variable is set.
 
 import os
 import re
+import sys
 
 import sentry_sdk
 
@@ -102,26 +103,32 @@ def init_sentry():
         export SENTRY_ENVIRONMENT="production"
         export SENTRY_TRACES_SAMPLE_RATE="0.1"
     """
-    sentry_dsn = os.getenv("SENTRY_DSN")
+    try:
+        sentry_dsn = os.getenv("SENTRY_DSN")
 
-    if not sentry_dsn:
-        # Sentry not configured, skip initialization
-        return
+        if not sentry_dsn:
+            # Sentry not configured, skip initialization
+            return
 
-    environment = os.getenv("SENTRY_ENVIRONMENT", "production")
-    traces_sample_rate = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.0"))
+        environment = os.getenv("SENTRY_ENVIRONMENT", "production")
+        traces_sample_rate = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.0"))
 
-    # Import RQ integration to capture worker job exceptions
-    from sentry_sdk.integrations.rq import RqIntegration
+        # Import RQ integration to capture worker job exceptions
+        from sentry_sdk.integrations.rq import RqIntegration
 
-    sentry_sdk.init(
-        dsn=sentry_dsn,
-        environment=environment,
-        send_default_pii=True,
-        max_request_body_size="always",
-        traces_sample_rate=traces_sample_rate,
-        # Enable RQ integration to capture worker job exceptions
-        integrations=[RqIntegration()],
-        # Use custom fingerprinting to group similar errors
-        before_send=before_send,
-    )
+        sentry_sdk.init(
+            dsn=sentry_dsn,
+            environment=environment,
+            send_default_pii=True,
+            max_request_body_size="always",
+            traces_sample_rate=traces_sample_rate,
+            # Enable RQ integration to capture worker job exceptions
+            integrations=[RqIntegration()],
+            # Use custom fingerprinting to group similar errors
+            before_send=before_send,
+        )
+    except Exception as e:
+        # Sentry init failure shouldn't crash the worker
+        print(f"Sentry initialization failed: {e}", file=sys.stderr)
+        sys.stderr.flush()
+        # Continue without Sentry
