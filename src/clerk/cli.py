@@ -1305,6 +1305,38 @@ def worker(worker_type, num_workers, burst):
     from rq import Worker
     from rq.worker_pool import WorkerPool
 
+    class DiagnosticWorker(Worker):
+        """Custom RQ Worker with pre-fork diagnostic logging."""
+
+        def perform_job(self, job, queue):
+            """Override to add logging before and after fork happens."""
+            import sys
+
+            # Log BEFORE forking work-horse (this is in parent process)
+            try:
+                # Safely convert args to string (handles MagicMock in tests)
+                args_str = str(job.args) if job.args else "none"
+                args_preview = args_str[:50] if len(args_str) > 50 else args_str
+                print(
+                    f"[PRE-FORK] job_id={job.id} func={job.func_name} args={args_preview}",
+                    file=sys.stderr,
+                )
+                sys.stderr.flush()
+            except Exception:
+                pass
+
+            # Call parent implementation (this will fork and execute job)
+            result = super().perform_job(job, queue)
+
+            # Log AFTER fork completes (back in parent process)
+            try:
+                print(f"[POST-FORK] job_id={job.id} completed", file=sys.stderr)
+                sys.stderr.flush()
+            except Exception:
+                pass
+
+            return result
+
     from .queue import (
         get_compilation_queue,
         get_deploy_queue,
@@ -1345,17 +1377,20 @@ def worker(worker_type, num_workers, burst):
     default_timeout = timeout_map[worker_type]
 
     if num_workers == 1:
-        # Single worker
-        worker_instance = Worker(queues, connection=get_redis(), default_worker_ttl=default_timeout)
+        # Single worker with diagnostic logging
+        worker_instance = DiagnosticWorker(
+            queues, connection=get_redis(), default_worker_ttl=default_timeout
+        )
         worker_instance.work(with_scheduler=True, burst=burst)
     else:
         # Worker pool for multiple workers
-        # WorkerPool passes **kwargs to Worker constructor, so we can pass default_worker_ttl
+        # WorkerPool passes worker_class parameter to use our DiagnosticWorker
         with WorkerPool(
             queues,
             num_workers=num_workers,
             connection=get_redis(),
             default_worker_ttl=default_timeout,
+            worker_class=DiagnosticWorker,
         ) as pool:  # type: ignore
             pool.start()
 
