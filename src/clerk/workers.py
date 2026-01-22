@@ -387,7 +387,7 @@ def ocr_page_job(subdomain, pdf_path, backend="tesseract", run_id=None):
     try:
         print(f"[EARLY] ocr_page_job starting: {subdomain}, {pdf_path}", file=sys.stderr)
         sys.stderr.flush()
-    except:
+    except Exception:
         pass
 
     try:
@@ -395,7 +395,7 @@ def ocr_page_job(subdomain, pdf_path, backend="tesseract", run_id=None):
 
         from .cli import get_fetcher
 
-        print(f"[EARLY] imports successful", file=sys.stderr)
+        print("[EARLY] imports successful", file=sys.stderr)
         sys.stderr.flush()
     except Exception as e:
         # Crash during import - log with minimal dependencies
