@@ -1317,9 +1317,15 @@ def worker(worker_type, num_workers, burst):
                 # Safely convert args to string (handles MagicMock in tests)
                 args_str = str(job.args) if job.args else "none"
                 args_preview = args_str[:50] if len(args_str) > 50 else args_str
-                print(
-                    f"[PRE-FORK] job_id={job.id} func={job.func_name} args={args_preview}",
-                    file=sys.stderr,
+                # Use structured logging for Loki/Grafana visibility
+                logger.info(
+                    "worker_pre_fork",
+                    extra={
+                        "stage": "pre_fork",
+                        "job_id": job.id,
+                        "func_name": job.func_name,
+                        "args_preview": args_preview,
+                    },
                 )
                 sys.stderr.flush()
             except Exception:
@@ -1330,7 +1336,13 @@ def worker(worker_type, num_workers, burst):
 
             # Log AFTER fork completes (back in parent process)
             try:
-                print(f"[POST-FORK] job_id={job.id} completed", file=sys.stderr)
+                logger.info(
+                    "worker_post_fork",
+                    extra={
+                        "stage": "post_fork",
+                        "job_id": job.id,
+                    },
+                )
                 sys.stderr.flush()
             except Exception:
                 pass
