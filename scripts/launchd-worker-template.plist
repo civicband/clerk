@@ -34,6 +34,8 @@
         <string>{{SENTRY_TRACES_SAMPLE_RATE}}</string>
         <key>PYTHONUNBUFFERED</key>
         <string>1</string>
+        <key>DYLD_LIBRARY_PATH</key>
+        <string>{{DYLD_LIBRARY_PATH}}</string>
     </dict>
     <key>StandardOutPath</key>
     <string>{{LOG_DIR}}/clerk-worker-{{WORKER_TYPE}}-{{WORKER_NUM}}.log</string>

@@ -121,6 +121,28 @@ sudo apt install poppler-utils
 pdftoppm -v
 ```
 
+### WeasyPrint Dependencies
+
+HTML to PDF conversion (used by some fetchers).
+
+**macOS:**
+```bash
+brew install pango cairo glib gobject-introspection
+```
+
+**Linux (Ubuntu/Debian):**
+```bash
+sudo apt install libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libffi-dev
+```
+
+**Note:** On macOS, the `clerk install-workers` command automatically configures the library path for these dependencies. If running clerk manually, you may need to set:
+
+```bash
+export DYLD_LIBRARY_PATH="/opt/homebrew/lib:$DYLD_LIBRARY_PATH"  # Apple Silicon
+# or
+export DYLD_LIBRARY_PATH="/usr/local/lib:$DYLD_LIBRARY_PATH"     # Intel Mac
+```
+
 ### spaCy Language Model
 
 Entity extraction (optional).

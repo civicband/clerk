@@ -73,9 +73,11 @@ ARCH=$(uname -m)
 if [ "$ARCH" = "arm64" ]; then
     # Apple Silicon: Homebrew is in /opt/homebrew
     PATH_VAR="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+    DYLD_LIBRARY_PATH_VAR="/opt/homebrew/lib"
 else
     # Intel: Homebrew is in /usr/local
     PATH_VAR="/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
+    DYLD_LIBRARY_PATH_VAR="/usr/local/lib"
 fi
 
 # Get clerk executable path
@@ -122,6 +124,7 @@ echo "  SENTRY_DSN: ${SENTRY_DSN:-not set}"
 echo "  SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT}"
 echo "  SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE}"
 echo "  PATH: ${PATH_VAR}"
+echo "  DYLD_LIBRARY_PATH: ${DYLD_LIBRARY_PATH_VAR}"
 echo ""
 echo "Worker counts:"
 echo "  FETCH_WORKERS: ${FETCH_WORKERS}"
@@ -153,6 +156,7 @@ create_worker() {
         sed "s|{{STORAGE_DIR}}|${STORAGE_DIR}|g" | \
         sed "s|{{DEFAULT_OCR_BACKEND}}|${DEFAULT_OCR_BACKEND}|g" | \
         sed "s|{{PATH}}|${PATH_VAR}|g" | \
+        sed "s|{{DYLD_LIBRARY_PATH}}|${DYLD_LIBRARY_PATH_VAR}|g" | \
         sed "s|{{LOKI_URL}}|${LOKI_URL}|g" | \
         sed "s|{{SENTRY_DSN}}|${SENTRY_DSN}|g" | \
         sed "s|{{SENTRY_ENVIRONMENT}}|${SENTRY_ENVIRONMENT}|g" | \
