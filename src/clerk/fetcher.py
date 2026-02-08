@@ -338,6 +338,7 @@ class Fetcher:
             "url": url,
             "follow_redirects": True,
             "timeout": None,
+            "verify": False,
         }
         if headers:
             args_dict["headers"] = headers
