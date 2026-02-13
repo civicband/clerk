@@ -156,6 +156,17 @@ def cli(ctx, plugins_dir, quiet):
     output.configure(quiet=quiet)
     load_plugins_from_directory(plugins_dir)
 
+    # Register plugin CLI commands
+    for plugin_commands in pm.hook.register_cli_commands():
+        if plugin_commands:
+            if isinstance(plugin_commands, click.Group):
+                # Add all commands from the group
+                for name, cmd in plugin_commands.commands.items():
+                    cli.add_command(cmd, name=name)
+            elif isinstance(plugin_commands, click.Command):
+                # Add single command
+                cli.add_command(plugin_commands)
+
 
 @cli.command()
 @click.option(

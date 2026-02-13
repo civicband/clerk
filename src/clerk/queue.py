@@ -86,6 +86,38 @@ def get_deploy_queue():
     return Queue("deploy", connection=get_redis())
 
 
+def get_finance_queue():
+    """Get finance ETL jobs queue."""
+    return Queue("finance", connection=get_redis())
+
+
+def get_job_function_map():
+    """Get complete job function mapping including plugin jobs.
+
+    Returns:
+        dict: Complete job_type to function mapping
+    """
+    from . import workers
+    from .utils import pm
+
+    # Base job function map
+    job_function_map = {
+        "fetch-site": workers.fetch_site_job,
+        "ocr-page": workers.ocr_page_job,
+        "extract-site": workers.extraction_job,
+        "deploy-site": workers.deploy_job,
+        "db-compilation": workers.db_compilation_job,
+        "coordinator": workers.coordinator_job,
+    }
+
+    # Add plugin job types
+    for plugin_jobs in pm.hook.register_job_types():
+        if plugin_jobs:
+            job_function_map.update(plugin_jobs)
+
+    return job_function_map
+
+
 def enqueue_job(job_type, site_id, priority="normal", run_id=None, **kwargs):
     """Enqueue a job to the appropriate queue.
 
@@ -117,22 +149,16 @@ def enqueue_job(job_type, site_id, priority="normal", run_id=None, **kwargs):
             "compilation": get_compilation_queue(),
             "extraction": get_extraction_queue(),
             "deploy": get_deploy_queue(),
+            "finance": get_finance_queue(),
         }
         queue = queue_map.get(stage, get_fetch_queue())
 
-    # Import worker function based on job type
-    from . import workers
-
-    job_function_map = {
-        "fetch-site": workers.fetch_site_job,
-        "ocr-page": workers.ocr_page_job,
-        "extract-site": workers.extraction_job,
-        "deploy-site": workers.deploy_job,
-    }
+    # Get complete job function map
+    job_function_map = get_job_function_map()
 
     job_function = job_function_map.get(job_type)
     if not job_function:
-        raise ValueError(f"Unknown job type: {job_type}")
+        raise ValueError(f"Unknown job type: {job_type}. Available: {list(job_function_map.keys())}")
 
     # Enqueue the job
     job = queue.enqueue(job_function, site_id, **kwargs)

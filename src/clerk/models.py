@@ -45,6 +45,8 @@ sites_table = Table(
     Column("deploy_failed", Integer, server_default="0"),
     # Coordinator tracking
     Column("coordinator_enqueued", Boolean, server_default="FALSE"),
+    # Finance data tracking
+    Column("has_finance_data", Boolean, server_default="false", nullable=False),
     # Error tracking
     Column("last_error_stage", String),
     Column("last_error_message", Text),
