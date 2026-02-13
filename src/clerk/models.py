@@ -1,6 +1,6 @@
 """SQLAlchemy table definitions for civic.db schema."""
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, MetaData, String, Table, Text
+from sqlalchemy import JSON, Boolean, Column, Date, DateTime, Integer, MetaData, String, Table, Text
 from sqlalchemy.sql import func
 
 metadata = MetaData()
@@ -45,6 +45,14 @@ sites_table = Table(
     Column("deploy_failed", Integer, server_default="0"),
     # Coordinator tracking
     Column("coordinator_enqueued", Boolean, server_default="FALSE"),
+    # Finance data tracking
+    Column("has_finance_data", Boolean, server_default="false", nullable=False),
+    Column("finance_last_updated", DateTime(timezone=True), nullable=True),
+    Column("finance_source", String(100), nullable=True),
+    Column("finance_coverage_start", Date, nullable=True),
+    Column("finance_coverage_end", Date, nullable=True),
+    Column("finance_record_count", Integer, nullable=True),
+    Column("finance_data_types", JSON, nullable=True),
     # Error tracking
     Column("last_error_stage", String),
     Column("last_error_message", Text),

@@ -1062,6 +1062,23 @@ def extraction_job(subdomain, run_id, extract_entities=True, ignore_cache=False)
         raise
 
 
+def coordinator_job(subdomain, run_id=None):
+    """RQ job: Coordinate pipeline stages for a site.
+
+    Args:
+        subdomain: Site subdomain
+        run_id: Pipeline run identifier
+    """
+    log_with_context(
+        "Running coordinator job",
+        subdomain=subdomain,
+        run_id=run_id,
+    )
+    # Placeholder for coordinator logic
+    # This would typically orchestrate the pipeline stages
+    return {"status": "completed", "subdomain": subdomain, "run_id": run_id}
+
+
 def deploy_job(subdomain, run_id=None):
     """RQ job: Deploy site.
 
