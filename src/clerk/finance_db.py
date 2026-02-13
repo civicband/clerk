@@ -103,7 +103,7 @@ def update_site_finance_metadata(
         record_count: Number of finance records
         data_types: List of data types available
     """
-    updates = {
+    updates: dict[str, Any] = {
         "finance_last_updated": datetime.utcnow(),
     }
 
