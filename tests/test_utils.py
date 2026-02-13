@@ -82,6 +82,14 @@ class TestAssertDbExists:
             "last_error_stage",
             "last_error_message",
             "last_error_at",
+            # Finance data columns
+            "has_finance_data",
+            "finance_last_updated",
+            "finance_source",
+            "finance_coverage_start",
+            "finance_coverage_end",
+            "finance_record_count",
+            "finance_data_types",
         }
         actual_columns = {col["name"] for col in inspector.get_columns("sites")}
         assert actual_columns == expected_columns

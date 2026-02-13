@@ -865,6 +865,25 @@ class TestExtractEntities:
                     db_update_site(conn, subdomain, updates)
                 return [None]  # Return list to match hook behavior
 
+            # Add new hook methods required by the plugin system
+            def register_cli_commands(self):
+                return []
+
+            def register_job_types(self):
+                return {}
+
+            def get_data_processors(self, data_type):
+                return None
+
+            def register_worker_functions(self):
+                return {}
+
+            def pre_compilation(self, subdomain, run_id):
+                pass
+
+            def post_compilation(self, subdomain, database_path, run_id):
+                pass
+
         class MockPM:
             def __init__(self):
                 self.hook = MockHook()
@@ -961,6 +980,25 @@ class TestExtractEntities:
                 with civic_db_connection() as conn:
                     db_update_site(conn, subdomain, updates)
                 return [None]  # Return list to match hook behavior
+
+            # Add new hook methods required by the plugin system
+            def register_cli_commands(self):
+                return []
+
+            def register_job_types(self):
+                return {}
+
+            def get_data_processors(self, data_type):
+                return None
+
+            def register_worker_functions(self):
+                return {}
+
+            def pre_compilation(self, subdomain, run_id):
+                pass
+
+            def post_compilation(self, subdomain, database_path, run_id):
+                pass
 
         class MockPM:
             def __init__(self):
