@@ -177,15 +177,11 @@ class TestNewPluginHooks:
         class CompilationPlugin:
             @hookimpl
             def pre_compilation(self, subdomain, run_id):
-                tracker.events.append(
-                    ("pre", subdomain, run_id)
-                )
+                tracker.events.append(("pre", subdomain, run_id))
 
             @hookimpl
             def post_compilation(self, subdomain, database_path, run_id):
-                tracker.events.append(
-                    ("post", subdomain, database_path, run_id)
-                )
+                tracker.events.append(("post", subdomain, database_path, run_id))
 
         pm = pluggy.PluginManager("civicband.clerk")
         pm.add_hookspecs(ClerkSpec)
@@ -194,9 +190,7 @@ class TestNewPluginHooks:
         # Simulate compilation workflow
         pm.hook.pre_compilation(subdomain="oakland", run_id="run-123")
         pm.hook.post_compilation(
-            subdomain="oakland",
-            database_path="/data/oakland.db",
-            run_id="run-123"
+            subdomain="oakland", database_path="/data/oakland.db", run_id="run-123"
         )
 
         assert len(tracker.events) == 2
@@ -225,7 +219,7 @@ class TestNewPluginHooks:
                     "election": {
                         "function": election_worker,
                         "queues": ["election"],
-                    }
+                    },
                 }
 
         pm = pluggy.PluginManager("civicband.clerk")
@@ -296,9 +290,7 @@ class TestNewPluginHooks:
 
         pm.hook.pre_compilation(subdomain="berkeley", run_id="run-456")
         pm.hook.post_compilation(
-            subdomain="berkeley",
-            database_path="/data/berkeley.db",
-            run_id="run-456"
+            subdomain="berkeley", database_path="/data/berkeley.db", run_id="run-456"
         )
 
         # Both plugins should have been called

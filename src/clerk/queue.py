@@ -158,7 +158,9 @@ def enqueue_job(job_type, site_id, priority="normal", run_id=None, **kwargs):
 
     job_function = job_function_map.get(job_type)
     if not job_function:
-        raise ValueError(f"Unknown job type: {job_type}. Available: {list(job_function_map.keys())}")
+        raise ValueError(
+            f"Unknown job type: {job_type}. Available: {list(job_function_map.keys())}"
+        )
 
     # Enqueue the job
     job = queue.enqueue(job_function, site_id, **kwargs)

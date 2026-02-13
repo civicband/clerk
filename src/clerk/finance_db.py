@@ -20,10 +20,7 @@ def update_site_finance_status(subdomain: str, has_finance_data: bool) -> None:
         stmt = (
             update(sites_table)
             .where(sites_table.c.subdomain == subdomain)
-            .values(
-                has_finance_data=has_finance_data,
-                updated_at=text("CURRENT_TIMESTAMP")
-            )
+            .values(has_finance_data=has_finance_data, updated_at=text("CURRENT_TIMESTAMP"))
         )
         conn.execute(stmt)
 
@@ -56,7 +53,7 @@ def get_next_finance_site() -> dict[str, Any] | None:
         stmt = (
             select(sites_table)
             .where(sites_table.c.has_finance_data)
-            .where(sites_table.c.state == 'CA')  # Only California has finance data
+            .where(sites_table.c.state == "CA")  # Only California has finance data
             .order_by(sites_table.c.updated_at.asc().nulls_first())
             .limit(1)
         )
@@ -84,11 +81,7 @@ def update_site(subdomain: str, updates: dict[str, Any]) -> None:
         updates: Dictionary of fields to update
     """
     with civic_db_connection() as conn:
-        stmt = (
-            update(sites_table)
-            .where(sites_table.c.subdomain == subdomain)
-            .values(**updates)
-        )
+        stmt = update(sites_table).where(sites_table.c.subdomain == subdomain).values(**updates)
         conn.execute(stmt)
 
 
@@ -126,11 +119,7 @@ def update_site_finance_metadata(
         updates["finance_data_types"] = data_types
 
     with civic_db_connection() as conn:
-        stmt = (
-            update(sites_table)
-            .where(sites_table.c.subdomain == subdomain)
-            .values(**updates)
-        )
+        stmt = update(sites_table).where(sites_table.c.subdomain == subdomain).values(**updates)
         conn.execute(stmt)
 
 
