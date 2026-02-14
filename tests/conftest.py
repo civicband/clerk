@@ -67,9 +67,13 @@ def tmp_storage_dir(tmp_path):
 def sample_db(tmp_path):
     """Create a sample civic.db database with test data."""
     db_path = tmp_path / "civic.db"
+
+    # Create tables using SQLAlchemy models to ensure all columns exist
+    create_sites_table_with_schema(db_path)
+
     db = sqlite_utils.Database(db_path)
 
-    # Create sites table
+    # Insert test data
     db["sites"].insert_all(
         [
             {

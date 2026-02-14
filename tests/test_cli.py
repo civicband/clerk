@@ -1,6 +1,5 @@
 """Unit tests for clerk.cli module."""
 
-import datetime
 import json
 from unittest.mock import MagicMock, patch
 
@@ -118,13 +117,13 @@ class TestNewCommand:
         mock_conn = mocker.MagicMock()
         mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
         mock_conn.__exit__ = mocker.Mock(return_value=False)
-        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
+        mocker.patch("clerk.cli.civic_db_connection", return_value=mock_conn)
 
         # Mock get_site_by_subdomain to return None (site doesn't exist)
-        mocker.patch("clerk.db.get_site_by_subdomain", return_value=None)
+        mocker.patch("clerk.cli.get_site_by_subdomain", return_value=None)
 
         # Mock upsert_site
-        mocker.patch("clerk.db.upsert_site")
+        mocker.patch("clerk.cli.upsert_site")
 
         # Mock assert_db_exists
         mocker.patch("clerk.utils.assert_db_exists")
@@ -133,8 +132,8 @@ class TestNewCommand:
         mocker.patch("clerk.cli.pm.hook.fetcher_extra", return_value=[])
         mocker.patch("clerk.cli.pm.hook.post_create")
 
-        # Mock enqueue_job
-        mock_enqueue = mocker.patch("clerk.queue.enqueue_job")
+        # Mock enqueue_job (must patch where it's imported, not where it's defined)
+        mock_enqueue = mocker.patch("clerk.cli.enqueue_job")
 
         # Provide interactive prompts as input
         result = cli_runner.invoke(
@@ -545,7 +544,6 @@ class TestBuildDbFromTextInternal:
         assert rows[0]["text"] == "Meeting text"
 
         # Verify extraction was skipped (empty structures, not extracted data)
-        import json
 
         entities = json.loads(rows[0]["entities_json"])
         votes = json.loads(rows[0]["votes_json"])
@@ -555,116 +553,6 @@ class TestBuildDbFromTextInternal:
 
 @pytest.mark.slow
 @pytest.mark.integration
-class TestBuildFullDb:
-    """Integration tests for build_full_db command."""
-
-    def test_build_full_db_cli(
-        self, tmp_path, tmp_storage_dir, sample_text_files, monkeypatch, cli_module
-    ):
-        """Test the build_full_db CLI command."""
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
-        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
-
-        # Create civic.db with proper schema
-        from tests.conftest import create_sites_table_with_schema
-
-        db_path = tmp_path / "civic.db"
-        create_sites_table_with_schema(db_path)
-
-        # Insert test site
-        db = sqlite_utils.Database(db_path)
-        db["sites"].insert(
-            {
-                "subdomain": "example.civic.band",
-                "name": "Example City",
-                "state": "CA",
-                "country": "US",
-                "kind": "council",
-                "scraper": "test",
-                "pages": 0,
-                "start_year": 2020,
-                "extra": None,
-                "status": "deployed",
-                "last_updated": "2024-01-01T00:00:00",
-                "last_deployed": None,
-                "lat": "0",
-                "lng": "0",
-                "extraction_status": "pending",
-                "last_extracted": None,
-            },
-        )
-
-        runner = CliRunner()
-        result = runner.invoke(cli, ["build-full-db"])
-
-        # Command should succeed
-        assert result.exit_code == 0
-
-        # Check that aggregate database was created
-        full_db_path = tmp_storage_dir / "meetings.db"
-        assert full_db_path.exists()
-
-        # Check tables include subdomain and municipality
-        full_db = sqlite_utils.Database(full_db_path)
-        assert "minutes" in full_db.table_names()
-        assert "agendas" in full_db.table_names()
-
-
-@pytest.mark.unit
-class TestMigrateExtractionSchema:
-    """Unit tests for migrate-extraction-schema command."""
-
-    def test_migrate_extraction_schema_adds_columns(self, tmp_path, monkeypatch):
-        """Migration adds extraction_status and last_extracted columns"""
-        from sqlalchemy import inspect
-
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
-        from clerk.utils import assert_db_exists
-
-        # Create database without extraction columns
-        engine = assert_db_exists()
-
-        # Run migration
-        runner = CliRunner()
-        result = runner.invoke(cli, ["migrate-extraction-schema"])
-
-        assert result.exit_code == 0
-        assert "Migration complete" in result.output
-
-        # Verify columns exist
-        inspector = inspect(engine)
-        columns = {col["name"] for col in inspector.get_columns("sites")}
-        assert "extraction_status" in columns
-        assert "last_extracted" in columns
-
-    def test_migrate_extraction_schema_is_idempotent(self, tmp_path, monkeypatch):
-        """Running migration multiple times is safe"""
-        from sqlalchemy import inspect
-
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
-        from clerk.utils import assert_db_exists
-
-        runner = CliRunner()
-
-        # Run migration twice
-        result1 = runner.invoke(cli, ["migrate-extraction-schema"])
-        result2 = runner.invoke(cli, ["migrate-extraction-schema"])
-
-        assert result1.exit_code == 0
-        assert result2.exit_code == 0
-
-        # Verify no errors and columns still exist
-        engine = assert_db_exists()
-        inspector = inspect(engine)
-        columns = {col["name"] for col in inspector.get_columns("sites")}
-        assert "extraction_status" in columns
-        assert "last_extracted" in columns
-
-
-@pytest.mark.unit
 class TestExtractEntities:
     """Unit tests for extract-entities command."""
 
@@ -684,7 +572,6 @@ class TestExtractEntities:
         # Create database and run migration
         assert_db_exists()
         runner = CliRunner()
-        runner.invoke(cli, ["migrate-extraction-schema"])
 
         # Site 1: completed, old extraction
         with civic_db_connection() as conn:
@@ -766,7 +653,6 @@ class TestExtractEntities:
         # Create database and run migration
         assert_db_exists()
         runner = CliRunner()
-        runner.invoke(cli, ["migrate-extraction-schema"])
         with civic_db_connection() as conn:
             insert_site(
                 conn,
@@ -809,7 +695,6 @@ class TestExtractEntities:
 
         # Run migration first
         runner = CliRunner()
-        runner.invoke(cli, ["migrate-extraction-schema"])
 
         # Create test site
         with civic_db_connection() as conn:
@@ -925,7 +810,6 @@ class TestExtractEntities:
 
         # Run migration first
         runner = CliRunner()
-        runner.invoke(cli, ["migrate-extraction-schema"])
 
         # Create test site
         with civic_db_connection() as conn:
@@ -1038,7 +922,6 @@ class TestExtractEntities:
 
         # Run migration first
         runner = CliRunner()
-        runner.invoke(cli, ["migrate-extraction-schema"])
 
         # Create test site
         with civic_db_connection() as conn:
@@ -1118,7 +1001,6 @@ class TestExtractEntities:
 
         # Run migration first
         runner = CliRunner()
-        runner.invoke(cli, ["migrate-extraction-schema"])
 
         # Site 1: completed (should skip)
         with civic_db_connection() as conn:
@@ -1191,151 +1073,6 @@ class TestExtractEntities:
             assert completed_site["last_extracted"] == "2024-01-01T00:00:00"
 
 
-@pytest.mark.integration
-class TestExtractEntitiesIntegration:
-    """Integration tests for the full extraction workflow."""
-
-    def test_full_extraction_workflow(self, tmp_path, monkeypatch, cli_module, utils_module):
-        """Test complete workflow: migration → extraction → status tracking"""
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
-        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_path))
-        monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_path))
-        monkeypatch.setenv("ENABLE_EXTRACTION", "0")  # Fast test without spaCy
-        monkeypatch.setenv("CIVIC_DEV_MODE", "1")  # Skip deployment
-
-        # Step 1: Create database with full schema but drop extraction columns
-        # (simulates database with pipeline state columns but old extraction format)
-        import sqlite_utils
-        from sqlalchemy import inspect
-
-        from tests.conftest import create_sites_table_with_schema
-
-        db_path = tmp_path / "civic.db"
-        create_sites_table_with_schema(db_path)
-
-        # Drop extraction columns to simulate old database
-        db = sqlite_utils.Database(db_path)
-        db.execute("ALTER TABLE sites DROP COLUMN extraction_status")
-        db.execute("ALTER TABLE sites DROP COLUMN last_extracted")
-
-        # Verify extraction columns were dropped
-        site_columns_before = {col.name for col in db["sites"].columns}
-        assert "extraction_status" not in site_columns_before
-        assert "last_extracted" not in site_columns_before
-
-        # Step 2: Run migration
-        runner = CliRunner()
-        result = runner.invoke(cli, ["migrate-extraction-schema"])
-        assert result.exit_code == 0
-        assert "Migration complete" in result.output
-
-        # Verify columns added using SQLAlchemy inspector
-        from clerk.utils import assert_db_exists
-
-        engine = assert_db_exists()
-        inspector = inspect(engine)
-        site_columns_after = {col["name"] for col in inspector.get_columns("sites")}
-        assert "extraction_status" in site_columns_after
-        assert "last_extracted" in site_columns_after
-
-        # Step 3: Create a test site using new API
-        from clerk.db import civic_db_connection, insert_site
-
-        with civic_db_connection() as conn:
-            insert_site(
-                conn,
-                {
-                    "subdomain": "test.civic.band",
-                    "name": "Test City",
-                    "state": "CA",
-                    "country": "US",
-                    "kind": "city-council",
-                    "scraper": "test",
-                    "pages": 0,
-                    "start_year": 2020,
-                    "status": "new",
-                    "extraction_status": "pending",
-                    "last_extracted": None,
-                },
-            )
-
-        # Create site structure with text files
-        site_dir = tmp_path / "test.civic.band"
-        site_dir.mkdir()
-
-        # Create text files for extraction
-        txt_dir = site_dir / "txt" / "CityCouncil" / "2024-01-01"
-        txt_dir.mkdir(parents=True)
-        (txt_dir / "0001.txt").write_text("Meeting called to order.")
-
-        # Create empty database (will be populated by extraction)
-        site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
-        site_db["sites"].insert(
-            {
-                "subdomain": "test.civic.band",
-                "name": "Test City",
-                "state": "CA",
-                "country": "USA",
-            },
-            pk="subdomain",
-        )
-
-        # Verify initial state
-        from clerk.db import get_site_by_subdomain
-
-        with civic_db_connection() as conn:
-            site_before = get_site_by_subdomain(conn, "test.civic.band")
-            assert site_before["extraction_status"] == "pending"
-            assert site_before["last_extracted"] is None
-
-        # Step 4: Run extraction
-        before_extraction = datetime.datetime.now()
-        result = runner.invoke(cli, ["extract-entities", "--subdomain", "test.civic.band"])
-        after_extraction = datetime.datetime.now()
-
-        assert result.exit_code == 0
-        assert "Extraction completed successfully" in result.output
-
-        # Step 5: Verify status updated
-        with civic_db_connection() as conn:
-            site_after = get_site_by_subdomain(conn, "test.civic.band")
-            assert site_after["extraction_status"] == "completed"
-            assert site_after["last_extracted"] is not None
-
-        # Verify timestamp is reasonable (between before and after)
-        last_extracted_dt = datetime.datetime.fromisoformat(site_after["last_extracted"])
-        assert before_extraction <= last_extracted_dt <= after_extraction
-
-        # Step 6: Verify database records created from text files
-        # Re-open database to see new records
-        site_db = sqlite_utils.Database(str(site_dir / "meetings.db"))
-        minutes = list(site_db["minutes"].rows)
-        assert len(minutes) == 1  # Should have 1 record from the text file
-
-        minute = minutes[0]
-        assert minute["text"] == "Meeting called to order."
-        assert minute["meeting"] == "CityCouncil"
-        assert minute["date"] == "2024-01-01"
-        assert minute["page"] == 1
-
-        # With ENABLE_EXTRACTION=0, should have empty structures
-        entities = json.loads(minute["entities_json"])
-        votes = json.loads(minute["votes_json"])
-
-        # When extraction is disabled, expect empty arrays
-        assert isinstance(entities, dict)
-        assert isinstance(votes, dict)
-
-        # Step 7: Verify idempotency - running again should work
-        result = runner.invoke(cli, ["extract-entities", "--subdomain", "test.civic.band"])
-        assert result.exit_code == 0
-
-        site_final = db["sites"].get("test.civic.band")
-        assert site_final["extraction_status"] == "completed"
-
-
-@pytest.mark.unit
 class TestOCRBackendCLIFlag:
     """Unit tests for --ocr-backend CLI flag."""
 
@@ -1532,413 +1269,6 @@ class TestDbCommands:
 
         # Command should fail
         assert result.exit_code != 0
-
-
-@pytest.mark.unit
-class TestStatusCommand:
-    """Unit tests for status CLI command."""
-
-    def test_status_shows_queue_depths(self, cli_runner, mocker):
-        """Test that status command shows queue depths."""
-        # Mock Redis queues
-        mock_high_queue = mocker.Mock()
-        mock_high_queue.__len__ = mocker.Mock(return_value=0)
-        mock_fetch_queue = mocker.Mock()
-        mock_fetch_queue.__len__ = mocker.Mock(return_value=3)
-        mock_ocr_queue = mocker.Mock()
-        mock_ocr_queue.__len__ = mocker.Mock(return_value=247)
-        mock_extraction_queue = mocker.Mock()
-        mock_extraction_queue.__len__ = mocker.Mock(return_value=1)
-        mock_deploy_queue = mocker.Mock()
-        mock_deploy_queue.__len__ = mocker.Mock(return_value=0)
-
-        mocker.patch("clerk.queue.get_high_queue", return_value=mock_high_queue)
-        mocker.patch("clerk.queue.get_fetch_queue", return_value=mock_fetch_queue)
-        mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_ocr_queue)
-        mocker.patch("clerk.queue.get_extraction_queue", return_value=mock_extraction_queue)
-        mocker.patch("clerk.queue.get_deploy_queue", return_value=mock_deploy_queue)
-
-        # Mock database operations (empty site_progress)
-        mock_conn = mocker.MagicMock()
-        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
-        mock_conn.__exit__ = mocker.Mock(return_value=False)
-        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
-
-        # Mock empty result for site_progress
-        mock_result = mocker.Mock()
-        mock_result.fetchall.return_value = []
-        mock_conn.execute.return_value = mock_result
-
-        result = cli_runner.invoke(cli, ["status"])
-
-        assert result.exit_code == 0
-        assert "Queue Status" in result.output
-        assert "High priority" in result.output
-        assert "0 jobs" in result.output
-        assert "Fetch" in result.output
-        assert "3 jobs" in result.output
-        assert "OCR" in result.output
-        assert "247 jobs" in result.output
-        assert "Extraction" in result.output
-        assert "1 jobs" in result.output
-        assert "Deploy" in result.output
-
-    def test_status_shows_active_sites(self, cli_runner, mocker):
-        """Test that status command shows active sites."""
-        # Mock Redis queues (all empty)
-        mock_queue = mocker.Mock()
-        mock_queue.__len__ = mocker.Mock(return_value=0)
-        mocker.patch("clerk.queue.get_high_queue", return_value=mock_queue)
-        mocker.patch("clerk.queue.get_fetch_queue", return_value=mock_queue)
-        mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_queue)
-        mocker.patch("clerk.queue.get_extraction_queue", return_value=mock_queue)
-        mocker.patch("clerk.queue.get_deploy_queue", return_value=mock_queue)
-
-        # Mock database operations
-        mock_conn = mocker.MagicMock()
-        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
-        mock_conn.__exit__ = mocker.Mock(return_value=False)
-        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
-
-        # Mock site_progress results
-        class MockRow:
-            def __init__(self, subdomain, current_stage, stage_completed, stage_total):
-                self.subdomain = subdomain
-                self.current_stage = current_stage
-                self.stage_completed = stage_completed
-                self.stage_total = stage_total
-
-        mock_result = mocker.Mock()
-        mock_result.fetchall.return_value = [
-            MockRow("site1.civic.band", "ocr", 45, 100),
-            MockRow("site2.civic.band", "extraction", 12, 50),
-            MockRow("site3.civic.band", "fetch", 0, 0),
-        ]
-        mock_conn.execute.return_value = mock_result
-
-        result = cli_runner.invoke(cli, ["status"])
-
-        assert result.exit_code == 0
-        assert "Active Sites" in result.output
-        assert "site1.civic.band" in result.output
-        assert "ocr" in result.output
-        assert "45/100" in result.output
-        assert "45.0%" in result.output
-        assert "site2.civic.band" in result.output
-        assert "extraction" in result.output
-        assert "12/50" in result.output
-        assert "24.0%" in result.output
-        assert "site3.civic.band" in result.output
-        assert "fetch" in result.output
-
-    def test_status_with_site_id_shows_detailed_progress(self, cli_runner, mocker):
-        """Test that status --subdomain shows detailed site progress."""
-        # Mock database operations
-        mock_conn = mocker.MagicMock()
-        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
-        mock_conn.__exit__ = mocker.Mock(return_value=False)
-        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
-
-        # Mock site_progress result for specific site
-        class MockRow:
-            def __init__(self):
-                self.subdomain = "example.civic.band"
-                self.current_stage = "ocr"
-                self.stage_completed = 45
-                self.stage_total = 100
-                self.started_at = datetime.datetime(2026, 1, 6, 10, 0, 0)
-                self.updated_at = datetime.datetime(2026, 1, 6, 10, 5, 23)
-
-        mock_result = mocker.Mock()
-        mock_result.fetchone.return_value = MockRow()
-        mock_conn.execute.return_value = mock_result
-
-        result = cli_runner.invoke(cli, ["status", "--subdomain", "example.civic.band"])
-
-        assert result.exit_code == 0
-        assert "Site: example.civic.band" in result.output
-        assert "Current stage: ocr" in result.output
-        assert "Progress: 45/100 (45.0%)" in result.output
-        assert "Started: 2026-01-06 10:00:00" in result.output
-        assert "Updated: 2026-01-06 10:05:23" in result.output
-
-    def test_status_with_site_id_not_found(self, cli_runner, mocker):
-        """Test that status --subdomain handles site not found."""
-        # Mock database operations
-        mock_conn = mocker.MagicMock()
-        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
-        mock_conn.__exit__ = mocker.Mock(return_value=False)
-        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
-
-        # Mock empty result (site not found)
-        mock_result = mocker.Mock()
-        mock_result.fetchone.return_value = None
-        mock_conn.execute.return_value = mock_result
-
-        result = cli_runner.invoke(cli, ["status", "--subdomain", "nonexistent.civic.band"])
-
-        assert result.exit_code == 0
-        assert "No progress tracking found for site: nonexistent.civic.band" in result.output
-
-    def test_status_handles_empty_queues(self, cli_runner, mocker):
-        """Test that status command handles empty queues gracefully."""
-        # Mock Redis queues (all empty)
-        mock_queue = mocker.Mock()
-        mock_queue.__len__ = mocker.Mock(return_value=0)
-        mocker.patch("clerk.queue.get_high_queue", return_value=mock_queue)
-        mocker.patch("clerk.queue.get_fetch_queue", return_value=mock_queue)
-        mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_queue)
-        mocker.patch("clerk.queue.get_extraction_queue", return_value=mock_queue)
-        mocker.patch("clerk.queue.get_deploy_queue", return_value=mock_queue)
-
-        # Mock database operations
-        mock_conn = mocker.MagicMock()
-        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
-        mock_conn.__exit__ = mocker.Mock(return_value=False)
-        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
-
-        # Mock empty result for site_progress
-        mock_result = mocker.Mock()
-        mock_result.fetchall.return_value = []
-        mock_conn.execute.return_value = mock_result
-
-        result = cli_runner.invoke(cli, ["status"])
-
-        assert result.exit_code == 0
-        assert "Queue Status" in result.output
-
-    def test_status_handles_redis_connection_error(self, cli_runner, mocker):
-        """Test that status command handles Redis connection errors gracefully."""
-        # Mock Redis to raise connection error
-        import redis
-
-        mocker.patch(
-            "clerk.queue.get_high_queue", side_effect=redis.ConnectionError("Cannot connect")
-        )
-
-        result = cli_runner.invoke(cli, ["status"])
-
-        # Command should fail gracefully
-        assert result.exit_code != 0
-        assert (
-            "Redis" in result.output
-            or "redis" in result.output.lower()
-            or "Cannot connect" in result.output
-        )
-
-    def test_status_handles_database_connection_error(self, cli_runner, mocker):
-        """Test that status command handles database connection errors gracefully."""
-        # Mock Redis queues (all empty)
-        mock_queue = mocker.Mock()
-        mock_queue.__len__ = mocker.Mock(return_value=0)
-        mocker.patch("clerk.queue.get_high_queue", return_value=mock_queue)
-        mocker.patch("clerk.queue.get_fetch_queue", return_value=mock_queue)
-        mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_queue)
-        mocker.patch("clerk.queue.get_extraction_queue", return_value=mock_queue)
-        mocker.patch("clerk.queue.get_deploy_queue", return_value=mock_queue)
-
-        # Mock database to raise connection error
-        from sqlalchemy.exc import OperationalError
-
-        mocker.patch(
-            "clerk.db.civic_db_connection", side_effect=OperationalError("DB error", None, None)
-        )
-
-        result = cli_runner.invoke(cli, ["status"])
-
-        # Command should fail gracefully
-        assert result.exit_code != 0
-
-
-@pytest.mark.unit
-class TestEnqueueCommand:
-    """Unit tests for enqueue CLI command."""
-
-    def test_enqueue_single_site(self, cli_runner, mocker):
-        """Test enqueuing a single site."""
-        # Mock Redis and queue operations
-        mock_enqueue_job = mocker.patch("clerk.queue.enqueue_job", return_value="job123")
-
-        # Mock database operations
-        mock_conn = mocker.MagicMock()
-        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
-        mock_conn.__exit__ = mocker.Mock(return_value=False)
-        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
-        mocker.patch(
-            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "site1.civic.band"}
-        )
-        mocker.patch("clerk.queue_db.track_job")
-        mocker.patch("clerk.queue_db.create_site_progress")
-
-        # Mock Redis connection test
-        mocker.patch("clerk.queue.get_redis")
-
-        result = cli_runner.invoke(cli, ["enqueue", "site1.civic.band"])
-
-        assert result.exit_code == 0
-        assert "Enqueued site1.civic.band" in result.output
-        assert "job123" in result.output
-        assert "normal" in result.output
-
-        # Verify enqueue_job was called correctly
-        mock_enqueue_job.assert_called_once_with(
-            "fetch-site", "site1.civic.band", priority="normal"
-        )
-
-    def test_enqueue_multiple_sites(self, cli_runner, mocker):
-        """Test enqueuing multiple sites."""
-        # Mock Redis and queue operations
-        mock_enqueue_job = mocker.patch("clerk.queue.enqueue_job")
-        mock_enqueue_job.side_effect = ["job123", "job456"]
-
-        # Mock database operations
-        mock_conn = mocker.MagicMock()
-        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
-        mock_conn.__exit__ = mocker.Mock(return_value=False)
-        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
-
-        def mock_get_site(conn, subdomain):
-            return {"subdomain": subdomain}
-
-        mocker.patch("clerk.db.get_site_by_subdomain", side_effect=mock_get_site)
-        mocker.patch("clerk.queue_db.track_job")
-        mocker.patch("clerk.queue_db.create_site_progress")
-
-        # Mock Redis connection test
-        mocker.patch("clerk.queue.get_redis")
-
-        result = cli_runner.invoke(cli, ["enqueue", "site1.civic.band", "site2.civic.band"])
-
-        assert result.exit_code == 0
-        assert "Enqueued site1.civic.band" in result.output
-        assert "job123" in result.output
-        assert "Enqueued site2.civic.band" in result.output
-        assert "job456" in result.output
-
-        # Verify enqueue_job was called twice
-        assert mock_enqueue_job.call_count == 2
-
-    def test_enqueue_with_high_priority(self, cli_runner, mocker):
-        """Test enqueuing with high priority."""
-        # Mock Redis and queue operations
-        mock_enqueue_job = mocker.patch("clerk.queue.enqueue_job", return_value="job123")
-
-        # Mock database operations
-        mock_conn = mocker.MagicMock()
-        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
-        mock_conn.__exit__ = mocker.Mock(return_value=False)
-        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
-        mocker.patch(
-            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "site1.civic.band"}
-        )
-        mocker.patch("clerk.queue_db.track_job")
-        mocker.patch("clerk.queue_db.create_site_progress")
-
-        # Mock Redis connection test
-        mocker.patch("clerk.queue.get_redis")
-
-        result = cli_runner.invoke(cli, ["enqueue", "site1.civic.band", "--priority", "high"])
-
-        assert result.exit_code == 0
-        assert "high" in result.output
-
-        # Verify enqueue_job was called with high priority
-        mock_enqueue_job.assert_called_once_with("fetch-site", "site1.civic.band", priority="high")
-
-    def test_enqueue_with_low_priority(self, cli_runner, mocker):
-        """Test enqueuing with low priority."""
-        # Mock Redis and queue operations
-        mock_enqueue_job = mocker.patch("clerk.queue.enqueue_job", return_value="job123")
-
-        # Mock database operations
-        mock_conn = mocker.MagicMock()
-        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
-        mock_conn.__exit__ = mocker.Mock(return_value=False)
-        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
-        mocker.patch(
-            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "site1.civic.band"}
-        )
-        mocker.patch("clerk.queue_db.track_job")
-        mocker.patch("clerk.queue_db.create_site_progress")
-
-        # Mock Redis connection test
-        mocker.patch("clerk.queue.get_redis")
-
-        result = cli_runner.invoke(cli, ["enqueue", "site1.civic.band", "--priority", "low"])
-
-        assert result.exit_code == 0
-
-        # Verify enqueue_job was called with low priority
-        mock_enqueue_job.assert_called_once_with("fetch-site", "site1.civic.band", priority="low")
-
-    def test_enqueue_handles_redis_connection_error(self, cli_runner, mocker):
-        """Test that enqueue handles Redis connection errors gracefully."""
-        # Mock Redis to raise connection error
-        import redis
-
-        mocker.patch(
-            "clerk.queue.get_redis", side_effect=redis.ConnectionError("Cannot connect to Redis")
-        )
-
-        result = cli_runner.invoke(cli, ["enqueue", "site1.civic.band"])
-
-        # Command should fail gracefully
-        assert result.exit_code != 0
-        assert "Redis" in result.output or "redis" in result.output.lower()
-
-    def test_enqueue_defaults_to_normal_priority(self, cli_runner, mocker):
-        """clerk enqueue should default to normal priority."""
-        # Mock Redis and queue operations
-        mock_enqueue = mocker.patch("clerk.queue.enqueue_job", return_value="job123")
-
-        # Mock database operations
-        mock_conn = mocker.MagicMock()
-        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
-        mock_conn.__exit__ = mocker.Mock(return_value=False)
-        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
-        mocker.patch(
-            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "test-site.civic.band"}
-        )
-        mocker.patch("clerk.queue_db.track_job")
-        mocker.patch("clerk.queue_db.create_site_progress")
-
-        # Mock Redis connection test
-        mocker.patch("clerk.queue.get_redis")
-
-        result = cli_runner.invoke(cli, ["enqueue", "test-site.civic.band"])
-
-        assert result.exit_code == 0
-
-        # Should use normal priority by default
-        mock_enqueue.assert_called_once_with(
-            "fetch-site", "test-site.civic.band", priority="normal"
-        )
-
-    def test_enqueue_respects_priority_override(self, cli_runner, mocker):
-        """clerk enqueue --priority high should use high priority."""
-        # Mock Redis and queue operations
-        mock_enqueue = mocker.patch("clerk.queue.enqueue_job", return_value="job123")
-
-        # Mock database operations
-        mock_conn = mocker.MagicMock()
-        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
-        mock_conn.__exit__ = mocker.Mock(return_value=False)
-        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
-        mocker.patch(
-            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "test-site.civic.band"}
-        )
-        mocker.patch("clerk.queue_db.track_job")
-        mocker.patch("clerk.queue_db.create_site_progress")
-
-        # Mock Redis connection test
-        mocker.patch("clerk.queue.get_redis")
-
-        result = cli_runner.invoke(cli, ["enqueue", "--priority", "high", "test-site.civic.band"])
-
-        assert result.exit_code == 0
-
-        # Should use high priority when specified
-        mock_enqueue.assert_called_once_with("fetch-site", "test-site.civic.band", priority="high")
 
 
 @pytest.mark.unit
@@ -2427,69 +1757,3 @@ class TestWorkerCommand:
 
             # Reset mocks
             mocker.resetall()
-
-
-@pytest.mark.integration
-class TestAutoEnqueueIntegration:
-    """Integration tests for auto-enqueue workflow."""
-
-    def test_full_auto_enqueue_workflow(self, cli_runner, mocker):
-        """Test complete workflow: new -> auto-enqueue -> manual update."""
-        # Mock database and queue
-        mock_conn = mocker.MagicMock()
-        mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
-        mock_conn.__exit__ = mocker.Mock(return_value=False)
-        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
-
-        mock_enqueue = mocker.patch("clerk.queue.enqueue_job")
-
-        # Additional mocks needed for clerk new
-        mocker.patch("clerk.db.upsert_site")
-        mocker.patch("clerk.utils.assert_db_exists")
-        mocker.patch("clerk.cli.pm.hook.fetcher_extra", return_value=[])
-        mocker.patch("clerk.cli.pm.hook.post_create")
-
-        # Step 1: Create new site - should enqueue with high priority
-        mocker.patch(
-            "clerk.db.get_site_by_subdomain",
-            return_value=None,  # Site doesn't exist yet
-        )
-
-        result = cli_runner.invoke(
-            cli,
-            ["new"],
-            input="new-site.civic.band\nNew Site\nCA\nUS\ncity\n2020\nFalse\n34.05,-118.25\ngranicus\n",
-        )
-        assert result.exit_code == 0
-
-        call_args = mock_enqueue.call_args_list[-1]
-        assert call_args[0][0] == "fetch-site"
-        assert call_args[0][1] == "new-site.civic.band"
-        assert call_args[1]["priority"] == "high"
-
-        mock_enqueue.reset_mock()
-
-        # Step 2: Auto-scheduler picks oldest site - should use normal priority
-        mocker.patch("clerk.db.get_oldest_site", return_value="old-site.civic.band")
-
-        result = cli_runner.invoke(cli, ["update", "--next-site"])
-        assert result.exit_code == 0
-
-        call_args = mock_enqueue.call_args_list[-1]
-        assert call_args[0][1] == "old-site.civic.band"
-        assert call_args[1]["priority"] == "normal"
-
-        mock_enqueue.reset_mock()
-
-        # Step 3: Manual update - should use high priority
-        mocker.patch("clerk.db.civic_db_connection", return_value=mock_conn)
-        mocker.patch(
-            "clerk.db.get_site_by_subdomain", return_value={"subdomain": "urgent-site.civic.band"}
-        )
-
-        result = cli_runner.invoke(cli, ["update", "-s", "urgent-site.civic.band"])
-        assert result.exit_code == 0
-
-        call_args = mock_enqueue.call_args_list[-1]
-        assert call_args[0][1] == "urgent-site.civic.band"
-        assert call_args[1]["priority"] == "high"

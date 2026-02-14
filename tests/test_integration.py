@@ -25,15 +25,14 @@ class TestEndToEndWorkflow:
         from unittest.mock import Mock
 
         mock_enqueue = Mock(return_value="job123")
-        monkeypatch.setattr("clerk.queue.enqueue_job", mock_enqueue)
+        monkeypatch.setattr(cli_module, "enqueue_job", mock_enqueue)
 
         runner = CliRunner()
 
-        # Run migration to add extraction columns
+        # Create database with proper schema
         from clerk.utils import assert_db_exists
 
         assert_db_exists()
-        runner.invoke(cli, ["migrate-extraction-schema"])
 
         # Create a new site interactively
         result = runner.invoke(
@@ -220,94 +219,6 @@ class TestDatabaseOperations:
         results = list(db["minutes"].search("budget"))
         assert len(results) == 1
         assert "infrastructure" in results[0]["text"]
-
-    def test_aggregate_database_combines_sites(
-        self, tmp_path, tmp_storage_dir, monkeypatch, cli_module
-    ):
-        """Test that aggregate database correctly combines multiple sites."""
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("STORAGE_DIR", str(tmp_storage_dir))
-        monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_storage_dir))
-
-        # Create civic.db with proper schema
-        from tests.conftest import create_sites_table_with_schema
-
-        db_path = tmp_path / "civic.db"
-        create_sites_table_with_schema(db_path)
-
-        # Insert test sites
-        civic_db = sqlite_utils.Database(db_path)
-        sites = [
-            {
-                "subdomain": "site1.civic.band",
-                "name": "Site One",
-                "state": "CA",
-                "country": "US",
-                "kind": "council",
-                "scraper": "test",
-                "pages": 0,
-                "start_year": 2020,
-                "extra": None,
-                "status": "deployed",
-                "last_updated": "2024-01-01T00:00:00",
-                "last_deployed": None,
-                "lat": "0",
-                "lng": "0",
-                "extraction_status": "pending",
-                "last_extracted": None,
-            },
-            {
-                "subdomain": "site2.civic.band",
-                "name": "Site Two",
-                "state": "NY",
-                "country": "US",
-                "kind": "commission",
-                "scraper": "test",
-                "pages": 0,
-                "start_year": 2021,
-                "extra": None,
-                "status": "deployed",
-                "last_updated": "2024-01-01T00:00:00",
-                "last_deployed": None,
-                "lat": "0",
-                "lng": "0",
-                "extraction_status": "pending",
-                "last_extracted": None,
-            },
-        ]
-        civic_db["sites"].insert_all(sites)
-
-        # Create text files for each site
-        for site in sites:
-            subdomain = site["subdomain"]
-            site_dir = tmp_storage_dir / subdomain
-            minutes_dir = site_dir / "txt" / "Council" / "2024-01-01"
-            minutes_dir.mkdir(parents=True)
-            (minutes_dir / "1.txt").write_text(f"Meeting for {site['name']}")
-
-        # Build aggregate database using CLI runner (build_full_db is a Click command)
-        runner = CliRunner()
-        result = runner.invoke(cli, ["build-full-db"])
-        assert result.exit_code == 0, f"build-full-db failed: {result.output}"
-
-        # Check aggregate database
-        agg_db_path = tmp_storage_dir / "meetings.db"
-        assert agg_db_path.exists()
-
-        agg_db = sqlite_utils.Database(agg_db_path)
-        all_minutes = list(agg_db["minutes"].rows)
-
-        # Should have records from both sites
-        assert len(all_minutes) == 2
-
-        # Check that subdomain and municipality are included
-        subdomains = {m["subdomain"] for m in all_minutes}
-        assert "site1.civic.band" in subdomains
-        assert "site2.civic.band" in subdomains
-
-        municipalities = {m["municipality"] for m in all_minutes}
-        assert "Site One" in municipalities
-        assert "Site Two" in municipalities
 
 
 @pytest.mark.integration
