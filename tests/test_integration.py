@@ -25,7 +25,7 @@ class TestEndToEndWorkflow:
         from unittest.mock import Mock
 
         mock_enqueue = Mock(return_value="job123")
-        monkeypatch.setattr("clerk.queue.enqueue_job", mock_enqueue)
+        monkeypatch.setattr(cli_module, "enqueue_job", mock_enqueue)
 
         runner = CliRunner()
 
