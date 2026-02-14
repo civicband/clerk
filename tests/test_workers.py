@@ -5,11 +5,11 @@ def test_fetch_site_job_exists():
     assert callable(fetch_site_job)
 
 
-def test_ocr_page_job_exists():
-    """Test that ocr_page_job function exists."""
-    from clerk.workers import ocr_page_job
+def test_ocr_document_job_exists():
+    """Test that ocr_document_job function exists."""
+    from clerk.workers import ocr_document_job
 
-    assert callable(ocr_page_job)
+    assert callable(ocr_document_job)
 
 
 def test_log_with_context_includes_job_context(mocker):
@@ -397,9 +397,9 @@ def test_ocr_complete_coordinator_accepts_run_id(mocker):
 #     assert ext_call_kwargs["run_id"] == "test_123_abc"
 
 
-def test_ocr_page_job_accepts_run_id_parameter(mocker):
-    """Test that ocr_page_job accepts run_id parameter."""
-    from clerk.workers import ocr_page_job
+def test_ocr_document_job_accepts_run_id_parameter(mocker):
+    """Test that ocr_document_job accepts run_id parameter."""
+    from clerk.workers import ocr_document_job
 
     mocker.patch("clerk.workers.civic_db_connection")
     mocker.patch("clerk.workers.get_site_by_subdomain", return_value={"subdomain": "test"})
@@ -408,14 +408,14 @@ def test_ocr_page_job_accepts_run_id_parameter(mocker):
     mocker.patch("clerk.workers.increment_stage_progress")
     mock_log = mocker.patch("clerk.workers.log_with_context")
 
-    ocr_page_job("test.civic.band", "/path/to/test.pdf", "tesseract", run_id="test_123_abc")
+    ocr_document_job("test.civic.band", "/path/to/test.pdf", "tesseract", run_id="test_123_abc")
 
     assert any(call[1]["run_id"] == "test_123_abc" for call in mock_log.call_args_list)
 
 
-def test_ocr_page_job_logs_with_stage_ocr(mocker):
-    """Test that ocr_page_job logs with stage=ocr."""
-    from clerk.workers import ocr_page_job
+def test_ocr_document_job_logs_with_stage_ocr(mocker):
+    """Test that ocr_document_job logs with stage=ocr."""
+    from clerk.workers import ocr_document_job
 
     mocker.patch("clerk.workers.civic_db_connection")
     mocker.patch("clerk.workers.get_site_by_subdomain", return_value={"subdomain": "test"})
@@ -424,7 +424,7 @@ def test_ocr_page_job_logs_with_stage_ocr(mocker):
     mocker.patch("clerk.workers.increment_stage_progress")
     mock_log = mocker.patch("clerk.workers.log_with_context")
 
-    ocr_page_job("test.civic.band", "/path/to/test.pdf", "tesseract", run_id="test_123_abc")
+    ocr_document_job("test.civic.band", "/path/to/test.pdf", "tesseract", run_id="test_123_abc")
 
     assert any(call[1].get("stage") == "ocr" for call in mock_log.call_args_list)
 
@@ -487,8 +487,8 @@ def test_extraction_job_logs_extraction_started(mocker):
 
 
 def test_ocr_job_updates_counters_on_success(mocker):
-    """Test that ocr_page_job updates atomic counters on success."""
-    from clerk.workers import ocr_page_job
+    """Test that ocr_document_job updates atomic counters on success."""
+    from clerk.workers import ocr_document_job
 
     # Mock dependencies
     mocker.patch("clerk.workers.civic_db_connection")
@@ -505,7 +505,7 @@ def test_ocr_job_updates_counters_on_success(mocker):
     _mock_claim = mocker.patch("clerk.workers.claim_coordinator_enqueue")
 
     # Run OCR job
-    ocr_page_job(
+    ocr_document_job(
         "test.civic.band", "/path/to/meeting/2024-01-01.pdf", "tesseract", run_id="test_123"
     )
 
@@ -517,8 +517,8 @@ def test_ocr_job_updates_counters_on_success(mocker):
 
 
 def test_ocr_job_updates_counters_on_failure(mocker):
-    """Test that ocr_page_job updates atomic counters on failure."""
-    from clerk.workers import ocr_page_job
+    """Test that ocr_document_job updates atomic counters on failure."""
+    from clerk.workers import ocr_document_job
 
     # Mock dependencies
     mocker.patch("clerk.workers.civic_db_connection")
@@ -537,7 +537,7 @@ def test_ocr_job_updates_counters_on_failure(mocker):
     )
 
     # Run OCR job (should not raise - errors are caught)
-    ocr_page_job(
+    ocr_document_job(
         "test.civic.band", "/path/to/meeting/2024-01-01.pdf", "tesseract", run_id="test_123"
     )
 

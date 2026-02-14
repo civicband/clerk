@@ -232,7 +232,7 @@ def fetch_site_job(
         job_datas = []
         for pdf_path in pdf_files:
             job_data = ocr_queue.prepare_data(
-                ocr_page_job,
+                ocr_document_job,
                 kwargs={
                     "subdomain": subdomain,
                     "pdf_path": str(pdf_path),
@@ -371,7 +371,7 @@ def _attempt_coordinator_enqueue(subdomain, stage, run_id):
             )
 
 
-def ocr_page_job(subdomain, pdf_path, backend="tesseract", run_id=None):
+def ocr_document_job(subdomain, pdf_path, backend="tesseract", run_id=None):
     """RQ job: OCR a single PDF page using atomic counters.
 
     Args:
@@ -385,7 +385,7 @@ def ocr_page_job(subdomain, pdf_path, backend="tesseract", run_id=None):
 
     # Log IMMEDIATELY before any imports that might crash
     try:
-        print(f"[EARLY] ocr_page_job starting: {subdomain}, {pdf_path}", file=sys.stderr)
+        print(f"[EARLY] ocr_document_job starting: {subdomain}, {pdf_path}", file=sys.stderr)
         sys.stderr.flush()
     except Exception:
         pass
@@ -429,7 +429,7 @@ def ocr_page_job(subdomain, pdf_path, backend="tesseract", run_id=None):
 
         if not site:
             log_with_context(
-                "Site not found in ocr_page_job",
+                "Site not found in ocr_document_job",
                 subdomain=subdomain,
                 run_id=run_id,
                 stage=stage,

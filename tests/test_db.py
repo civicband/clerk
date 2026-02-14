@@ -9,7 +9,6 @@ from clerk.db import (
     get_all_sites,
     get_civic_db,
     get_site_by_subdomain,
-    get_sites_where,
     insert_site,
     update_site,
     upsert_site,
@@ -133,23 +132,6 @@ class TestSQLiteBackend:
             sites = get_all_sites(conn)
             assert len(sites) == 3
             assert {s["subdomain"] for s in sites} == {"test1", "test2", "test3"}
-
-    def test_get_sites_where(self, temp_sqlite_db):
-        """Test filtering sites by criteria."""
-        with civic_db_connection() as conn:
-            # Insert sites with different states
-            insert_site(conn, {"subdomain": "ca1", "name": "CA City 1", "state": "CA"})
-            insert_site(conn, {"subdomain": "ca2", "name": "CA City 2", "state": "CA"})
-            insert_site(conn, {"subdomain": "ny1", "name": "NY City 1", "state": "NY"})
-
-            # Filter by state
-            ca_sites = get_sites_where(conn, state="CA")
-            assert len(ca_sites) == 2
-            assert all(s["state"] == "CA" for s in ca_sites)
-
-            ny_sites = get_sites_where(conn, state="NY")
-            assert len(ny_sites) == 1
-            assert ny_sites[0]["subdomain"] == "ny1"
 
     def test_get_nonexistent_site_returns_none(self, temp_sqlite_db):
         """Test that getting a nonexistent site returns None."""

@@ -6,6 +6,7 @@ Supports both SQLite (dev) and PostgreSQL (production) based on DATABASE_URL.
 import os
 from contextlib import contextmanager
 
+import click
 from sqlalchemy import create_engine, delete, insert, select, update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.pool import QueuePool
@@ -145,23 +146,6 @@ def get_site_by_subdomain(conn, subdomain):
     return dict(row._mapping) if row else None
 
 
-def get_sites_by_state(conn, state):
-    """Get all sites in a state.
-
-    Args:
-        conn: SQLAlchemy connection
-        state: State code (e.g., "CA")
-
-    Returns:
-        List of dictionaries with site data
-    """
-    from .models import sites_table
-
-    stmt = select(sites_table).where(sites_table.c.state == state)
-    result = conn.execute(stmt)
-    return [dict(row._mapping) for row in result]
-
-
 def update_site(conn, subdomain, updates):
     """Update site fields.
 
@@ -209,27 +193,6 @@ def get_all_sites(conn, order_by=None):
     return [dict(row._mapping) for row in result]
 
 
-def get_sites_where(conn, **filters):
-    """Get sites matching filters.
-
-    Args:
-        conn: SQLAlchemy connection
-        **filters: Keyword arguments for WHERE clauses (e.g., status="deployed")
-
-    Returns:
-        List of dictionaries with site data
-    """
-    from .models import sites_table
-
-    stmt = select(sites_table)
-    for key, value in filters.items():
-        if hasattr(sites_table.c, key):
-            stmt = stmt.where(getattr(sites_table.c, key) == value)
-
-    result = conn.execute(stmt)
-    return [dict(row._mapping) for row in result]
-
-
 def get_oldest_site(lookback_hours=23):
     """Find site with oldest last_updated timestamp.
 
@@ -267,3 +230,84 @@ def get_oldest_site(lookback_hours=23):
     with civic_db_connection() as conn:
         result = conn.execute(stmt).fetchone()
         return result[0] if result else None
+
+
+def _find_alembic_ini():
+    """Find alembic.ini file in current directory or package location.
+
+    Returns:
+        Path to alembic.ini file
+
+    Raises:
+        click.Abort: If alembic.ini is not found
+    """
+    import sys
+    from pathlib import Path
+
+    # Try current directory first
+    cwd_ini = Path.cwd() / "alembic.ini"
+    if cwd_ini.exists():
+        return cwd_ini
+
+    # Try package location (for installed package)
+    package_ini = Path(sys.prefix) / "share" / "clerk" / "alembic.ini"
+    if package_ini.exists():
+        return package_ini
+
+    click.secho(
+        "Error: alembic.ini not found. Please run this command from the project root directory.",
+        fg="red",
+    )
+    raise click.Abort()
+
+
+def _run_alembic_command(*args):
+    """Run an alembic command and display output.
+
+    Args:
+        *args: Arguments to pass to alembic command
+
+    Raises:
+        click.Abort: If alembic command fails
+    """
+    import subprocess
+
+    alembic_ini = _find_alembic_ini()
+
+    result = subprocess.run(
+        ["alembic", "-c", str(alembic_ini), *args],
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        click.secho(f"Error running alembic {args[0]}: {result.stderr}", fg="red")
+        raise click.Abort()
+
+    click.echo(result.stdout)
+    if result.stderr:
+        click.echo(result.stderr, err=True)
+
+
+@click.group()
+def db():
+    """Database migration commands"""
+    pass
+
+
+@db.command()
+def upgrade():
+    """Run database migrations to latest version"""
+    _run_alembic_command("upgrade", "head")
+
+
+@db.command()
+def current():
+    """Show current database migration version"""
+    _run_alembic_command("current")
+
+
+@db.command()
+def history():
+    """Show database migration history"""
+    _run_alembic_command("history")

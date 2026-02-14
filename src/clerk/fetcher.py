@@ -470,7 +470,7 @@ class Fetcher:
                 output_path=output_path,
             )
             try:
-                HTML(string=doc_response.content).write_pdf(output_path)
+                HTML(string=doc_response.content).write_pdf(output_path)  # type: ignore
             except ParseError:
                 output_log(
                     f"WeasyPrint HTML->PDF error for {url}, trying pdfkit",
@@ -479,7 +479,7 @@ class Fetcher:
                     url=url,
                     meeting=meeting,
                 )
-                pdfkit.from_string(doc_response.content, output_path)
+                pdfkit.from_string(doc_response.content, output_path)  # type: ignore
                 output_log(
                     "Wrote file using pdfkit",
                     subdomain=self.subdomain,

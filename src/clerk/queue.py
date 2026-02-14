@@ -103,7 +103,7 @@ def get_job_function_map():
     # Base job function map
     job_function_map = {
         "fetch-site": workers.fetch_site_job,
-        "ocr-page": workers.ocr_page_job,
+        "ocr-page": workers.ocr_document_job,
         "extract-site": workers.extraction_job,
         "deploy-site": workers.deploy_job,
         "db-compilation": workers.db_compilation_job,
