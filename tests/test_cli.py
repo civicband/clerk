@@ -1,6 +1,5 @@
 """Unit tests for clerk.cli module."""
 
-import datetime
 import json
 from unittest.mock import MagicMock, patch
 
@@ -545,7 +544,6 @@ class TestBuildDbFromTextInternal:
         assert rows[0]["text"] == "Meeting text"
 
         # Verify extraction was skipped (empty structures, not extracted data)
-        import json
 
         entities = json.loads(rows[0]["entities_json"])
         votes = json.loads(rows[0]["votes_json"])
