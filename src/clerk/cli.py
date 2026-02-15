@@ -30,7 +30,7 @@ from .db import civic_db_connection, db, get_site_by_subdomain, upsert_site
 from .debug import debug
 from .fetcher import Fetcher
 from .output import log
-from .plugin_loader import load_plugins_from_directory
+from .plugin_loader import load_plugins_from_directory, load_plugins_from_entry_points
 from .queue import enqueue_job, generate_run_id
 from .sentry import init_sentry
 from .utils import assert_db_exists, build_db_from_text_internal, pm
@@ -156,18 +156,27 @@ def cli(ctx, plugins_dir, quiet):
     """Managing civic.band sites"""
     configure_logging(ctx.invoked_subcommand or "cli")
     output.configure(quiet=quiet)
+    # Load directory-based plugins if specified
     load_plugins_from_directory(plugins_dir)
 
-    # Register plugin CLI commands
+
+def _load_entry_point_plugins():
+    """Load plugins from entry points and register their commands.
+
+    This is called after module initialization to avoid circular imports.
+    """
+    load_plugins_from_entry_points()
+
+    # Register plugin CLI commands from entry points
     for plugin_commands in pm.hook.register_cli_commands():
         if plugin_commands:
-            if isinstance(plugin_commands, click.Group):
-                # Add all commands from the group
-                for name, cmd in plugin_commands.commands.items():
-                    cli.add_command(cmd, name=name)
-            elif isinstance(plugin_commands, click.Command):
-                # Add single command
-                cli.add_command(plugin_commands)
+            # Add the command or group directly to preserve structure
+            cli.add_command(plugin_commands)
+
+
+# Load entry point plugins after the module is fully initialized
+# We do this at the end of the module to avoid circular import issues
+_load_entry_point_plugins()
 
 
 @cli.command()
