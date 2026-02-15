@@ -1214,3 +1214,8 @@ def deploy_job(subdomain, run_id=None):
             traceback=traceback.format_exc(),
         )
         raise
+
+
+# Backwards compatibility: alias old function name to new name
+# This allows RQ workers to process jobs that were enqueued with the old function name
+ocr_page_job = ocr_document_job

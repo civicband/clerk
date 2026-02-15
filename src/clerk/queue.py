@@ -108,6 +108,8 @@ def get_job_function_map():
         "deploy-site": workers.deploy_job,
         "db-compilation": workers.db_compilation_job,
         "coordinator": workers.coordinator_job,
+        # Backwards compatibility: support old function name
+        "ocr-page-old": workers.ocr_page_job,
     }
 
     # Add plugin job types

@@ -12,6 +12,18 @@ def test_ocr_document_job_exists():
     assert callable(ocr_document_job)
 
 
+def test_ocr_page_job_backwards_compatibility():
+    """Test that ocr_page_job alias exists for backwards compatibility."""
+    from clerk.workers import ocr_document_job, ocr_page_job
+
+    # Both should be callable
+    assert callable(ocr_document_job)
+    assert callable(ocr_page_job)
+
+    # They should be the same function
+    assert ocr_page_job is ocr_document_job
+
+
 def test_log_with_context_includes_job_context(mocker):
     """Test that log_with_context extracts job_id and parent_job_id from RQ context."""
     from clerk.workers import log_with_context
