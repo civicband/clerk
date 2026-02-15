@@ -1,8 +1,9 @@
-"""Plugin discovery from directory."""
+"""Plugin discovery from directory and entry points."""
 
 import importlib.util
 import inspect
 import sys
+from importlib.metadata import entry_points
 from pathlib import Path
 
 import click
@@ -84,3 +85,32 @@ def load_plugins_from_directory(plugins_dir: str) -> None:
                     raise click.ClickException(
                         f"Error instantiating plugin {name} from {py_file}: {e}"
                     ) from e
+
+
+def load_plugins_from_entry_points() -> None:
+    """Load all plugins registered via entry points.
+
+    Discovers plugins that have been installed as packages and registered
+    their plugin classes via the 'clerk.plugins' entry point group.
+
+    Raises:
+        Exception: If a plugin class cannot be loaded or instantiated.
+    """
+    discovered = entry_points()
+
+    # Handle both old and new importlib.metadata API
+    clerk_plugins = (
+        discovered.select(group="clerk.plugins")
+        if hasattr(discovered, "select")
+        else discovered.get("clerk.plugins", [])
+    )
+
+    for ep in clerk_plugins:
+        try:
+            plugin_class = ep.load()
+            instance = plugin_class()
+            pm.register(instance)
+        except Exception as e:
+            raise click.ClickException(
+                f"Error loading plugin '{ep.name}' from entry point: {e}"
+            ) from e
