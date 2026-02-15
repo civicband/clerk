@@ -99,11 +99,12 @@ def load_plugins_from_entry_points() -> None:
     discovered = entry_points()
 
     # Handle both old and new importlib.metadata API
-    clerk_plugins = (
-        discovered.select(group="clerk.plugins")
-        if hasattr(discovered, "select")
-        else discovered.get("clerk.plugins", [])
-    )
+    if hasattr(discovered, "select"):
+        # New API (Python 3.10+)
+        clerk_plugins = discovered.select(group="clerk.plugins")
+    else:
+        # Old API (Python 3.9 and below) - returns dict-like object
+        clerk_plugins = discovered.get("clerk.plugins", [])  # type: ignore[attr-defined]
 
     for ep in clerk_plugins:
         try:
