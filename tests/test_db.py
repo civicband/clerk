@@ -1,7 +1,5 @@
 """Tests for database abstraction layer (clerk/db.py)."""
 
-import os
-
 import pytest
 
 from clerk.db import (
@@ -14,6 +12,7 @@ from clerk.db import (
     upsert_site,
 )
 from clerk.models import metadata
+from clerk.settings import get_env
 
 
 @pytest.fixture
@@ -150,7 +149,7 @@ class TestPostgreSQLBackend:
     @pytest.fixture
     def postgres_db(self, monkeypatch):
         """Create a PostgreSQL test database."""
-        test_db_url = os.getenv("TEST_DATABASE_URL")
+        test_db_url = get_env("TEST_DATABASE_URL")
         if not test_db_url:
             pytest.skip("TEST_DATABASE_URL not set, skipping PostgreSQL tests")
 
@@ -168,7 +167,7 @@ class TestPostgreSQLBackend:
 
     def test_get_civic_db_returns_postgresql_engine(self, monkeypatch):
         """Test that get_civic_db returns PostgreSQL engine when DATABASE_URL is set."""
-        test_db_url = os.getenv("TEST_DATABASE_URL")
+        test_db_url = get_env("TEST_DATABASE_URL")
         if not test_db_url:
             pytest.skip("TEST_DATABASE_URL not set")
 

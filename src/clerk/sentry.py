@@ -3,11 +3,12 @@
 Initializes Sentry SDK if SENTRY_DSN environment variable is set.
 """
 
-import os
 import re
 import sys
 
 import sentry_sdk
+
+from .settings import get_env, get_env_float
 
 
 def before_send(event, hint):
@@ -104,14 +105,14 @@ def init_sentry():
         export SENTRY_TRACES_SAMPLE_RATE="0.1"
     """
     try:
-        sentry_dsn = os.getenv("SENTRY_DSN")
+        sentry_dsn = get_env("SENTRY_DSN")
 
         if not sentry_dsn:
             # Sentry not configured, skip initialization
             return
 
-        environment = os.getenv("SENTRY_ENVIRONMENT", "production")
-        traces_sample_rate = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.0"))
+        environment = get_env("SENTRY_ENVIRONMENT", "production")
+        traces_sample_rate = get_env_float("SENTRY_TRACES_SAMPLE_RATE", 0.0) or 0.0
 
         # Import RQ integration to capture worker job exceptions
         from sentry_sdk.integrations.rq import RqIntegration

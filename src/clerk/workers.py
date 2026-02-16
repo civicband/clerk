@@ -29,6 +29,7 @@ from .queue_db import (
     track_jobs_bulk,
     update_site_progress,
 )
+from .settings import get_env
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +134,7 @@ def fetch_site_job(
         log_with_context("Completed PDF fetch", subdomain=subdomain, run_id=run_id, stage=stage)
 
         # Count PDFs that need OCR from both minutes and agendas directories
-        storage_dir = os.getenv("STORAGE_DIR", "../sites")
+        storage_dir = get_env("STORAGE_DIR", "../sites")
         minutes_pdf_dir = Path(f"{storage_dir}/{subdomain}/pdfs")
         agendas_pdf_dir = Path(f"{storage_dir}/{subdomain}/_agendas/pdfs")
 
@@ -214,7 +215,7 @@ def fetch_site_job(
 
         # Use parameter if provided, otherwise fall back to environment variable
         if ocr_backend is None:
-            ocr_backend = os.getenv("DEFAULT_OCR_BACKEND", "tesseract")
+            ocr_backend = get_env("DEFAULT_OCR_BACKEND", "tesseract")
         log_with_context(
             "Using OCR backend",
             subdomain=subdomain,
@@ -225,7 +226,7 @@ def fetch_site_job(
 
         # Allow timeout to be configured via env var, default to 20m
         # Previous default was 10m, which was too short for large/complex PDFs
-        ocr_timeout_str = os.getenv("OCR_JOB_TIMEOUT", "20m")
+        ocr_timeout_str = get_env("OCR_JOB_TIMEOUT", "20m")
         ocr_timeout_seconds = parse_timeout(ocr_timeout_str)
 
         # Phase 1: Prepare all job data (no I/O, just data structure creation)
@@ -575,7 +576,7 @@ def ocr_complete_coordinator(subdomain, run_id):
 
     try:
         # Verify OCR completed by checking for txt files
-        storage_dir = os.getenv("STORAGE_DIR", "../sites")
+        storage_dir = get_env("STORAGE_DIR", "../sites")
         txt_dir = Path(f"{storage_dir}/{subdomain}/txt")
 
         # Check if this is a "no documents" case (fetch found 0 PDFs)
@@ -769,7 +770,7 @@ def db_compilation_job(subdomain, run_id=None, extract_entities=False, ignore_ca
 
     try:
         # Count text files to process
-        storage_dir = os.getenv("STORAGE_DIR", "../sites")
+        storage_dir = get_env("STORAGE_DIR", "../sites")
         txt_dir = Path(f"{storage_dir}/{subdomain}/txt")
 
         if txt_dir.exists():
@@ -971,7 +972,7 @@ def extraction_job(subdomain, run_id, extract_entities=True, ignore_cache=False)
 
     try:
         # Count text files to process
-        storage_dir = os.getenv("STORAGE_DIR", "../sites")
+        storage_dir = get_env("STORAGE_DIR", "../sites")
         txt_dir = Path(f"{storage_dir}/{subdomain}/txt")
 
         if txt_dir.exists():

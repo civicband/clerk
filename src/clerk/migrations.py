@@ -4,7 +4,6 @@ This module provides reusable migration functions that can be called from both
 CLI commands and standalone scripts.
 """
 
-import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
@@ -16,6 +15,7 @@ from .db import civic_db_connection
 from .models import site_progress_table, sites_table
 from .pipeline_state import claim_coordinator_enqueue
 from .queue import get_compilation_queue, get_ocr_queue
+from .settings import get_env
 from .workers import ocr_complete_coordinator
 
 
@@ -33,7 +33,7 @@ def count_txt_files(subdomain: str) -> int:
     Returns:
         Number of completed OCR documents (not pages)
     """
-    storage_dir = os.getenv("STORAGE_DIR", "../sites")
+    storage_dir = get_env("STORAGE_DIR", "../sites")
     txt_base = Path(f"{storage_dir}/{subdomain}/txt")
 
     if not txt_base.exists():
@@ -67,7 +67,7 @@ def count_pdf_files(subdomain: str) -> int:
     Returns:
         Number of PDF files found
     """
-    storage_dir = os.getenv("STORAGE_DIR", "../sites")
+    storage_dir = get_env("STORAGE_DIR", "../sites")
 
     total_pdfs = 0
 
@@ -241,7 +241,7 @@ def investigate_failed_ocr_site(subdomain: str) -> dict[str, Any]:
     Returns:
         Dictionary with diagnostic information
     """
-    storage_dir = os.getenv("STORAGE_DIR", "../sites")
+    storage_dir = get_env("STORAGE_DIR", "../sites")
     site_dir = Path(f"{storage_dir}/{subdomain}")
 
     result: dict[str, Any] = {

@@ -3,7 +3,6 @@
 Supports both SQLite (dev) and PostgreSQL (production) based on DATABASE_URL.
 """
 
-import os
 from contextlib import contextmanager
 
 import click
@@ -11,6 +10,8 @@ from sqlalchemy import create_engine, delete, insert, select, update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.pool import QueuePool
 from sqlalchemy.sql import text
+
+from .settings import get_env
 
 
 def get_civic_db():
@@ -22,7 +23,7 @@ def get_civic_db():
 
     Fails fast if PostgreSQL connection cannot be established.
     """
-    database_url = os.getenv("DATABASE_URL")
+    database_url = get_env("DATABASE_URL")
 
     if database_url:
         # Normalize postgres:// to postgresql:// for SQLAlchemy 1.4+
