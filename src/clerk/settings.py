@@ -18,6 +18,7 @@ Usage:
 
 import os
 from pathlib import Path
+from typing import overload
 
 from dotenv import load_dotenv
 
@@ -26,6 +27,14 @@ from dotenv import load_dotenv
 _dotenv_path = Path.cwd() / ".env"
 if _dotenv_path.exists():
     load_dotenv(_dotenv_path)
+
+
+@overload
+def get_env(key: str, default: str) -> str: ...
+
+
+@overload
+def get_env(key: str, default: None = None) -> str | None: ...
 
 
 def get_env(key: str, default: str | None = None) -> str | None:
@@ -169,7 +178,7 @@ class Settings:
     def __repr__(self) -> str:
         """Return string representation of settings."""
         # Mask sensitive values
-        safe_attrs = {}
+        safe_attrs: dict[str, str | int | float | None] = {}
         for key, value in self.__dict__.items():
             if any(
                 sensitive in key.upper()
