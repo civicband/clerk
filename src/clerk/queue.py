@@ -1,7 +1,6 @@
 # src/clerk/queue.py
 """Queue management using RQ (Redis Queue)."""
 
-import os
 import random
 import string
 import sys
@@ -10,6 +9,8 @@ import time
 
 import redis
 from rq import Queue
+
+from .settings import get_env
 
 # Global Redis client
 _redis_client = None
@@ -34,7 +35,7 @@ def get_redis():
         with _redis_lock:
             # Double-check: another thread might have initialized
             if _redis_client is None:
-                redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+                redis_url = get_env("REDIS_URL", "redis://localhost:6379")
                 try:
                     # NOTE: Do NOT use decode_responses=True - RQ is incompatible
                     # RQ stores pickled binary data, which causes UnicodeDecodeError

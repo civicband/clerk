@@ -1,10 +1,10 @@
-import os
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from clerk.models import metadata
+from clerk.settings import get_env
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -38,7 +38,7 @@ def run_migrations_offline() -> None:
 
     """
     # Use DATABASE_URL from environment if set, otherwise use alembic.ini
-    url = os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
+    url = get_env("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -58,7 +58,7 @@ def run_migrations_online() -> None:
 
     """
     # Use DATABASE_URL from environment if set
-    database_url = os.getenv("DATABASE_URL")
+    database_url = get_env("DATABASE_URL")
     if database_url:
         # Override the sqlalchemy.url in config
         config.set_main_option("sqlalchemy.url", database_url)

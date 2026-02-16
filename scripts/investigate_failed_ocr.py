@@ -5,7 +5,6 @@ This script helps diagnose why 50+ sites show "No completed OCR documents found"
 Checks filesystem, database state, and RQ job history to understand what happened.
 """
 
-import os
 from pathlib import Path
 
 import click
@@ -13,6 +12,7 @@ from sqlalchemy import select
 
 from clerk.db import civic_db_connection
 from clerk.models import sites_table
+from clerk.settings import get_env
 
 
 def investigate_site(subdomain: str) -> dict:
@@ -21,7 +21,7 @@ def investigate_site(subdomain: str) -> dict:
     Returns:
         dict with diagnostic information
     """
-    storage_dir = os.getenv("STORAGE_DIR", "../sites")
+    storage_dir = get_env("STORAGE_DIR", "../sites")
     site_dir = Path(f"{storage_dir}/{subdomain}")
 
     result = {

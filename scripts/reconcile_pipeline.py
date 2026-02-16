@@ -10,7 +10,6 @@ Detects and recovers stuck sites by:
 Run this periodically (every 15 minutes) via cron.
 """
 
-import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -21,6 +20,7 @@ from clerk.db import civic_db_connection
 from clerk.models import sites_table
 from clerk.pipeline_state import claim_coordinator_enqueue
 from clerk.queue import get_compilation_queue
+from clerk.settings import get_env
 from clerk.workers import ocr_complete_coordinator
 
 
@@ -35,7 +35,7 @@ def count_txt_files(subdomain):
     Returns:
         Number of completed OCR documents (not pages)
     """
-    storage_dir = os.getenv("STORAGE_DIR", "../sites")
+    storage_dir = get_env("STORAGE_DIR", "../sites")
     txt_base = Path(f"{storage_dir}/{subdomain}/txt")
 
     if not txt_base.exists():
