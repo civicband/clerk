@@ -18,10 +18,8 @@ Usage:
 
 import os
 from pathlib import Path
-from typing import Any
 
 from dotenv import load_dotenv
-
 
 # Load .env file from current working directory on module import
 # This respects where the user invoked Python from
