@@ -23,31 +23,10 @@ from typing import Any
 from dotenv import load_dotenv
 
 
-# Load .env file from project root (find upwards from this file)
-def _find_dotenv_file() -> Path | None:
-    """Find .env file by searching upwards from this module's location.
-
-    Searches from the current file location upwards until it finds a .env file
-    or reaches the filesystem root.
-
-    Returns:
-        Path to .env file if found, None otherwise
-    """
-    current = Path(__file__).resolve().parent
-    root = Path("/")
-
-    while current != root:
-        dotenv_path = current / ".env"
-        if dotenv_path.exists():
-            return dotenv_path
-        current = current.parent
-
-    return None
-
-
-# Load .env file on module import
-_dotenv_path = _find_dotenv_file()
-if _dotenv_path:
+# Load .env file from current working directory on module import
+# This respects where the user invoked Python from
+_dotenv_path = Path.cwd() / ".env"
+if _dotenv_path.exists():
     load_dotenv(_dotenv_path)
 
 
