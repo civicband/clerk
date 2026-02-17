@@ -577,7 +577,8 @@ def ocr_complete_coordinator(subdomain, run_id):
     try:
         # Verify OCR completed by checking for txt files
         storage_dir = get_env("STORAGE_DIR", "../sites")
-        txt_dir = Path(f"{storage_dir}/{subdomain}/txt")
+        minutes_txt_dir = Path(f"{storage_dir}/{subdomain}/txt")
+        agendas_txt_dir = Path(f"{storage_dir}/{subdomain}/_agendas/txt")
 
         # Check if this is a "no documents" case (fetch found 0 PDFs)
         with civic_db_connection() as conn:
@@ -625,14 +626,18 @@ def ocr_complete_coordinator(subdomain, run_id):
             )
             return  # Exit coordinator successfully
 
-        if not txt_dir.exists():
+        if not minutes_txt_dir.exists() and not agendas_txt_dir.exists():
             raise FileNotFoundError(
-                f"Text directory not found at {txt_dir} - OCR may not have completed"
+                f"Text directoryies not found at {minutes_txt_dir}/{agendas_txt_dir} - OCR may not have completed"
             )
 
-        txt_files = list(txt_dir.glob("**/*.txt"))
+        txt_files = []
+        txt_files += list(minutes_txt_dir.glob("**/*.txt"))
+        txt_files += list(agendas_txt_dir.glob("**/*.txt"))
         if len(txt_files) == 0:
-            raise ValueError(f"No text files found in {txt_dir} - OCR may have failed for all PDFs")
+            raise ValueError(
+                f"No text files found in {minutes_txt_dir}/{agendas_txt_dir} - OCR may have failed for all PDFs"
+            )
 
         log_with_context(
             "Verified OCR completion",
