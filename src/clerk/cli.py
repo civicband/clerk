@@ -28,6 +28,7 @@ from datetime import UTC
 from . import output
 from .db import civic_db_connection, db, get_site_by_subdomain, upsert_site
 from .debug import debug
+from .etl import etl
 from .fetcher import Fetcher
 from .output import log
 from .plugin_loader import load_plugins_from_directory, load_plugins_from_entry_points
@@ -269,7 +270,6 @@ def new(ocr_backend="tesseract", fetch_local=False):
 @click.option("-a", "--all-years", is_flag=True)
 @click.option("--skip-fetch", is_flag=True)
 @click.option("--all-agendas", is_flag=True)
-@click.option("--backfill", is_flag=True)
 @click.option(
     "--fetch-local", is_flag=True, default=False, help="Fetch inline instead of sending through RQ"
 )
@@ -279,9 +279,7 @@ def new(ocr_backend="tesseract", fetch_local=False):
     default="tesseract",
     help="OCR backend to use (tesseract or vision). Defaults to tesseract.",
 )
-def update(
-    subdomain, next_site, all_years, skip_fetch, all_agendas, backfill, fetch_local, ocr_backend
-):
+def update(subdomain, next_site, all_years, skip_fetch, all_agendas, fetch_local, ocr_backend):
     """Update a site."""
     import datetime
 
@@ -332,8 +330,6 @@ def update(
             job_kwargs["all_years"] = True
         if all_agendas:
             job_kwargs["all_agendas"] = True
-        if backfill:
-            job_kwargs["backfill"] = True
         if ocr_backend:
             job_kwargs["ocr_backend"] = ocr_backend
         if skip_fetch:
@@ -2116,3 +2112,4 @@ cli.add_command(remove_all_image_dirs)
 cli.add_command(extract_entities)
 cli.add_command(db)
 cli.add_command(debug)
+cli.add_command(etl)

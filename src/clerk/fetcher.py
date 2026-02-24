@@ -20,7 +20,6 @@ from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
-from xml.etree.ElementTree import ParseError
 
 import httpx
 import sqlite_utils
@@ -45,7 +44,6 @@ try:
     from pdf2image import convert_from_path
     from pypdf import PdfReader
     from pypdf.errors import PdfReadError
-    from weasyprint import HTML
 
     PDF_SUPPORT = True
 except ImportError:
@@ -470,15 +468,6 @@ class Fetcher:
                 output_path=output_path,
             )
             try:
-                HTML(string=doc_response.content).write_pdf(output_path)  # type: ignore
-            except ParseError:
-                output_log(
-                    f"WeasyPrint HTML->PDF error for {url}, trying pdfkit",
-                    subdomain=self.subdomain,
-                    level="warning",
-                    url=url,
-                    meeting=meeting,
-                )
                 pdfkit.from_string(doc_response.content, output_path)  # type: ignore
                 output_log(
                     "Wrote file using pdfkit",
@@ -486,6 +475,14 @@ class Fetcher:
                     operation="pdfkit_conversion",
                     meeting=meeting,
                     output_path=output_path,
+                )
+            except:
+                output_log(
+                    f"pdfkit HTML->PDF error for {url}",
+                    subdomain=self.subdomain,
+                    level="warning",
+                    url=url,
+                    meeting=meeting,
                 )
         else:
             try:
@@ -1095,7 +1092,7 @@ class Fetcher:
                         prefix,
                         timeout=PDF_CONVERT_TIMEOUT,
                     )
-                else:
+                elif PDF_SUPPORT:
                     # Direct call (for tests or when subprocess isolation is disabled)
                     try:
                         with tempfile.TemporaryDirectory() as temp_path:

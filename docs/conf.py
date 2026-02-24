@@ -63,7 +63,6 @@ autodoc_mock_imports = [
     "pluggy",
     "sqlalchemy",
     "sqlite_utils",
-    "weasyprint",
     "pdfkit",
     "pdf2image",
     "pypdf",

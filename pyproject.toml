@@ -23,7 +23,6 @@ dependencies = [
 
 [project.optional-dependencies]
 pdf = [
-    "weasyprint>=60.0",
     "pdfkit>=1.0.0",
     "pdf2image>=1.16.0",
     "pypdf>=4.0.0",
@@ -118,3 +117,8 @@ files = ["src/clerk"]
 [[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.38.1",
+]
