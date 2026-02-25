@@ -242,6 +242,7 @@ class TestPluginIntegration:
 
         # Replace the global pm in fetcher module where get_fetcher lives
         import clerk.fetcher as fetcher_module
+
         monkeypatch.setattr(fetcher_module, "pm", test_pm)
 
         # Create a site

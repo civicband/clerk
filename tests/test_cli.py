@@ -363,6 +363,7 @@ class TestGetFetcher:
         """Test getting a fetcher class from a plugin."""
         # pm is imported from clerk.utils into clerk.fetcher, so we patch it there
         import clerk.fetcher as fetcher_module
+
         monkeypatch.setattr(fetcher_module, "pm", mock_plugin_manager)
 
         sample_site_data["scraper"] = "test_scraper"
