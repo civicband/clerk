@@ -5,8 +5,10 @@ from typing import Any
 import click
 
 from clerk.db import civic_db_connection, get_oldest_site, get_site_by_subdomain, upsert_site
+from clerk.fetcher import Fetcher, get_fetcher
 from clerk.queue import enqueue_job, generate_run_id
 from clerk.utils import assert_db_exists, pm
+from clerk.workers import ocr_document_job, queue_ocr
 
 
 @click.group()
@@ -174,7 +176,7 @@ def new(ctx):
             all_years=True,
             all_agendas=all_agendas,
             ocr_backend=ctx.obj.get("OCR_BACKEND"),
-            proceed=ctx.obj.get("PROCEED")
+            proceed=ctx.obj.get("PROCEED"),
         )
     else:
         enqueue_job(
@@ -184,24 +186,28 @@ def new(ctx):
             all_years=True,
             all_agendas=all_agendas,
             ocr_backend=ctx.obj.get("OCR_BACKEND"),
-            proceed=ctx.obj.get("PROCEED")
+            proceed=ctx.obj.get("PROCEED"),
         )
     pm.hook.post_create(subdomain=subdomain)
 
 
-# @etl.command()
-# @click.pass_context
-# def fetch(ctx):
-#     if subdomain := ctx.obj.get("SUBDOMAIN"):
-#         if ctx.obj.get("FETCH_LOCAL"):
-#             from .workers import fetch_site_job
-
-#             fetch_site_job(subdomain, run_id=generate_run_id(subdomain), **job_kwargs)
-
-
 @etl.command()
-def ocr(subdomain, path=""):
-    pass
+@click.option(
+    "--pdf-path",
+    default="",
+    type=click.Path(exists=True),
+    help="Single PDF path to pass to test OCR",
+)
+@click.pass_context
+def ocr(ctx, pdf_path):
+    subdomain: str = ctx.obj.get("SUBDOMAIN")
+    proceed = ctx.obj.get("PROCEED")
+    if not pdf_path:
+        from .queue import generate_run_id
 
-
-# @etl.command()
+        with civic_db_connection() as conn:
+            site = get_site_by_subdomain(conn, subdomain)
+        fetcher: Fetcher = get_fetcher(site)
+        queue_ocr(fetcher, generate_run_id(subdomain), "fetch", ctx.obj.get("OCR_BACKEND"), proceed)
+    else:
+        ocr_document_job(subdomain, pdf_path, ctx.obj.get("OCR_BACKEND"), proceed)

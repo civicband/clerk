@@ -204,16 +204,6 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-dev = [
-    { name = "faker" },
-    { name = "mypy" },
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "pytest-click" },
-    { name = "pytest-cov" },
-    { name = "pytest-mock" },
-    { name = "ruff" },
-]
 extraction = [
     { name = "numpy" },
     { name = "spacy" },
@@ -231,6 +221,14 @@ vision = [
 [package.dev-dependencies]
 dev = [
     { name = "basedpyright" },
+    { name = "faker" },
+    { name = "mypy" },
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-click" },
+    { name = "pytest-cov" },
+    { name = "pytest-mock" },
+    { name = "ruff" },
 ]
 
 [package.metadata]
@@ -238,36 +236,38 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.13.0" },
     { name = "beautifulsoup4", specifier = ">=4.12.0" },
     { name = "click", specifier = ">=8.1.8" },
-    { name = "faker", marker = "extra == 'dev'", specifier = ">=20.0.0" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.7.0" },
     { name = "numpy", marker = "extra == 'extraction'", specifier = "<2" },
     { name = "pdf2image", marker = "extra == 'pdf'", specifier = ">=1.16.0" },
     { name = "pdfkit", marker = "extra == 'pdf'", specifier = ">=1.0.0" },
     { name = "pluggy", specifier = ">=1.5.0" },
-    { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.5.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.0" },
     { name = "pyobjc-framework-quartz", marker = "extra == 'vision'", specifier = ">=10.0" },
     { name = "pyobjc-framework-vision", marker = "extra == 'vision'", specifier = ">=10.0" },
     { name = "pypdf", marker = "extra == 'pdf'", specifier = ">=4.0.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4.0" },
-    { name = "pytest-click", marker = "extra == 'dev'", specifier = ">=1.1.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1.0" },
-    { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.12.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "python-logging-loki", specifier = ">=0.3.1" },
     { name = "redis", specifier = ">=5.0.0,<8.0.0" },
     { name = "rq", specifier = ">=2.6.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
     { name = "sentry-sdk", specifier = ">=2.0.0" },
     { name = "spacy", marker = "extra == 'extraction'", specifier = ">=3.5.0" },
     { name = "sqlalchemy", specifier = ">=2.0.0" },
     { name = "sqlite-utils", specifier = ">=3.38" },
 ]
-provides-extras = ["pdf", "extraction", "vision", "dev"]
+provides-extras = ["pdf", "extraction", "vision"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "basedpyright", specifier = ">=1.38.1" }]
+dev = [
+    { name = "basedpyright", specifier = ">=1.38.1" },
+    { name = "faker", specifier = ">=20.0.0" },
+    { name = "mypy", specifier = ">=1.7.0" },
+    { name = "pre-commit", specifier = ">=3.5.0" },
+    { name = "pytest", specifier = ">=7.4.0" },
+    { name = "pytest-click", specifier = ">=1.1.0" },
+    { name = "pytest-cov", specifier = ">=4.1.0" },
+    { name = "pytest-mock", specifier = ">=3.12.0" },
+    { name = "ruff", specifier = ">=0.1.0" },
+]
 
 [[package]]
 name = "click"

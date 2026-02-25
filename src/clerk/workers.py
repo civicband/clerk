@@ -12,7 +12,7 @@ from rq.utils import parse_timeout
 from sqlalchemy import select, update
 
 from .db import civic_db_connection, get_site_by_subdomain, update_site
-from .fetcher import Fetcher
+from .fetcher import Fetcher, get_fetcher
 from .models import sites_table
 from .output import log as output_log
 from .pipeline_state import (
@@ -86,7 +86,7 @@ def fetch_site_job(
         all_agendas: Fetch all agendas (default: False)
         ocr_backend: OCR backend to use (tesseract or vision). Defaults to DEFAULT_OCR_BACKEND env var.
     """
-    from .cli import fetch_internal, get_fetcher
+    from .cli import fetch_internal
 
     stage = "fetch"
     start_time = time.time()
@@ -125,7 +125,9 @@ def fetch_site_job(
             # Update progress to fetch stage
             with civic_db_connection() as conn:
                 create_site_progress(conn, subdomain, "fetch")
-            log_with_context("Created fetch progress", subdomain=subdomain, run_id=run_id, stage=stage)
+            log_with_context(
+                "Created fetch progress", subdomain=subdomain, run_id=run_id, stage=stage
+            )
 
             # Perform fetch using existing logic
             log_with_context("Starting PDF fetch", subdomain=subdomain, run_id=run_id, stage=stage)
@@ -134,7 +136,7 @@ def fetch_site_job(
 
         pdf_file_count = 0
         if proceed:
-            pdf_file_count = queue_ocr(fetcher, run_id, stage, ocr_backend)
+            pdf_file_count = queue_ocr(fetcher, run_id, stage, ocr_backend, proceed)
 
         duration = time.time() - start_time
         log_with_context(
@@ -162,8 +164,9 @@ def fetch_site_job(
         raise
 
 
-def queue_ocr(fetcher, run_id, stage, ocr_backend) -> int:
+def queue_ocr(fetcher, run_id, stage, ocr_backend, proceed=True) -> int:
     from .queue import get_ocr_queue
+
     pdf_files = []
 
     minutes_dir: Path = Path(fetcher.minutes_output_dir)
@@ -266,6 +269,7 @@ def queue_ocr(fetcher, run_id, stage, ocr_backend) -> int:
             "pdf_path": str(pdf_path),
             "backend": ocr_backend,
             "run_id": run_id,
+            "proceed": proceed,
         }
         job_data = ocr_queue.prepare_data(
             ocr_document_job,
@@ -317,7 +321,8 @@ def queue_ocr(fetcher, run_id, stage, ocr_backend) -> int:
             level="warning",
         )
         # Immediately try to enqueue coordinator since (0 completed + 0 failed) == 0 total
-        _attempt_coordinator_enqueue(fetcher.subdomain, "ocr", run_id)
+        if proceed:
+            _attempt_coordinator_enqueue(fetcher.subdomain, "ocr", run_id)
 
     return len(pdf_files)
 
@@ -379,7 +384,7 @@ def _attempt_coordinator_enqueue(subdomain, stage, run_id):
             )
 
 
-def ocr_document_job(subdomain, pdf_path, backend="tesseract", run_id=None):
+def ocr_document_job(subdomain, pdf_path, backend="tesseract", run_id=None, proceed=True):
     """RQ job: OCR a single PDF page using atomic counters.
 
     Args:
@@ -400,8 +405,6 @@ def ocr_document_job(subdomain, pdf_path, backend="tesseract", run_id=None):
 
     try:
         from rq import get_current_job
-
-        from .cli import get_fetcher
 
         print("[EARLY] imports successful", file=sys.stderr)
         sys.stderr.flush()
@@ -528,8 +531,9 @@ def ocr_document_job(subdomain, pdf_path, backend="tesseract", run_id=None):
             )
             logger.debug("Incremented failed counter for subdomain=%s", subdomain)
 
-        # Attempt to enqueue coordinator (if all jobs done)
-        _attempt_coordinator_enqueue(subdomain, stage, run_id)
+        if proceed:
+            # Attempt to enqueue coordinator (if all jobs done)
+            _attempt_coordinator_enqueue(subdomain, stage, run_id)
 
     except Exception as e:
         duration = time.time() - start_time
@@ -556,8 +560,9 @@ def ocr_document_job(subdomain, pdf_path, backend="tesseract", run_id=None):
         )
         logger.debug("Incremented failed counter for setup error, subdomain=%s", subdomain)
 
-        # Attempt to enqueue coordinator (if all jobs done)
-        _attempt_coordinator_enqueue(subdomain, stage, run_id)
+        if proceed:
+            # Attempt to enqueue coordinator (if all jobs done)
+            _attempt_coordinator_enqueue(subdomain, stage, run_id)
 
         # Don't re-raise - we've already tracked the failure
         # This prevents RQ from marking the job as failed

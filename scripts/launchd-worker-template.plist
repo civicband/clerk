@@ -18,6 +18,10 @@
         <string>{{REDIS_URL}}</string>
         <key>DATABASE_URL</key>
         <string>{{DATABASE_URL}}</string>
+        <key>FASTLY_ACCESS_KEY_ID</key>
+        <string>{{FASTLY_ACCESS_KEY_ID}}</string>
+        <key>FASTLY_SECRET_ACCESS_KEY</key>
+        <string>{{FASTLY_SECRET_ACCESS_KEY}}</string>
         <key>STORAGE_DIR</key>
         <string>{{STORAGE_DIR}}</string>
         <key>DEFAULT_OCR_BACKEND</key>

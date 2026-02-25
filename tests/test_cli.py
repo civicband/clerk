@@ -10,10 +10,10 @@ from click.testing import CliRunner
 from clerk.cli import (
     cli,
     fetch_internal,
-    get_fetcher,
     rebuild_site_fts_internal,
     update_page_count,
 )
+from clerk.fetcher import get_fetcher
 from clerk.utils import (
     build_db_from_text_internal,
     build_table_from_text,
@@ -361,8 +361,9 @@ class TestGetFetcher:
         self, sample_site_data, mock_plugin_manager, monkeypatch, cli_module
     ):
         """Test getting a fetcher class from a plugin."""
-        # pm is imported from clerk.utils into clerk.cli, so we patch it there
-        monkeypatch.setattr(cli_module, "pm", mock_plugin_manager)
+        # pm is imported from clerk.utils into clerk.fetcher, so we patch it there
+        import clerk.fetcher as fetcher_module
+        monkeypatch.setattr(fetcher_module, "pm", mock_plugin_manager)
 
         sample_site_data["scraper"] = "test_scraper"
         fetcher = get_fetcher(sample_site_data, all_years=False, all_agendas=False)

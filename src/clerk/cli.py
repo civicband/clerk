@@ -347,31 +347,6 @@ def update(subdomain, next_site, all_years, skip_fetch, all_agendas, fetch_local
     raise click.UsageError("Must specify --subdomain or --next-site")
 
 
-def get_fetcher(site, all_years=False, all_agendas=False) -> Fetcher:  # type: ignore
-    start_year = site["start_year"]
-    fetcher_class = None
-    try:
-        start_year = datetime.datetime.strptime(site["last_updated"], "%Y-%m-%dT%H:%M:%S").year
-    except TypeError:
-        start_year = site["start_year"]
-    if all_years:
-        start_year = site["start_year"]
-    fetcher_class = pm.hook.fetcher_class(label=site["scraper"])
-
-    fetcher_class = list(filter(None, fetcher_class))
-    if len(fetcher_class):
-        fetcher_class = fetcher_class[0]
-
-    if fetcher_class:
-        return fetcher_class(site, start_year, all_agendas)  # type: ignore[no-any-return, operator]  # pyright: ignore[reportCallIssue]
-    if site["scraper"] == "custom":
-        import importlib
-
-        module_path = f"fetchers.custom.{site['subdomain'].replace('.', '_')}"
-        fetcher = importlib.import_module(module_path)
-        return fetcher.custom_fetcher(site, start_year, all_agendas)  # type: ignore[no-any-return]
-
-
 def fetch_internal(subdomain: str, fetcher: Fetcher):
     from .db import civic_db_connection, update_site
 

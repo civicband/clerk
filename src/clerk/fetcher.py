@@ -476,7 +476,7 @@ class Fetcher:
                     meeting=meeting,
                     output_path=output_path,
                 )
-            except:
+            except Exception:
                 output_log(
                     f"pdfkit HTML->PDF error for {url}",
                     subdomain=self.subdomain,
@@ -517,7 +517,7 @@ class Fetcher:
         else:
             # Direct validation (for tests)
             try:
-                PdfReader(output_path)
+                PdfReader(output_path)  # pyright: ignore[reportOptionalCall]
             except PdfReadError:
                 output_log(
                     f"PDF downloaded from {url} errored on read, removing {output_path}",
@@ -841,8 +841,8 @@ class Fetcher:
             RuntimeError: If Vision Framework unavailable or processing fails
         """
         try:
-            import Quartz
-            import Vision
+            import Quartz  # pyright: ignore[reportMissingImports]
+            import Vision  # pyright: ignore[reportMissingImports]
         except ImportError as e:
             raise RuntimeError(
                 "Vision Framework requires pyobjc-framework-Vision. "
@@ -998,7 +998,7 @@ class Fetcher:
             else:
                 # Direct call (for tests or when subprocess isolation is disabled)
                 try:
-                    reader = PdfReader(doc_path)
+                    reader = PdfReader(doc_path)  # pyright: ignore[reportOptionalCall]
                     total_pages = len(reader.pages)
                     success = True
                     error_msg = None
@@ -1096,7 +1096,7 @@ class Fetcher:
                     # Direct call (for tests or when subprocess isolation is disabled)
                     try:
                         with tempfile.TemporaryDirectory() as temp_path:
-                            pages = convert_from_path(
+                            pages = convert_from_path(  # pyright: ignore[reportOptionalCall]
                                 doc_path,
                                 fmt="png",
                                 size=(1276, 1648),
@@ -1313,3 +1313,28 @@ class Fetcher:
     def fetch_events(self) -> None:
         """Subclasses must override this to fetch meeting data."""
         raise NotImplementedError("Subclasses must implement fetch_events()")
+
+
+def get_fetcher(site, all_years=False, all_agendas=False) -> Fetcher:  # type: ignore
+    start_year = site["start_year"]
+    fetcher_class = None
+    try:
+        start_year = datetime.strptime(site["last_updated"], "%Y-%m-%dT%H:%M:%S").year
+    except TypeError:
+        start_year = site["start_year"]
+    if all_years:
+        start_year = site["start_year"]
+    fetcher_class = pm.hook.fetcher_class(label=site["scraper"])
+
+    fetcher_class = list(filter(None, fetcher_class))
+    if len(fetcher_class):
+        fetcher_class = fetcher_class[0]
+
+    if fetcher_class:
+        return fetcher_class(site, start_year, all_agendas)  # type: ignore[no-any-return, operator]  # pyright: ignore[reportCallIssue]
+    if site["scraper"] == "custom":
+        import importlib
+
+        module_path = f"fetchers.custom.{site['subdomain'].replace('.', '_')}"
+        fetcher = importlib.import_module(module_path)
+        return fetcher.custom_fetcher(site, start_year, all_agendas)  # type: ignore[no-any-return]
