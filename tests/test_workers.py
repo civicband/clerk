@@ -168,8 +168,9 @@ def test_fetch_site_job_accepts_run_id_parameter(mocker):
         "clerk.workers.get_site_by_subdomain", return_value={"subdomain": "test", "scraper": "test"}
     )
     mocker.patch("clerk.workers.create_site_progress")
-    mocker.patch("clerk.cli.get_fetcher")
+    mocker.patch("clerk.workers.get_fetcher")
     mocker.patch("clerk.cli.fetch_internal")
+    mocker.patch("clerk.workers.queue_ocr", return_value=0)
     mocker.patch("clerk.workers.Path")
     mocker.patch("clerk.queue.get_ocr_queue")
     mocker.patch("clerk.queue.get_compilation_queue")
@@ -192,8 +193,9 @@ def test_fetch_site_job_logs_fetch_started_milestone(mocker):
         "clerk.workers.get_site_by_subdomain", return_value={"subdomain": "test", "scraper": "test"}
     )
     mocker.patch("clerk.workers.create_site_progress")
-    mocker.patch("clerk.cli.get_fetcher")
+    mocker.patch("clerk.workers.get_fetcher")
     mocker.patch("clerk.cli.fetch_internal")
+    mocker.patch("clerk.workers.queue_ocr", return_value=0)
     mocker.patch("clerk.workers.Path")
     mocker.patch("clerk.queue.get_ocr_queue")
     mocker.patch("clerk.queue.get_compilation_queue")
@@ -219,10 +221,11 @@ def test_fetch_site_job_logs_fetch_completed_with_metrics(mocker):
         "clerk.workers.get_site_by_subdomain", return_value={"subdomain": "test", "scraper": "test"}
     )
     mocker.patch("clerk.workers.create_site_progress")
-    mocker.patch("clerk.cli.get_fetcher")
+    mocker.patch("clerk.workers.get_fetcher")
     mocker.patch("clerk.cli.fetch_internal")
     mocker.patch("clerk.workers.update_site_progress")
     mocker.patch("clerk.workers.track_job")
+    mocker.patch("clerk.workers.queue_ocr", return_value=0)
 
     # Mock Path to return no PDFs (simplest case)
     mock_path_class = mocker.patch("clerk.workers.Path")
@@ -258,9 +261,10 @@ def test_fetch_site_job_passes_run_id_to_ocr_jobs(mocker):
     mocker.patch("clerk.workers.create_site_progress")
     mocker.patch("clerk.workers.update_site_progress")
     mocker.patch("clerk.workers.track_job")
-    mocker.patch("clerk.cli.get_fetcher")
+    mocker.patch("clerk.workers.get_fetcher")
     mocker.patch("clerk.cli.fetch_internal")
     mocker.patch("clerk.workers.log_with_context")
+    mocker.patch("clerk.workers.initialize_stage")
 
     # Mock Path to return some PDFs
     mock_pdf = mocker.MagicMock()
@@ -416,7 +420,7 @@ def test_ocr_document_job_accepts_run_id_parameter(mocker):
     mocker.patch("clerk.workers.civic_db_connection")
     mocker.patch("clerk.workers.get_site_by_subdomain", return_value={"subdomain": "test"})
     mock_fetcher = mocker.MagicMock()
-    mocker.patch("clerk.cli.get_fetcher", return_value=mock_fetcher)
+    mocker.patch("clerk.workers.get_fetcher", return_value=mock_fetcher)
     mocker.patch("clerk.workers.increment_stage_progress")
     mock_log = mocker.patch("clerk.workers.log_with_context")
 
@@ -432,7 +436,7 @@ def test_ocr_document_job_logs_with_stage_ocr(mocker):
     mocker.patch("clerk.workers.civic_db_connection")
     mocker.patch("clerk.workers.get_site_by_subdomain", return_value={"subdomain": "test"})
     mock_fetcher = mocker.MagicMock()
-    mocker.patch("clerk.cli.get_fetcher", return_value=mock_fetcher)
+    mocker.patch("clerk.workers.get_fetcher", return_value=mock_fetcher)
     mocker.patch("clerk.workers.increment_stage_progress")
     mock_log = mocker.patch("clerk.workers.log_with_context")
 
@@ -506,7 +510,7 @@ def test_ocr_job_updates_counters_on_success(mocker):
     mocker.patch("clerk.workers.civic_db_connection")
     mocker.patch("clerk.workers.get_site_by_subdomain", return_value={"subdomain": "test"})
     mock_fetcher = mocker.MagicMock()
-    mocker.patch("clerk.cli.get_fetcher", return_value=mock_fetcher)
+    mocker.patch("clerk.workers.get_fetcher", return_value=mock_fetcher)
     mocker.patch("clerk.workers.log_with_context")
 
     # Mock atomic counter functions
@@ -539,7 +543,7 @@ def test_ocr_job_updates_counters_on_failure(mocker):
     # Mock fetcher to raise an error
     mock_fetcher = mocker.MagicMock()
     mock_fetcher.do_ocr_job.side_effect = RuntimeError("OCR processing failed")
-    mocker.patch("clerk.cli.get_fetcher", return_value=mock_fetcher)
+    mocker.patch("clerk.workers.get_fetcher", return_value=mock_fetcher)
     mocker.patch("clerk.workers.log_with_context")
 
     # Mock atomic counter functions

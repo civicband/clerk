@@ -155,6 +155,9 @@ class Settings:
         self.DEFAULT_OCR_BACKEND: str = get_env("DEFAULT_OCR_BACKEND", "tesseract")
         self.OCR_JOB_TIMEOUT: str = get_env("OCR_JOB_TIMEOUT", "20m")
 
+        self.FASTLY_ACCESS_KEY_ID: str | None = get_env("FASTLY_ACCESS_KEY_ID")
+        self.FASTLY_SECRET_ACCESS_KEY: str | None = get_env("FASTLY_SECRET_ACCESS_KEY")
+
         # Worker Configuration
         self.FETCH_WORKERS: int = get_env_int("FETCH_WORKERS", 2) or 2
         self.OCR_WORKERS: int = get_env_int("OCR_WORKERS", 4) or 4

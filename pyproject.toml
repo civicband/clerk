@@ -21,9 +21,21 @@ dependencies = [
     "sentry-sdk>=2.0.0",
 ]
 
+[dependency-groups]
+dev = [
+    "basedpyright>=1.38.1",
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
+    "pytest-click>=1.1.0",
+    "ruff>=0.1.0",
+    "mypy>=1.7.0",
+    "pre-commit>=3.5.0",
+    "faker>=20.0.0",
+]
+
 [project.optional-dependencies]
 pdf = [
-    "weasyprint>=60.0",
     "pdfkit>=1.0.0",
     "pdf2image>=1.16.0",
     "pypdf>=4.0.0",
@@ -118,3 +130,4 @@ files = ["src/clerk"]
 [[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
+

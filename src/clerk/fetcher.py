@@ -20,7 +20,6 @@ from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
-from xml.etree.ElementTree import ParseError
 
 import httpx
 import sqlite_utils
@@ -45,7 +44,6 @@ try:
     from pdf2image import convert_from_path
     from pypdf import PdfReader
     from pypdf.errors import PdfReadError
-    from weasyprint import HTML
 
     PDF_SUPPORT = True
 except ImportError:
@@ -470,15 +468,6 @@ class Fetcher:
                 output_path=output_path,
             )
             try:
-                HTML(string=doc_response.content).write_pdf(output_path)  # type: ignore
-            except ParseError:
-                output_log(
-                    f"WeasyPrint HTML->PDF error for {url}, trying pdfkit",
-                    subdomain=self.subdomain,
-                    level="warning",
-                    url=url,
-                    meeting=meeting,
-                )
                 pdfkit.from_string(doc_response.content, output_path)  # type: ignore
                 output_log(
                     "Wrote file using pdfkit",
@@ -486,6 +475,14 @@ class Fetcher:
                     operation="pdfkit_conversion",
                     meeting=meeting,
                     output_path=output_path,
+                )
+            except Exception:
+                output_log(
+                    f"pdfkit HTML->PDF error for {url}",
+                    subdomain=self.subdomain,
+                    level="warning",
+                    url=url,
+                    meeting=meeting,
                 )
         else:
             try:
@@ -520,7 +517,7 @@ class Fetcher:
         else:
             # Direct validation (for tests)
             try:
-                PdfReader(output_path)
+                PdfReader(output_path)  # pyright: ignore[reportOptionalCall]
             except PdfReadError:
                 output_log(
                     f"PDF downloaded from {url} errored on read, removing {output_path}",
@@ -844,8 +841,8 @@ class Fetcher:
             RuntimeError: If Vision Framework unavailable or processing fails
         """
         try:
-            import Quartz
-            import Vision
+            import Quartz  # pyright: ignore[reportMissingImports]
+            import Vision  # pyright: ignore[reportMissingImports]
         except ImportError as e:
             raise RuntimeError(
                 "Vision Framework requires pyobjc-framework-Vision. "
@@ -1001,7 +998,7 @@ class Fetcher:
             else:
                 # Direct call (for tests or when subprocess isolation is disabled)
                 try:
-                    reader = PdfReader(doc_path)
+                    reader = PdfReader(doc_path)  # pyright: ignore[reportOptionalCall]
                     total_pages = len(reader.pages)
                     success = True
                     error_msg = None
@@ -1095,11 +1092,11 @@ class Fetcher:
                         prefix,
                         timeout=PDF_CONVERT_TIMEOUT,
                     )
-                else:
+                elif PDF_SUPPORT:
                     # Direct call (for tests or when subprocess isolation is disabled)
                     try:
                         with tempfile.TemporaryDirectory() as temp_path:
-                            pages = convert_from_path(
+                            pages = convert_from_path(  # pyright: ignore[reportOptionalCall]
                                 doc_path,
                                 fmt="png",
                                 size=(1276, 1648),
@@ -1316,3 +1313,28 @@ class Fetcher:
     def fetch_events(self) -> None:
         """Subclasses must override this to fetch meeting data."""
         raise NotImplementedError("Subclasses must implement fetch_events()")
+
+
+def get_fetcher(site, all_years=False, all_agendas=False) -> Fetcher:  # type: ignore
+    start_year = site["start_year"]
+    fetcher_class = None
+    try:
+        start_year = datetime.strptime(site["last_updated"], "%Y-%m-%dT%H:%M:%S").year
+    except TypeError:
+        start_year = site["start_year"]
+    if all_years:
+        start_year = site["start_year"]
+    fetcher_class = pm.hook.fetcher_class(label=site["scraper"])
+
+    fetcher_class = list(filter(None, fetcher_class))
+    if len(fetcher_class):
+        fetcher_class = fetcher_class[0]
+
+    if fetcher_class:
+        return fetcher_class(site, start_year, all_agendas)  # type: ignore[no-any-return, operator]  # pyright: ignore[reportCallIssue]
+    if site["scraper"] == "custom":
+        import importlib
+
+        module_path = f"fetchers.custom.{site['subdomain'].replace('.', '_')}"
+        fetcher = importlib.import_module(module_path)
+        return fetcher.custom_fetcher(site, start_year, all_agendas)  # type: ignore[no-any-return]

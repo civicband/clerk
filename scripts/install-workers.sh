@@ -66,6 +66,8 @@ LOKI_URL="${LOKI_URL:-}"  # Optional - empty string if not set
 SENTRY_DSN="${SENTRY_DSN:-}"  # Optional - empty string if not set
 SENTRY_ENVIRONMENT="${SENTRY_ENVIRONMENT:-production}"
 SENTRY_TRACES_SAMPLE_RATE="${SENTRY_TRACES_SAMPLE_RATE:-0.0}"
+FASTLY_ACCESS_KEY_ID="${FASTLY_ACCESS_KEY_ID}"
+FASTLY_SECRET_ACCESS_KEY="${FASTLY_SECRET_ACCESS_KEY}"
 
 # Detect architecture and set PATH for Homebrew + system binaries
 # LaunchAgents run with minimal PATH, need to include Homebrew paths for tools like pdfinfo
@@ -125,6 +127,8 @@ echo "  SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT}"
 echo "  SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE}"
 echo "  PATH: ${PATH_VAR}"
 echo "  DYLD_LIBRARY_PATH: ${DYLD_LIBRARY_PATH_VAR}"
+echo "  FASTLY_ACCESS_KEY_ID: ${FASTLY_ACCESS_KEY_ID}"
+echo "  FASTLY_SECRET_ACCESS_KEY: ${FASTLY_SECRET_ACCESS_KEY}"
 echo ""
 echo "Worker counts:"
 echo "  FETCH_WORKERS: ${FETCH_WORKERS}"
@@ -161,6 +165,8 @@ create_worker() {
         sed "s|{{SENTRY_DSN}}|${SENTRY_DSN}|g" | \
         sed "s|{{SENTRY_ENVIRONMENT}}|${SENTRY_ENVIRONMENT}|g" | \
         sed "s|{{SENTRY_TRACES_SAMPLE_RATE}}|${SENTRY_TRACES_SAMPLE_RATE}|g" | \
+        sed "s|{{FASTLY_ACCESS_KEY_ID}}|${FASTLY_ACCESS_KEY_ID}|g" | \
+        sed "s|{{FASTLY_SECRET_ACCESS_KEY}}|${FASTLY_SECRET_ACCESS_KEY}|g" | \
         sed "s|{{LOG_DIR}}|${LOG_DIR}|g" \
         > "${plist_file}"
 

@@ -240,8 +240,10 @@ class TestPluginIntegration:
         test_plugin = TestPlugin()
         test_pm.register(test_plugin)
 
-        # Replace the global pm
-        monkeypatch.setattr(cli_module, "pm", test_pm)
+        # Replace the global pm in fetcher module where get_fetcher lives
+        import clerk.fetcher as fetcher_module
+
+        monkeypatch.setattr(fetcher_module, "pm", test_pm)
 
         # Create a site
         civic_db = sqlite_utils.Database("civic.db")
@@ -265,7 +267,7 @@ class TestPluginIntegration:
         )
 
         # Test that fetcher_class hook works
-        from clerk.cli import get_fetcher
+        from clerk.fetcher import get_fetcher
 
         site = civic_db["sites"].get("plugin-test.civic.band")
         fetcher = get_fetcher(site, all_years=False, all_agendas=False)

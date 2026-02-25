@@ -42,7 +42,7 @@ def get_nlp():
     _nlp_load_attempted = True
 
     try:
-        import spacy
+        import spacy  # pyright: ignore[reportMissingImports]
     except ImportError:
         output_log(
             "spaCy not installed - entity extraction disabled",
@@ -214,7 +214,7 @@ def _get_vote_matcher(nlp):
         return _vote_matcher
 
     try:
-        from spacy.matcher import Matcher
+        from spacy.matcher import Matcher  # pyright: ignore[reportMissingImports]
     except ImportError:
         return None
 
@@ -281,7 +281,7 @@ def _get_motion_matcher(nlp):
         return _motion_matcher
 
     try:
-        from spacy.matcher import DependencyMatcher
+        from spacy.matcher import DependencyMatcher  # pyright: ignore[reportMissingImports]
     except ImportError:
         return None
 
@@ -335,7 +335,7 @@ def _get_rollcall_matcher(nlp):
         return _rollcall_matcher
 
     try:
-        from spacy.matcher import Matcher
+        from spacy.matcher import Matcher  # pyright: ignore[reportMissingImports]
     except ImportError:
         return None
 
