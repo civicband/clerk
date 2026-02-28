@@ -450,7 +450,7 @@ def test_extraction_job_accepts_run_id(mocker):
     from clerk.workers import extraction_job
 
     mocker.patch("clerk.workers.civic_db_connection")
-    mocker.patch("clerk.cli.extract_entities_internal")
+    mocker.patch("clerk.cli.extract_entities_internal", create=True)
     mocker.patch("clerk.workers.update_site_progress")
     mocker.patch("clerk.workers.track_job")
 
@@ -478,7 +478,7 @@ def test_extraction_job_logs_extraction_started(mocker):
     from clerk.workers import extraction_job
 
     mocker.patch("clerk.workers.civic_db_connection")
-    mocker.patch("clerk.cli.extract_entities_internal")
+    mocker.patch("clerk.cli.extract_entities_internal", create=True)
     mocker.patch("clerk.workers.update_site_progress")
     mocker.patch("clerk.workers.track_job")
 
