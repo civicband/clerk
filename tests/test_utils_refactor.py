@@ -5,14 +5,11 @@ import json
 import pytest
 import sqlite_utils
 
-from clerk.extraction import EXTRACTION_ENABLED, create_meeting_context
 from clerk.utils import (
     PageFile,
-    batch_parse_with_spacy,
     collect_page_files,
     create_meetings_schema,
     group_pages_by_meeting_date,
-    process_page_for_db,
 )
 
 
@@ -125,80 +122,3 @@ def test_collect_page_files_empty(tmp_path):
     assert page_files == []
 
 
-@pytest.mark.skipif(not EXTRACTION_ENABLED, reason="Extraction not enabled")
-def test_batch_parse_with_spacy():
-    """Test batch parsing with spaCy."""
-    from clerk.extraction import get_nlp
-
-    # Skip if spaCy model not available
-    if get_nlp() is None:
-        pytest.skip("spaCy model not installed")
-
-    texts = ["This is a test.", "Another test sentence."]
-
-    docs = batch_parse_with_spacy(texts, "test.civic.band")
-
-    assert len(docs) == 2
-    assert docs[0] is not None
-    assert len(list(docs[0])) > 0  # Has tokens
-
-
-def test_batch_parse_with_spacy_extraction_disabled():
-    """Test batch parsing when extraction is disabled."""
-    import os
-
-    old_val = os.environ.get("ENABLE_EXTRACTION")
-    os.environ["ENABLE_EXTRACTION"] = "0"
-
-    try:
-        texts = ["Test"]
-        docs = batch_parse_with_spacy(texts, "test.civic.band")
-        assert all(doc is None for doc in docs)
-    finally:
-        if old_val:
-            os.environ["ENABLE_EXTRACTION"] = old_val
-        else:
-            os.environ.pop("ENABLE_EXTRACTION", None)
-
-
-def test_batch_parse_with_spacy_empty():
-    """Test with empty text list."""
-    docs = batch_parse_with_spacy([], "test.civic.band")
-    assert docs == []
-
-
-def test_process_page_for_db():
-    """Test processing a page for database insertion."""
-    page_file = PageFile(
-        meeting="council",
-        date="2024-01-15",
-        page_num=1,
-        text="Mayor Smith called the meeting to order. Motion to approve passed 5-0.",
-        page_image_path="/council/2024-01-15/0001.png",
-    )
-
-    context = create_meeting_context()
-
-    # Process without doc (extraction disabled case)
-    entry = process_page_for_db(
-        page_file=page_file,
-        doc=None,
-        context=context,
-        subdomain="test.civic.band",
-        table_name="minutes",
-        municipality=None,
-    )
-
-    assert entry["meeting"] == "council"
-    assert entry["date"] == "2024-01-15"
-    assert entry["page"] == 1
-    assert entry["text"] == page_file.text
-    assert entry["page_image"] == "/council/2024-01-15/0001.png"
-    assert "id" in entry
-    assert len(entry["id"]) == 12  # Hash prefix
-
-    # Check entities/votes JSON (should be empty when extraction disabled)
-    entities = json.loads(entry["entities_json"])
-    votes = json.loads(entry["votes_json"])
-    assert "persons" in entities
-    assert "votes" in votes
