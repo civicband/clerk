@@ -491,14 +491,6 @@ class TestBuildDbFromTextInternal:
         monkeypatch.setattr(cli_module, "STORAGE_DIR", str(tmp_path))
         monkeypatch.setattr(utils_module, "STORAGE_DIR", str(tmp_path))
 
-        # Monkeypatch EXTRACTION_ENABLED directly (env var is read at import time)
-        import clerk.extraction
-
-        monkeypatch.setattr(clerk.extraction, "EXTRACTION_ENABLED", True)
-        # Also need to monkeypatch in utils module since it imports it
-        monkeypatch.setattr(utils_module, "EXTRACTION_ENABLED", True)
-
-        import clerk.utils
         from clerk.db import civic_db_connection, insert_site
         from clerk.utils import assert_db_exists
 
