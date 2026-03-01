@@ -569,11 +569,7 @@ def ocr_document_job(subdomain, pdf_path, backend="tesseract", run_id=None, proc
 
 
 def ocr_complete_coordinator(subdomain, run_id):
-    """RQ job: Runs after ALL OCR jobs complete, spawns two parallel paths.
-
-    This coordinator spawns:
-    1. Database compilation WITHOUT entity extraction (fast path) - to compilation queue
-    2. Entity extraction job (which spawns db compilation WITH entities after) - to extraction queue
+    """RQ job: Runs after ALL OCR jobs complete, spawns database compilation.
 
     Args:
         subdomain: Site subdomain
@@ -667,7 +663,6 @@ def ocr_complete_coordinator(subdomain, run_id):
                 .values(
                     current_stage="compilation",
                     compilation_total=1,
-                    extraction_total=1,
                     coordinator_enqueued=False,  # Reset flag for next stage
                     updated_at=datetime.now(UTC),
                 )
@@ -691,49 +686,25 @@ def ocr_complete_coordinator(subdomain, run_id):
         )
 
         compilation_queue = get_compilation_queue()
-        # extraction_queue = get_extraction_queue()
 
-        # Path 1: Database compilation WITHOUT entity extraction (fast path) - core pipeline
         db_job = compilation_queue.enqueue(
             db_compilation_job,
             subdomain=subdomain,
             run_id=run_id,
-            extract_entities=False,
             job_timeout="30m",
-            description=f"DB compilation (no entities): {subdomain}",
+            description=f"DB compilation: {subdomain}",
         )
 
         # Track in PostgreSQL
         with civic_db_connection() as conn:
-            track_job(conn, db_job.id, subdomain, "db-compilation-no-entities", "compilation")
+            track_job(conn, db_job.id, subdomain, "db-compilation", "compilation")
         log_with_context(
-            "Enqueued DB compilation job (no entities)",
+            "Enqueued DB compilation job",
             subdomain=subdomain,
             run_id=run_id,
             stage=stage,
             job_id=db_job.id,
-            extract_entities=False,
         )
-
-        # Path 2: Entity extraction job (which will spawn db compilation WITH entities)
-        # extract_job = extraction_queue.enqueue(
-        #     extraction_job,
-        #     subdomain=subdomain,
-        #     run_id=run_id,
-        #     job_timeout="2h",
-        #     description=f"Extract entities: {subdomain}",
-        # )
-
-        # Track in PostgreSQL
-        # with civic_db_connection() as conn:
-        #     track_job(conn, extract_job.id, subdomain, "extract-site", "extraction")
-        # log_with_context(
-        #     "Enqueued entity extraction job",
-        #     subdomain=subdomain,
-        #     run_id=run_id,
-        #     stage=stage,
-        #     job_id=extract_job.id,
-        # )
 
         duration = time.time() - start_time
         log_with_context(
@@ -760,14 +731,12 @@ def ocr_complete_coordinator(subdomain, run_id):
         raise
 
 
-def db_compilation_job(subdomain, run_id=None, extract_entities=False, ignore_cache=False):
+def db_compilation_job(subdomain, run_id=None):
     """RQ job: Compile database from text files.
 
     Args:
         subdomain: Site subdomain
         run_id: Pipeline run identifier (optional for backward compatibility)
-        extract_entities: Whether to include entity extraction (default: False)
-        ignore_cache: Whether to ignore cache (default: False)
     """
     from .queue import get_deploy_queue
     from .utils import build_db_from_text_internal
@@ -781,8 +750,6 @@ def db_compilation_job(subdomain, run_id=None, extract_entities=False, ignore_ca
         subdomain=subdomain,
         run_id=run_id,
         stage=stage,
-        extract_entities=extract_entities,
-        ignore_cache=ignore_cache,
     )
 
     try:
@@ -815,12 +782,9 @@ def db_compilation_job(subdomain, run_id=None, extract_entities=False, ignore_ca
             subdomain=subdomain,
             run_id=run_id,
             stage=stage,
-            extract_entities=extract_entities,
             text_file_count=len(txt_files),
         )
-        build_db_from_text_internal(
-            subdomain, extract_entities=extract_entities, ignore_cache=ignore_cache
-        )
+        build_db_from_text_internal(subdomain)
 
         # Verify meetings.db was created
         import sqlite_utils
@@ -844,7 +808,6 @@ def db_compilation_job(subdomain, run_id=None, extract_entities=False, ignore_ca
             subdomain=subdomain,
             run_id=run_id,
             stage=stage,
-            extract_entities=extract_entities,
             tables_created=table_count,
             db_size_bytes=os.path.getsize(meetings_db_path),
         )
@@ -941,7 +904,6 @@ def db_compilation_job(subdomain, run_id=None, extract_entities=False, ignore_ca
             subdomain=subdomain,
             run_id=run_id,
             stage=stage,
-            extract_entities=extract_entities,
             duration_seconds=round(duration, 2),
             text_file_count=len(txt_files),
         )
@@ -950,124 +912,6 @@ def db_compilation_job(subdomain, run_id=None, extract_entities=False, ignore_ca
         duration = time.time() - start_time
         log_with_context(
             f"compilation_failed: {e}",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
-            level="error",
-            duration_seconds=round(duration, 2),
-            extract_entities=extract_entities,
-            error_type=type(e).__name__,
-            error_message=str(e),
-            traceback=traceback.format_exc(),
-        )
-        raise
-
-
-def extraction_job(subdomain, run_id, extract_entities=True, ignore_cache=False):
-    """RQ job: Extract entities from text files.
-
-    Args:
-        subdomain: Site subdomain
-        run_id: Pipeline run identifier
-        extract_entities: Whether to extract entities (default: True)
-        ignore_cache: Whether to ignore cached entities (default: False)
-    """
-    from .cli import extract_entities_internal
-    from .queue import get_compilation_queue
-
-    stage = "extraction"
-    start_time = time.time()
-
-    log_with_context(
-        "extraction_started",
-        subdomain=subdomain,
-        run_id=run_id,
-        stage=stage,
-        extract_entities=extract_entities,
-        ignore_cache=ignore_cache,
-    )
-
-    try:
-        # Count text files to process
-        storage_dir = get_env("STORAGE_DIR", "../sites")
-        txt_dir = Path(f"{storage_dir}/{subdomain}/txt")
-
-        if txt_dir.exists():
-            txt_files = list(txt_dir.glob("**/*.txt"))
-            log_with_context(
-                "Found text files for extraction",
-                subdomain=subdomain,
-                run_id=run_id,
-                stage=stage,
-                count=len(txt_files),
-                directory=str(txt_dir),
-            )
-        else:
-            txt_files = []
-            logger.warning(
-                "Text directory does not exist: %s for subdomain=%s",
-                txt_dir,
-                subdomain,
-            )
-
-        # Update progress
-        with civic_db_connection() as conn:
-            update_site_progress(conn, subdomain, stage="extraction", stage_total=len(txt_files))
-        logger.debug("Updated extraction progress with %d total files", len(txt_files))
-
-        # Extract entities (this caches them to disk)
-        if extract_entities:
-            log_with_context(
-                "Extracting entities",
-                subdomain=subdomain,
-                run_id=run_id,
-                stage=stage,
-                text_file_count=len(txt_files),
-            )
-            extract_entities_internal(subdomain)
-            log_with_context(
-                "Completed entity extraction", subdomain=subdomain, run_id=run_id, stage=stage
-            )
-        else:
-            log_with_context(
-                "Skipping entity extraction", subdomain=subdomain, run_id=run_id, stage=stage
-            )
-
-        # Spawn database compilation WITH entities (to compilation queue, may run on different machine)
-        compilation_queue = get_compilation_queue()
-        job = compilation_queue.enqueue(
-            db_compilation_job,
-            subdomain=subdomain,
-            run_id=run_id,
-            extract_entities=True,
-            job_timeout="30m",
-            description=f"DB compilation (with entities): {subdomain}",
-        )
-
-        # Track in PostgreSQL
-        with civic_db_connection() as conn:
-            track_job(conn, job.id, subdomain, "db-compilation-with-entities", "extraction")
-        log_with_context(
-            "Enqueued DB compilation job (with entities)",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
-            job_id=job.id,
-        )
-
-        duration = time.time() - start_time
-        log_with_context(
-            "extraction_completed",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
-            duration_seconds=round(duration, 2),
-        )
-
-    except Exception as e:
-        duration = time.time() - start_time
-        log_with_context(
-            f"extraction_failed: {e}",
             subdomain=subdomain,
             run_id=run_id,
             stage=stage,
