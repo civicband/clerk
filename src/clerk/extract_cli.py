@@ -7,16 +7,19 @@ Provides the `clerk extract` command group with subcommands:
 """
 
 import datetime
-import json
 import os
 
 import click
 
 from .extraction import (
     EXTRACTION_ENABLED,
-    extract_entities as _extract_entities,
-    extract_votes as _extract_votes,
     get_nlp,
+)
+from .extraction import (
+    extract_entities as _extract_entities,
+)
+from .extraction import (
+    extract_votes as _extract_votes,
 )
 from .output import log
 from .utils import (
@@ -166,7 +169,7 @@ def _run_extraction_for_site(subdomain, txt_dir, mode, rebuild):
         docs = [None] * len(texts_to_parse)
 
     # Phase 3: Extract and save cache for each page
-    for i, (idx, pf, existing_cache) in enumerate(pages_to_extract):
+    for i, (_, pf, existing_cache) in enumerate(pages_to_extract):
         doc = docs[i]
         cache_file = os.path.join(
             txt_dir, pf.meeting, pf.date, f"{pf.page_num:04d}.txt.extracted.json"

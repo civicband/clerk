@@ -1,7 +1,6 @@
 """Tests for clerk.extract_cli module."""
 
 import json
-import os
 from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner

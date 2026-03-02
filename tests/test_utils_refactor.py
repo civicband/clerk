@@ -1,8 +1,6 @@
 """Tests for refactored utility functions."""
 
-import json
 
-import pytest
 import sqlite_utils
 
 from clerk.utils import (
