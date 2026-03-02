@@ -10,7 +10,9 @@ import datetime
 import os
 
 import click
+from sqlalchemy import update
 
+from .db import civic_db_connection
 from .extraction import (
     EXTRACTION_ENABLED,
     get_nlp,
@@ -21,6 +23,7 @@ from .extraction import (
 from .extraction import (
     extract_votes as _extract_votes,
 )
+from .models import sites_table
 from .output import log
 from .utils import (
     collect_page_files,
@@ -107,7 +110,7 @@ def _run_extraction_for_site(subdomain, txt_dir, mode, rebuild):
             subdomain=subdomain,
             level="warning",
         )
-        return
+        return False
 
     # Collect all page files
     page_files = collect_page_files(txt_dir)
@@ -157,7 +160,7 @@ def _run_extraction_for_site(subdomain, txt_dir, mode, rebuild):
 
     if not pages_to_extract:
         log("All pages cached, nothing to extract", subdomain=subdomain)
-        return
+        return True
 
     # Phase 2: Batch parse uncached pages with spaCy
     nlp = get_nlp()
@@ -204,6 +207,34 @@ def _run_extraction_for_site(subdomain, txt_dir, mode, rebuild):
         f"Extraction complete: processed {len(pages_to_extract)} pages",
         subdomain=subdomain,
     )
+    return True
+
+
+def _update_extraction_status(subdomain, status):
+    """Update a site's extraction_status and last_extracted in the database."""
+    now = datetime.datetime.now().isoformat()
+    with civic_db_connection() as conn:
+        conn.execute(
+            update(sites_table)
+            .where(sites_table.c.subdomain == subdomain)
+            .values(
+                extraction_status=status,
+                last_extracted=now,
+            )
+        )
+
+
+def _run_extraction_with_status(subdomain, txt_dir, mode, rebuild):
+    """Run extraction for a site and update its DB status on completion."""
+    try:
+        ran = _run_extraction_for_site(
+            subdomain=subdomain, txt_dir=txt_dir, mode=mode, rebuild=rebuild
+        )
+        if ran:
+            _update_extraction_status(subdomain, "completed")
+    except Exception:
+        _update_extraction_status(subdomain, "failed")
+        raise
 
 
 @extract.command()
@@ -217,7 +248,9 @@ def entities(subdomain, next_site, rebuild):
     if not resolved:
         return
     txt_dir = os.path.join(STORAGE_DIR, resolved, "txt")
-    _run_extraction_for_site(subdomain=resolved, txt_dir=txt_dir, mode="entities", rebuild=rebuild)
+    _run_extraction_with_status(
+        subdomain=resolved, txt_dir=txt_dir, mode="entities", rebuild=rebuild
+    )
 
 
 @extract.command()
@@ -231,7 +264,7 @@ def votes(subdomain, next_site, rebuild):
     if not resolved:
         return
     txt_dir = os.path.join(STORAGE_DIR, resolved, "txt")
-    _run_extraction_for_site(subdomain=resolved, txt_dir=txt_dir, mode="votes", rebuild=rebuild)
+    _run_extraction_with_status(subdomain=resolved, txt_dir=txt_dir, mode="votes", rebuild=rebuild)
 
 
 @extract.command(name="all")
@@ -245,4 +278,4 @@ def all_(subdomain, next_site, rebuild):
     if not resolved:
         return
     txt_dir = os.path.join(STORAGE_DIR, resolved, "txt")
-    _run_extraction_for_site(subdomain=resolved, txt_dir=txt_dir, mode="all", rebuild=rebuild)
+    _run_extraction_with_status(subdomain=resolved, txt_dir=txt_dir, mode="all", rebuild=rebuild)
