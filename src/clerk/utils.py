@@ -133,6 +133,7 @@ def collect_page_files(txt_dir: str) -> list[PageFile]:
     if not os.path.exists(txt_dir):
         return page_files
 
+    logger.info("Started collecting page files")
     meetings = sorted(
         [
             d
@@ -142,6 +143,7 @@ def collect_page_files(txt_dir: str) -> list[PageFile]:
     )
 
     for meeting in meetings:
+        logger.info(f"Collecting for {meeting}")
         meeting_path = os.path.join(txt_dir, meeting)
         dates = sorted(
             [
