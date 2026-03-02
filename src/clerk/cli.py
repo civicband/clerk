@@ -29,6 +29,7 @@ from . import output
 from .db import civic_db_connection, db, get_site_by_subdomain, upsert_site
 from .debug import debug
 from .etl import etl
+from .extract_cli import extract
 from .fetcher import Fetcher
 from .output import log
 from .plugin_loader import load_plugins_from_directory, load_plugins_from_entry_points
@@ -382,31 +383,13 @@ def fetch_internal(subdomain: str, fetcher: Fetcher):
 
 
 @cli.command()
-@click.option(
-    "-s",
-    "--subdomain",
-)
-@click.option(
-    "--extract-entities",
-    is_flag=True,
-    default=False,
-    help="Extract entities for uncached pages (slower, ~20 min per site)",
-)
-@click.option(
-    "--ignore-cache",
-    is_flag=True,
-    help="Ignore cache and extract all pages (requires --extract-entities)",
-)
-def build_db_from_text(subdomain, extract_entities, ignore_cache=False):
+@click.option("-s", "--subdomain")
+def build_db_from_text(subdomain):
     """Build database from text files
 
-    By default, rebuilds database from text files using cached entity extractions.
-    Use --extract-entities to extract entities for uncached pages.
-    Use --ignore-cache with --extract-entities to re-extract all pages.
+    Rebuilds database from text files, including any cached entity extractions.
     """
-    build_db_from_text_internal(
-        subdomain, extract_entities=extract_entities, ignore_cache=ignore_cache
-    )
+    build_db_from_text_internal(subdomain)
     rebuild_site_fts_internal(subdomain)
 
 
@@ -465,115 +448,6 @@ def remove_all_image_dirs():
         agendas_image_dir = f"{STORAGE_DIR}/{subdomain}/_agendas/images"
         if os.path.exists(agendas_image_dir):
             shutil.rmtree(agendas_image_dir)
-
-
-@cli.command()
-@click.option("-s", "--subdomain")
-@click.option("-n", "--next-site", is_flag=True)
-def extract_entities(subdomain, next_site=False):
-    """Extract entities from site minutes using spaCy"""
-    extract_entities_internal(subdomain, next_site)
-
-
-def extract_entities_internal(subdomain, next_site=False):
-    """Internal implementation of extract-entities command"""
-    from sqlalchemy import text
-
-    from .db import civic_db_connection, get_site_by_subdomain, update_site
-
-    engine = assert_db_exists()
-
-    if next_site:
-        # Query for next site needing extraction
-        with engine.connect() as conn:
-            next_site_row = conn.execute(
-                text("""
-                SELECT subdomain FROM sites
-                WHERE extraction_status IN ('pending', 'failed')
-                ORDER BY last_extracted ASC NULLS FIRST
-                LIMIT 1
-            """)
-            ).fetchone()
-
-            if not next_site_row:
-                log("No sites need extraction")
-                return
-
-            subdomain = next_site_row[0]
-            log(f"Selected next site: {subdomain}")
-
-    if not subdomain:
-        log("Must specify --subdomain or --next-site", level="error")
-        return
-
-    # CRITICAL: Validate site exists (prevents path traversal)
-    try:
-        with civic_db_connection() as conn:
-            site = get_site_by_subdomain(conn, subdomain)
-    except Exception:
-        log(f"Site not found: {subdomain}", level="error")
-        return
-
-    if not site:
-        log(f"Site not found: {subdomain}", level="error")
-        return
-
-    # Check if extraction already in progress
-    with engine.connect() as conn:
-        num_in_progress = conn.execute(
-            text("SELECT COUNT(*) FROM sites WHERE extraction_status = 'in_progress'")
-        ).fetchone()[0]  # type: ignore
-
-    if num_in_progress > 0:
-        log("Extraction already in progress, exiting")
-        return
-
-    # Mark as in_progress
-    with civic_db_connection() as conn:
-        update_site(conn, subdomain, {"extraction_status": "in_progress"})
-
-    try:
-        # Run extraction - rebuild DB from text with entity extraction enabled
-        build_db_from_text_internal(subdomain, extract_entities=True, ignore_cache=False)
-        rebuild_site_fts_internal(subdomain)
-
-        # Mark extraction as completed BEFORE deployment
-        with civic_db_connection() as conn:
-            update_site(
-                conn,
-                subdomain,
-                {
-                    "extraction_status": "completed",
-                    "last_extracted": datetime.datetime.now().isoformat(),
-                },
-            )
-
-        log("Extraction completed successfully", subdomain=subdomain)
-
-        # Deploy unless in dev mode (separate error handling)
-        if not os.environ.get("CIVIC_DEV_MODE"):
-            try:
-                site_db = sqlite_utils.Database(f"{STORAGE_DIR}/{subdomain}/meetings.db")
-                pm.hook.deploy_municipality(
-                    subdomain=subdomain, municipality=site["name"], db=site_db
-                )
-                pm.hook.post_deploy(site=site)
-                log("Deployed updated database", subdomain=subdomain)
-            except Exception as deploy_error:
-                log(
-                    f"Deployment failed but extraction completed: {deploy_error}",
-                    subdomain=subdomain,
-                    level="error",
-                )
-                # Don't raise - extraction succeeded
-        else:
-            log("DEV MODE: Skipping deployment", subdomain=subdomain)
-
-    except Exception as e:
-        with civic_db_connection() as conn:
-            update_site(conn, subdomain, {"extraction_status": "failed"})
-        log(f"Extraction failed: {e}", subdomain=subdomain, level="error")
-        raise
 
 
 @cli.command()
@@ -2007,84 +1881,10 @@ def pipeline_status():
     click.echo("=" * 80)
 
 
-@cli.command()
-@click.option(
-    "--dry-run", is_flag=True, default=False, help="Show what would be done without making changes"
-)
-def fix_extraction_stage(dry_run):
-    """Fix sites stuck at 'extraction' stage but already deployed.
-
-    This fixes a bug where ocr_complete_coordinator set stage to 'extraction'
-    but deploy_job didn't update sites.current_stage to 'completed'.
-
-    Finds sites with current_stage='extraction' but status='deployed'
-    and updates their current_stage to 'completed'.
-
-    Examples:
-        # Preview what would be fixed
-        clerk fix-extraction-stage --dry-run
-
-        # Apply the fix
-        clerk fix-extraction-stage
-    """
-    from sqlalchemy import select, update
-
-    from .db import civic_db_connection
-    from .models import sites_table
-
-    click.echo("=" * 80)
-    click.echo("FIX: Sites stuck at 'extraction' stage but deployed")
-    click.echo("=" * 80)
-    click.echo()
-
-    if dry_run:
-        click.secho("DRY RUN MODE - no changes will be made", fg="yellow")
-        click.echo()
-
-    with civic_db_connection() as conn:
-        # Find sites stuck at extraction but actually deployed
-        stuck = conn.execute(
-            select(sites_table).where(
-                sites_table.c.current_stage == "extraction",
-                sites_table.c.status == "deployed",
-            )
-        ).fetchall()
-
-        click.echo(f"Found {len(stuck)} sites stuck at 'extraction' stage but deployed")
-        click.echo()
-
-        fixed = 0
-        for site in stuck:
-            subdomain = site.subdomain
-            status = site.status
-
-            click.echo(f"  {subdomain}: status={status}, current_stage=extraction → completed")
-
-            # Update current_stage to completed (skip in dry-run mode)
-            if not dry_run:
-                conn.execute(
-                    update(sites_table)
-                    .where(sites_table.c.subdomain == subdomain)
-                    .values(current_stage="completed")
-                )
-
-            fixed += 1
-
-        click.echo()
-        click.echo(f"{'Would fix' if dry_run else 'Fixed'} {fixed} sites")
-
-    if not dry_run:
-        click.echo()
-        click.secho("Migration complete!", fg="green")
-    else:
-        click.echo()
-        click.secho("Dry run complete - run without --dry-run to apply changes", fg="yellow")
-
-
 cli.add_command(new)
 cli.add_command(update)
 cli.add_command(remove_all_image_dirs)
-cli.add_command(extract_entities)
+cli.add_command(extract)
 cli.add_command(db)
 cli.add_command(debug)
 cli.add_command(etl)

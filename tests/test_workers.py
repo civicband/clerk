@@ -121,7 +121,7 @@ def test_db_compilation_job_accepts_run_id(mocker):
     )
     mock_log = mocker.patch("clerk.workers.log_with_context")
 
-    db_compilation_job("test.civic.band", run_id="test_123_abc", extract_entities=False)
+    db_compilation_job("test.civic.band", run_id="test_123_abc")
 
     assert any(call[1]["stage"] == "compilation" for call in mock_log.call_args_list)
 
@@ -152,7 +152,7 @@ def test_db_compilation_job_passes_run_id_to_deploy(mocker):
     mock_deploy_queue.enqueue.return_value = mock_deploy_job
     mocker.patch("clerk.queue.get_deploy_queue", return_value=mock_deploy_queue)
 
-    db_compilation_job("test.civic.band", run_id="test_123_abc", extract_entities=False)
+    db_compilation_job("test.civic.band", run_id="test_123_abc")
 
     call_kwargs = mock_deploy_queue.enqueue.call_args[1]
     assert call_kwargs["run_id"] == "test_123_abc"
@@ -377,42 +377,6 @@ def test_ocr_complete_coordinator_accepts_run_id(mocker):
     )
 
 
-# def test_ocr_complete_coordinator_passes_run_id_to_child_jobs(mocker):
-#     """Test that coordinator passes run_id to compilation and extraction jobs."""
-#     from clerk.workers import ocr_complete_coordinator
-
-#     mocker.patch("clerk.workers.civic_db_connection")
-#     mocker.patch("clerk.workers.update_site_progress")
-#     mocker.patch("clerk.workers.track_job")
-#     mocker.patch("clerk.workers.log_with_context")
-
-#     # Mock txt directory verification
-#     mock_txt_dir = mocker.MagicMock()
-#     mock_txt_dir.exists.return_value = True
-#     mock_txt_file = mocker.MagicMock()
-#     mock_txt_file.name = "test.txt"
-#     mock_txt_dir.glob.return_value = [mock_txt_file]
-#     mocker.patch("clerk.workers.Path", return_value=mock_txt_dir)
-
-#     mock_compilation_queue = mocker.MagicMock()
-#     mock_compilation_job = mocker.MagicMock(id="comp-job-123")
-#     mock_compilation_queue.enqueue.return_value = mock_compilation_job
-#     mocker.patch("clerk.queue.get_compilation_queue", return_value=mock_compilation_queue)
-
-#     mock_extraction_queue = mocker.MagicMock()
-#     mock_extraction_job = mocker.MagicMock(id="ext-job-123")
-#     mock_extraction_queue.enqueue.return_value = mock_extraction_job
-#     mocker.patch("clerk.queue.get_extraction_queue", return_value=mock_extraction_queue)
-
-#     ocr_complete_coordinator("test.civic.band", run_id="test_123_abc")
-
-#     comp_call_kwargs = mock_compilation_queue.enqueue.call_args[1]
-#     assert comp_call_kwargs["run_id"] == "test_123_abc"
-
-#     ext_call_kwargs = mock_extraction_queue.enqueue.call_args[1]
-#     assert ext_call_kwargs["run_id"] == "test_123_abc"
-
-
 def test_ocr_document_job_accepts_run_id_parameter(mocker):
     """Test that ocr_document_job accepts run_id parameter."""
     from clerk.workers import ocr_document_job
@@ -443,63 +407,6 @@ def test_ocr_document_job_logs_with_stage_ocr(mocker):
     ocr_document_job("test.civic.band", "/path/to/test.pdf", "tesseract", run_id="test_123_abc")
 
     assert any(call[1].get("stage") == "ocr" for call in mock_log.call_args_list)
-
-
-def test_extraction_job_accepts_run_id(mocker):
-    """Test that extraction_job accepts run_id parameter."""
-    from clerk.workers import extraction_job
-
-    mocker.patch("clerk.workers.civic_db_connection")
-    mocker.patch("clerk.cli.extract_entities_internal")
-    mocker.patch("clerk.workers.update_site_progress")
-    mocker.patch("clerk.workers.track_job")
-
-    # Mock Path to return no text files
-    mock_path_class = mocker.patch("clerk.workers.Path")
-    mock_path_instance = mocker.MagicMock()
-    mock_path_instance.exists.return_value = False
-    mock_path_class.return_value = mock_path_instance
-
-    # Mock compilation queue
-    mock_compilation_queue = mocker.MagicMock()
-    mock_job = mocker.MagicMock(id="comp-job-123")
-    mock_compilation_queue.enqueue.return_value = mock_job
-    mocker.patch("clerk.queue.get_compilation_queue", return_value=mock_compilation_queue)
-
-    mock_log = mocker.patch("clerk.workers.log_with_context")
-
-    extraction_job("test.civic.band", run_id="test_123_abc")
-
-    assert any(call[1]["stage"] == "extraction" for call in mock_log.call_args_list)
-
-
-def test_extraction_job_logs_extraction_started(mocker):
-    """Test that extraction_job logs extraction_started milestone."""
-    from clerk.workers import extraction_job
-
-    mocker.patch("clerk.workers.civic_db_connection")
-    mocker.patch("clerk.cli.extract_entities_internal")
-    mocker.patch("clerk.workers.update_site_progress")
-    mocker.patch("clerk.workers.track_job")
-
-    # Mock Path to return no text files
-    mock_path_class = mocker.patch("clerk.workers.Path")
-    mock_path_instance = mocker.MagicMock()
-    mock_path_instance.exists.return_value = False
-    mock_path_class.return_value = mock_path_instance
-
-    # Mock compilation queue
-    mock_compilation_queue = mocker.MagicMock()
-    mock_job = mocker.MagicMock(id="comp-job-123")
-    mock_compilation_queue.enqueue.return_value = mock_job
-    mocker.patch("clerk.queue.get_compilation_queue", return_value=mock_compilation_queue)
-
-    mock_log = mocker.patch("clerk.workers.log_with_context")
-
-    extraction_job("test.civic.band", run_id="test_123_abc")
-
-    started_calls = [call for call in mock_log.call_args_list if "extraction_started" in call[0][0]]
-    assert len(started_calls) >= 1
 
 
 def test_ocr_job_updates_counters_on_success(mocker):
@@ -604,14 +511,10 @@ def test_coordinator_resets_enqueued_flag(mock_site, tmp_path, monkeypatch, mock
     txt_dir.mkdir(parents=True)
     (txt_dir / "2024-01-01.txt").write_text("test content")
 
-    # Mock queue operations (coordinator enqueues compilation, extraction and deploy jobs)
+    # Mock queue operations (coordinator enqueues compilation and deploy jobs)
     mock_compilation_queue = mocker.MagicMock()
     mock_compilation_queue.enqueue.return_value = mocker.MagicMock(id="comp-job")
     mocker.patch("clerk.queue.get_compilation_queue", return_value=mock_compilation_queue)
-
-    mock_extraction_queue = mocker.MagicMock()
-    mock_extraction_queue.enqueue.return_value = mocker.MagicMock(id="ext-job")
-    mocker.patch("clerk.queue.get_extraction_queue", return_value=mock_extraction_queue)
 
     mock_deploy_queue = mocker.MagicMock()
     mock_deploy_queue.enqueue.return_value = mocker.MagicMock(id="deploy-job")
@@ -632,4 +535,3 @@ def test_coordinator_resets_enqueued_flag(mock_site, tmp_path, monkeypatch, mock
     assert site.current_stage == "compilation"  # Moved to compilation stage
     assert site.coordinator_enqueued is False  # Flag reset
     assert site.compilation_total == 1  # Next stage initialized
-    assert site.extraction_total == 1

@@ -234,21 +234,24 @@ class TestStorageDir:
         assert STORAGE_DIR == os.environ.get("STORAGE_DIR", "../sites")
 
 
-class TestBuildTableFromTextExtraction:
-    """Tests for extraction integration in build_table_from_text."""
+class TestBuildTableFromTextSimplified:
+    """Tests for simplified build_table_from_text (no inline extraction)."""
 
-    def test_extraction_populates_json_columns(self, tmp_path, monkeypatch):
-        """Extraction produces valid JSON in new columns."""
-        import importlib
+    def test_includes_cached_entities_when_available(self, tmp_path, monkeypatch):
+        """build_table_from_text should include cached extraction data."""
+        from clerk.utils import build_table_from_text, hash_text_content
 
-        monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+        meeting_dir = tmp_path / "txt" / "city-council" / "2024-01-15"
+        meeting_dir.mkdir(parents=True)
+        text = "Mayor Smith called the meeting to order."
+        (meeting_dir / "0001.txt").write_text(text)
 
-        # Create test structure
-        site_dir = tmp_path / "test-site"
-        txt_dir = site_dir / "txt" / "CityCouncil" / "2024-01-15"
-        txt_dir.mkdir(parents=True)
-
-        (txt_dir / "1.txt").write_text("Present: Smith, Jones, Lee.\nThe motion passed 5-0.")
+        cache_data = {
+            "content_hash": hash_text_content(text),
+            "entities": {"persons": [{"name": "Smith"}], "orgs": [], "locations": []},
+            "votes": {"votes": [{"result": "passed"}]},
+        }
+        (meeting_dir / "0001.txt.extracted.json").write_text(json.dumps(cache_data))
 
         db = sqlite_utils.Database(":memory:")
         db["minutes"].create(
@@ -265,79 +268,56 @@ class TestBuildTableFromTextExtraction:
             pk="id",
         )
 
-        import clerk.utils
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path.parent))
 
-        importlib.reload(clerk.utils)
-
-        from clerk.utils import build_table_from_text
-
-        build_table_from_text("test-site", str(site_dir / "txt"), db, "minutes")
+        build_table_from_text(
+            subdomain=tmp_path.name,
+            txt_dir=str(tmp_path / "txt"),
+            db=db,
+            table_name="minutes",
+        )
 
         rows = list(db["minutes"].rows)
         assert len(rows) == 1
-
         entities = json.loads(rows[0]["entities_json"])
-        votes = json.loads(rows[0]["votes_json"])
+        assert entities["persons"][0]["name"] == "Smith"
 
-        assert "persons" in entities
-        assert "votes" in votes
+    def test_empty_entities_when_no_cache(self, tmp_path, monkeypatch):
+        """build_table_from_text should use empty entities when no cache exists."""
+        from clerk.utils import build_table_from_text
 
+        meeting_dir = tmp_path / "txt" / "city-council" / "2024-01-15"
+        meeting_dir.mkdir(parents=True)
+        (meeting_dir / "0001.txt").write_text("Some meeting text.")
 
-class TestSpacyChunkSize:
-    """Tests for SPACY_CHUNK_SIZE constant."""
+        db = sqlite_utils.Database(":memory:")
+        db["minutes"].create(
+            {
+                "id": str,
+                "meeting": str,
+                "date": str,
+                "page": int,
+                "text": str,
+                "page_image": str,
+                "entities_json": str,
+                "votes_json": str,
+            },
+            pk="id",
+        )
 
-    def test_spacy_chunk_size_constant_exists(self):
-        """Test that SPACY_CHUNK_SIZE constant is defined."""
-        from clerk.utils import SPACY_CHUNK_SIZE
+        monkeypatch.setenv("STORAGE_DIR", str(tmp_path.parent))
 
-        assert SPACY_CHUNK_SIZE == 20_000
+        build_table_from_text(
+            subdomain=tmp_path.name,
+            txt_dir=str(tmp_path / "txt"),
+            db=db,
+            table_name="minutes",
+        )
 
-
-def test_spacy_n_process_default_is_one(mocker, monkeypatch, tmp_path):
-    """Test that SPACY_N_PROCESS defaults to 1 (single process)."""
-    # Clear any existing env var
-    monkeypatch.delenv("SPACY_N_PROCESS", raising=False)
-
-    # Mock get_nlp to avoid spaCy dependency
-    mock_nlp = mocker.MagicMock()
-    # Make pipe return a mock doc for each text passed in
-    mock_doc = mocker.MagicMock()
-    mock_nlp.pipe.return_value = iter([mock_doc])
-    mocker.patch("clerk.utils.get_nlp", return_value=mock_nlp)
-    mocker.patch("clerk.utils.EXTRACTION_ENABLED", True)
-
-    # Mock extraction functions to avoid dependencies
-    mocker.patch(
-        "clerk.utils.extract_entities", return_value={"persons": [], "orgs": [], "locations": []}
-    )
-    mocker.patch("clerk.utils.detect_roll_call", return_value=None)
-    mocker.patch("clerk.utils.extract_votes", return_value={"votes": []})
-    mocker.patch("clerk.utils.update_context")
-
-    # Create minimal test data
-    import sqlite_utils
-
-    from clerk.utils import build_table_from_text
-
-    db = sqlite_utils.Database(str(tmp_path / "test.db"))
-
-    # Create directory structure: txt_dir/meeting/meeting_date/page.txt
-    txt_dir = tmp_path / "txt"
-    meeting_dir = txt_dir / "CityCouncil"
-    date_dir = meeting_dir / "2024-01-01"
-    date_dir.mkdir(parents=True)
-
-    # Create a test page file
-    (date_dir / "0001.txt").write_text("test content")
-
-    # Enable extraction to trigger spaCy processing
-    build_table_from_text(
-        subdomain="test", txt_dir=str(txt_dir), db=db, table_name="minutes", extract_entities=True
-    )
-
-    # Check that nlp.pipe was NOT called with n_process (default is 1, so no n_process kwarg)
-    call_kwargs = mock_nlp.pipe.call_args[1]
-    assert call_kwargs.get("n_process") is None, "Default of 1 means no n_process kwarg"
+        rows = list(db["minutes"].rows)
+        assert len(rows) == 1
+        entities = json.loads(rows[0]["entities_json"])
+        assert entities == {"persons": [], "orgs": [], "locations": []}
 
 
 def test_hash_text_content():
@@ -444,29 +424,30 @@ def test_save_extraction_cache(tmp_path):
     assert loaded["votes"]["votes"][0]["motion"] == "Test"
 
 
-def test_build_table_from_text_is_fresh_processing(tmp_path, monkeypatch):
-    """Test that build_table_from_text does fresh processing (doesn't use cache).
+def test_build_table_from_text_uses_cache_when_available(tmp_path, monkeypatch):
+    """Test that build_table_from_text reads cached extraction results.
 
-    Cache is only used during the extraction phase (extract_entities_for_site).
-    Build phase is always fresh processing to populate the database.
+    The build phase now reads cached extraction results (produced by
+    `clerk extract run`) and uses them if available.
     """
     import sqlite_utils
 
     from clerk.utils import build_table_from_text, hash_text_content, save_extraction_cache
 
-    # Set up test directory structure
+    # Set up test directory structure matching STORAGE_DIR/subdomain/txt/...
     subdomain = "test.civic.band"
-    txt_dir = tmp_path / "txt"
+    site_dir = tmp_path / subdomain
+    txt_dir = site_dir / "txt"
     meeting_dir = txt_dir / "city-council"
     date_dir = meeting_dir / "2024-01-15"
     date_dir.mkdir(parents=True)
 
-    # Create test text file
-    text_file = date_dir / "001.txt"
+    # Create test text file (4-digit page naming)
+    text_file = date_dir / "0001.txt"
     text_content = "Test meeting minutes"
     text_file.write_text(text_content)
 
-    # Create cache file - build should ignore this
+    # Create cache file - build should use this
     cache_file = str(text_file) + ".extracted.json"
     content_hash = hash_text_content(text_content)
     cache_data = {
@@ -482,8 +463,11 @@ def test_build_table_from_text_is_fresh_processing(tmp_path, monkeypatch):
     }
     save_extraction_cache(cache_file, cache_data)
 
+    # Point STORAGE_DIR so cache lookup finds the right path
+    monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+
     # Create database
-    db = sqlite_utils.Database(tmp_path / "test.db")
+    db = sqlite_utils.Database(":memory:")
     db["minutes"].create(
         {
             "id": str,
@@ -498,18 +482,13 @@ def test_build_table_from_text_is_fresh_processing(tmp_path, monkeypatch):
         pk="id",
     )
 
-    # Disable extraction
-    import clerk.extraction
-
-    monkeypatch.setattr(clerk.extraction, "EXTRACTION_ENABLED", False)
-
-    # Run build - should NOT use cache, just populate database with empty entities
+    # Run build - should use cached extraction data
     build_table_from_text(subdomain, str(txt_dir), db, "minutes")
 
-    # Verify database populated (but cache was ignored during build)
+    # Verify database populated with cached data
     rows = list(db["minutes"].rows)
     assert len(rows) == 1
 
-    # Build doesn't use cache - entities should be empty
     entities = json.loads(rows[0]["entities_json"])
-    assert len(entities["persons"]) == 0, "Build phase doesn't use cache"
+    assert len(entities["persons"]) == 1, "Build phase should use cached extraction"
+    assert entities["persons"][0]["text"] == "Cached Person"

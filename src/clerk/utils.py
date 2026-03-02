@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import datetime
 import json
 import logging
 import os
@@ -13,14 +12,6 @@ import click
 import pluggy
 import sqlite_utils
 
-from .extraction import (
-    EXTRACTION_ENABLED,
-    detect_roll_call,
-    extract_entities,
-    extract_votes,
-    get_nlp,
-    update_context,
-)
 from .hookspecs import ClerkSpec
 from .output import log
 
@@ -80,8 +71,8 @@ def group_pages_by_meeting_date(page_files: list[PageFile]) -> list[MeetingDateG
     current_key = None
     current_indices = []
 
-    for idx, pf in enumerate(page_files):
-        key = (pf.meeting, pf.date)
+    for idx, page_file in enumerate(page_files):
+        key = (page_file.meeting, page_file.date)
 
         if key != current_key:
             if current_key is not None:
@@ -185,148 +176,6 @@ def collect_page_files(txt_dir: str) -> list[PageFile]:
     return page_files
 
 
-def batch_parse_with_spacy(texts: list[str], subdomain: str) -> list:
-    """Batch parse texts with spaCy using nlp.pipe().
-
-    Args:
-        texts: List of text strings to parse
-        subdomain: Site subdomain for logging
-
-    Returns:
-        List of spaCy Doc objects (or None if extraction disabled)
-    """
-    if not texts:
-        return []
-
-    if not EXTRACTION_ENABLED:
-        return [None] * len(texts)
-
-    nlp = get_nlp()
-    if nlp is None:
-        return [None] * len(texts)
-
-    total_pages = len(texts)
-    click.echo(click.style(subdomain, fg="cyan") + f": Parsing {total_pages} pages...")
-
-    n_process = int(os.environ.get("SPACY_N_PROCESS", "1"))
-    pipe_kwargs = {"batch_size": 500}
-
-    if n_process > 1:
-        pipe_kwargs["n_process"] = n_process
-        click.echo(click.style(subdomain, fg="cyan") + f": Using {n_process} processes for parsing")
-
-    all_docs = []
-    progress_interval = 1000
-
-    for i, doc in enumerate(nlp.pipe(texts, **pipe_kwargs)):
-        all_docs.append(doc)
-        if (i + 1) % progress_interval == 0:
-            click.echo(
-                click.style(subdomain, fg="cyan") + f": Parsed {i + 1}/{total_pages} pages..."
-            )
-
-    return all_docs
-
-
-def process_page_for_db(
-    page_file: PageFile,
-    doc,
-    context: dict,
-    subdomain: str,
-    table_name: str,
-    municipality: str | None,
-) -> dict:
-    """Process a single page for database insertion.
-
-    Extracts entities/votes, updates context, formats as DB entry.
-
-    Args:
-        page_file: PageFile with page metadata and text
-        doc: spaCy Doc object (or None if extraction disabled)
-        context: Meeting context dict for accumulating entities
-        subdomain: Site subdomain
-        table_name: "minutes" or "agendas"
-        municipality: Optional municipality name
-
-    Returns:
-        Dict ready for db.insert() with all required fields
-    """
-    text = page_file.text
-
-    # Extract entities and update context
-    try:
-        entities = extract_entities(text, doc=doc)
-        update_context(context, entities=entities)
-    except Exception as e:
-        log(
-            f"Entity extraction failed for {page_file.meeting}/{page_file.date}/{page_file.page_num}: {e}",
-            subdomain=subdomain,
-            level="warning",
-        )
-        entities = {"persons": [], "orgs": [], "locations": []}
-
-    # Detect roll call and update context
-    try:
-        attendees = detect_roll_call(text)
-        if attendees:
-            update_context(context, attendees=attendees)
-    except Exception as e:
-        log(
-            f"Roll call detection failed for {page_file.meeting}/{page_file.date}/{page_file.page_num}: {e}",
-            subdomain=subdomain,
-            level="warning",
-        )
-
-    # Extract votes with context
-    try:
-        votes = extract_votes(text, doc=doc, meeting_context=context)
-    except Exception as e:
-        log(
-            f"Vote extraction failed for {page_file.meeting}/{page_file.date}/{page_file.page_num}: {e}",
-            subdomain=subdomain,
-            level="warning",
-        )
-        votes = {"votes": []}
-
-    # Build database entry
-    key_hash = {
-        "kind": "minutes" if table_name != "agendas" else "agenda",
-        "meeting": page_file.meeting,
-        "date": page_file.date,
-        "page": page_file.page_num,
-        "text": text,
-    }
-
-    if municipality:
-        key_hash.update({"subdomain": subdomain, "municipality": municipality})
-
-    key = sha256(json.dumps(key_hash, sort_keys=True).encode("utf-8")).hexdigest()
-    key = key[:12]
-
-    entry = {
-        "id": key,
-        "meeting": page_file.meeting,
-        "date": page_file.date,
-        "page": page_file.page_num,
-        "text": text,
-        "page_image": page_file.page_image_path,
-        "entities_json": json.dumps(entities),
-        "votes_json": json.dumps(votes),
-    }
-
-    # Add optional fields for aggregate databases
-    if municipality:
-        entry["subdomain"] = subdomain
-        entry["municipality"] = municipality
-
-    return entry
-
-
-# Maximum pages to process in a single spaCy batch before chunking
-# Prevents memory spikes on large datasets while maintaining efficiency
-SPACY_CHUNK_SIZE = 20_000
-
-
 def hash_text_content(text: str) -> str:
     """Hash text content for cache validation.
 
@@ -421,48 +270,18 @@ def assert_db_exists():
     return engine
 
 
-def extract_and_cache(text: str, doc, cache_file: str) -> tuple[dict, dict]:
-    """Extract entities and votes, then save to cache.
-
-    Args:
-        text: Page text content
-        doc: spaCy Doc object
-        cache_file: Path to cache file
-
-    Returns:
-        Tuple of (entities dict, votes dict)
-    """
-    try:
-        entities = extract_entities(text, doc=doc)
-        votes = extract_votes(text, doc=doc, meeting_context={})
-    except Exception as e:
-        log(f"Extraction failed for {cache_file}: {e}", level="warning")
-        entities = {"persons": [], "orgs": [], "locations": []}
-        votes = {"votes": []}
-
-    # Save to cache
-    content_hash = hash_text_content(text)
-    cache_data = {
-        "content_hash": content_hash,
-        "extracted_at": datetime.datetime.now().isoformat(),
-        "entities": entities,
-        "votes": votes,
-    }
-    save_extraction_cache(cache_file, cache_data)
-
-    return entities, votes
-
-
 def build_table_from_text(
     subdomain,
     txt_dir,
     db,
     table_name,
     municipality=None,
-    extract_entities=False,
-    ignore_cache=False,
 ):
-    """Build database table from text files with optional entity extraction
+    """Build database table from text files, reading cached extraction results.
+
+    This is a pure data-assembly step. It reads cached extraction results
+    (produced by `clerk extract run`) but never runs extraction itself.
+    Pages without cached results get empty entities/votes.
 
     Args:
         subdomain: Site subdomain (e.g., "alameda.ca.civic.band")
@@ -470,16 +289,14 @@ def build_table_from_text(
         db: sqlite_utils Database object
         table_name: Name of table to create ("minutes" or "agendas")
         municipality: Optional municipality name for aggregate database
-        extract_entities: If True, extract entities for uncached pages (default False)
-        ignore_cache: If True, ignore cache and extract all (only valid with extract_entities=True)
     """
     st = time.time()
     log(
-        f"Building table from text table_name={table_name} municipality={municipality} extract_entities={extract_entities} ignore_cache={ignore_cache}",
+        f"Building table from text table_name={table_name} municipality={municipality}",
         subdomain=subdomain,
     )
 
-    # Phase 1: Collect page files and check cache
+    # Phase 1: Collect page files
     page_files = collect_page_files(txt_dir)
     if not page_files:
         return
@@ -489,66 +306,17 @@ def build_table_from_text(
         for pf in page_files:
             pf.page_image_path = f"/_agendas{pf.page_image_path}"
 
-    # Check cache for all pages (ignore_cache only matters if extract_entities=True)
-    page_data = []
-    cache_hits = 0
-    cache_misses = 0
-
+    # Determine base directory for cache files
     storage_dir = os.environ.get("STORAGE_DIR", "../sites")
     base_txt_dir = f"{storage_dir}/{subdomain}"
     if table_name == "agendas":
         base_txt_dir = f"{base_txt_dir}/_agendas"
     base_txt_dir = f"{base_txt_dir}/txt"
 
-    for pf in page_files:
-        # Construct path to cache file
-        cache_file = f"{base_txt_dir}/{pf.meeting}/{pf.date}/{pf.page_num:04d}.txt.extracted.json"
-        cached_extraction = None
+    cache_hits = 0
+    cache_misses = 0
 
-        # Check cache unless ignore_cache is True (and we're extracting)
-        if not (extract_entities and ignore_cache):
-            content_hash = hash_text_content(pf.text)
-            cached_extraction = load_extraction_cache(cache_file, content_hash)
-
-            if cached_extraction:
-                cache_hits += 1
-            else:
-                cache_misses += 1
-        else:
-            cache_misses += 1
-
-        page_data.append(
-            {
-                "page_file": pf,
-                "cache_file": cache_file,
-                "cached_extraction": cached_extraction,
-            }
-        )
-
-    log(
-        f"Cache status: {cache_hits} hits, {cache_misses} misses",
-        subdomain=subdomain,
-        cache_hits=cache_hits,
-        cache_misses=cache_misses,
-    )
-
-    # Phase 2: Batch parse uncached pages (if extracting)
-    docs = [None] * len(page_data)
-
-    if extract_entities:
-        # Find pages that need extraction
-        uncached_indices = [i for i, pd in enumerate(page_data) if pd["cached_extraction"] is None]
-
-        if uncached_indices:
-            # Extract texts for uncached pages
-            uncached_texts = [page_data[i]["page_file"].text for i in uncached_indices]
-            uncached_docs = batch_parse_with_spacy(uncached_texts, subdomain)
-
-            # Store docs at correct indices
-            for i, doc_idx in enumerate(uncached_indices):
-                docs[doc_idx] = uncached_docs[i]
-
-    # Phase 3: Process pages grouped by meeting date
+    # Phase 2: Process pages grouped by meeting date
     entries = []
     for meeting_date_group in group_pages_by_meeting_date(page_files):
         # Log progress per meeting
@@ -562,26 +330,25 @@ def build_table_from_text(
 
         # Process pages for this meeting date
         for idx in meeting_date_group.page_indices:
-            pd = page_data[idx]
-            pf = pd["page_file"]
-            cached = pd["cached_extraction"]
-            doc = docs[idx]
+            pf = page_files[idx]
+
+            # Check cache file for pre-computed extraction results
+            cache_file = (
+                f"{base_txt_dir}/{pf.meeting}/{pf.date}/{pf.page_num:04d}.txt.extracted.json"
+            )
+            content_hash = hash_text_content(pf.text)
+            cached = load_extraction_cache(cache_file, content_hash)
 
             if cached:
-                # Use cached entities/votes
+                cache_hits += 1
                 entities_json = json.dumps(cached["entities"])
                 votes_json = json.dumps(cached["votes"])
-            elif extract_entities:
-                # Extraction enabled - extract and cache (even if doc is None due to missing spaCy)
-                entities, votes = extract_and_cache(pf.text, doc, pd["cache_file"])
-                entities_json = json.dumps(entities)
-                votes_json = json.dumps(votes)
             else:
-                # No cache and extraction disabled - empty entities
+                cache_misses += 1
                 entities_json = json.dumps({"persons": [], "orgs": [], "locations": []})
                 votes_json = json.dumps({"votes": []})
 
-            # Build database entry (similar to process_page_for_db but with cached data)
+            # Build database entry
             key_hash = {
                 "kind": "minutes" if table_name != "agendas" else "agenda",
                 "meeting": pf.meeting,
@@ -611,7 +378,14 @@ def build_table_from_text(
 
             entries.append(entry)
 
-    # Phase 4: Insert to database
+    log(
+        f"Cache status: {cache_hits} hits, {cache_misses} misses",
+        subdomain=subdomain,
+        cache_hits=cache_hits,
+        cache_misses=cache_misses,
+    )
+
+    # Phase 3: Insert to database
     db[table_name].insert_all(entries)
 
     # Log performance summary
@@ -626,10 +400,18 @@ def build_table_from_text(
     )
 
 
-def build_db_from_text_internal(subdomain, extract_entities=False, ignore_cache=False):
+def build_db_from_text_internal(subdomain):
+    """Build meetings database from text files.
+
+    This is a pure data-assembly step that reads cached extraction results
+    but never runs extraction.
+
+    Args:
+        subdomain: Site subdomain
+    """
     st = time.time()
     log(
-        f"Building database from text extract_entities={extract_entities} ignore_cache={ignore_cache}",
+        "Building database from text",
         subdomain=subdomain,
     )
     minutes_txt_dir = f"{STORAGE_DIR}/{subdomain}/txt"
@@ -646,8 +428,6 @@ def build_db_from_text_internal(subdomain, extract_entities=False, ignore_cache=
             minutes_txt_dir,
             db,
             "minutes",
-            extract_entities=extract_entities,
-            ignore_cache=ignore_cache,
         )
     if os.path.exists(agendas_txt_dir):
         build_table_from_text(
@@ -655,8 +435,6 @@ def build_db_from_text_internal(subdomain, extract_entities=False, ignore_cache=
             agendas_txt_dir,
             db,
             "agendas",
-            extract_entities=extract_entities,
-            ignore_cache=ignore_cache,
         )
 
     # Explicitly close database to ensure all writes are flushed
@@ -665,7 +443,7 @@ def build_db_from_text_internal(subdomain, extract_entities=False, ignore_cache=
     et = time.time()
     elapsed_time = et - st
     log(
-        f"Database build completed elapsed_time={elapsed_time:.2f} extract_entities={extract_entities} ignore_cache={ignore_cache}",
+        f"Database build completed elapsed_time={elapsed_time:.2f}",
         subdomain=subdomain,
     )
     click.echo(f"Execution time: {elapsed_time} seconds")
