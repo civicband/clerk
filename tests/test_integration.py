@@ -333,7 +333,6 @@ class TestErrorHandling:
         assert "old_data" in backup_db.table_names()
         assert backup_db["old_data"].count == 1
 
-
     def test_no_cache_produces_empty_json(self, tmp_path, monkeypatch):
         """Without extraction cache, JSON columns have empty structures."""
         import json

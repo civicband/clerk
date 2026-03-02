@@ -176,7 +176,6 @@ def collect_page_files(txt_dir: str) -> list[PageFile]:
     return page_files
 
 
-
 def hash_text_content(text: str) -> str:
     """Hash text content for cache validation.
 
@@ -271,7 +270,6 @@ def assert_db_exists():
     return engine
 
 
-
 def build_table_from_text(
     subdomain,
     txt_dir,
@@ -335,7 +333,9 @@ def build_table_from_text(
             pf = page_files[idx]
 
             # Check cache file for pre-computed extraction results
-            cache_file = f"{base_txt_dir}/{pf.meeting}/{pf.date}/{pf.page_num:04d}.txt.extracted.json"
+            cache_file = (
+                f"{base_txt_dir}/{pf.meeting}/{pf.date}/{pf.page_num:04d}.txt.extracted.json"
+            )
             content_hash = hash_text_content(pf.text)
             cached = load_extraction_cache(cache_file, content_hash)
 

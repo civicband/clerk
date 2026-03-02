@@ -254,7 +254,19 @@ class TestBuildTableFromTextSimplified:
         (meeting_dir / "0001.txt.extracted.json").write_text(json.dumps(cache_data))
 
         db = sqlite_utils.Database(":memory:")
-        db["minutes"].create({"id": str, "meeting": str, "date": str, "page": int, "text": str, "page_image": str, "entities_json": str, "votes_json": str}, pk="id")
+        db["minutes"].create(
+            {
+                "id": str,
+                "meeting": str,
+                "date": str,
+                "page": int,
+                "text": str,
+                "page_image": str,
+                "entities_json": str,
+                "votes_json": str,
+            },
+            pk="id",
+        )
 
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path.parent))
 
@@ -279,7 +291,19 @@ class TestBuildTableFromTextSimplified:
         (meeting_dir / "0001.txt").write_text("Some meeting text.")
 
         db = sqlite_utils.Database(":memory:")
-        db["minutes"].create({"id": str, "meeting": str, "date": str, "page": int, "text": str, "page_image": str, "entities_json": str, "votes_json": str}, pk="id")
+        db["minutes"].create(
+            {
+                "id": str,
+                "meeting": str,
+                "date": str,
+                "page": int,
+                "text": str,
+                "page_image": str,
+                "entities_json": str,
+                "votes_json": str,
+            },
+            pk="id",
+        )
 
         monkeypatch.setenv("STORAGE_DIR", str(tmp_path.parent))
 

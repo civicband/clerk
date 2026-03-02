@@ -50,12 +50,18 @@ class TestRunExtraction:
         meeting_dir.mkdir(parents=True)
         (meeting_dir / "0001.txt").write_text("Mayor Smith called the meeting to order.")
 
-        with patch("clerk.extract_cli.EXTRACTION_ENABLED", True), \
-             patch("clerk.extract_cli._extract_entities") as mock_extract, \
-             patch("clerk.extract_cli.get_nlp") as mock_nlp:
+        with (
+            patch("clerk.extract_cli.EXTRACTION_ENABLED", True),
+            patch("clerk.extract_cli._extract_entities") as mock_extract,
+            patch("clerk.extract_cli.get_nlp") as mock_nlp,
+        ):
             mock_nlp.return_value = MagicMock()
             mock_nlp.return_value.pipe = MagicMock(return_value=[MagicMock()])
-            mock_extract.return_value = {"persons": [{"name": "Smith"}], "orgs": [], "locations": []}
+            mock_extract.return_value = {
+                "persons": [{"name": "Smith"}],
+                "orgs": [],
+                "locations": [],
+            }
 
             _run_extraction_for_site(
                 subdomain="test-site",
@@ -78,12 +84,16 @@ class TestRunExtraction:
         meeting_dir.mkdir(parents=True)
         (meeting_dir / "0001.txt").write_text("Motion passed 5-2.")
 
-        with patch("clerk.extract_cli.EXTRACTION_ENABLED", True), \
-             patch("clerk.extract_cli._extract_votes") as mock_votes, \
-             patch("clerk.extract_cli.get_nlp") as mock_nlp:
+        with (
+            patch("clerk.extract_cli.EXTRACTION_ENABLED", True),
+            patch("clerk.extract_cli._extract_votes") as mock_votes,
+            patch("clerk.extract_cli.get_nlp") as mock_nlp,
+        ):
             mock_nlp.return_value = MagicMock()
             mock_nlp.return_value.pipe = MagicMock(return_value=[MagicMock()])
-            mock_votes.return_value = {"votes": [{"result": "passed", "tally": {"ayes": 5, "nays": 2}}]}
+            mock_votes.return_value = {
+                "votes": [{"result": "passed", "tally": {"ayes": 5, "nays": 2}}]
+            }
 
             _run_extraction_for_site(
                 subdomain="test-site",
@@ -108,16 +118,23 @@ class TestRunExtraction:
         (meeting_dir / "0001.txt").write_text(text)
 
         from clerk.utils import hash_text_content
-        cache_file = meeting_dir / "0001.txt.extracted.json"
-        cache_file.write_text(json.dumps({
-            "content_hash": hash_text_content(text),
-            "entities": {"persons": [{"name": "Old"}], "orgs": [], "locations": []},
-            "votes": {"votes": []},
-        }))
 
-        with patch("clerk.extract_cli.EXTRACTION_ENABLED", True), \
-             patch("clerk.extract_cli._extract_entities") as mock_extract, \
-             patch("clerk.extract_cli.get_nlp") as mock_nlp:
+        cache_file = meeting_dir / "0001.txt.extracted.json"
+        cache_file.write_text(
+            json.dumps(
+                {
+                    "content_hash": hash_text_content(text),
+                    "entities": {"persons": [{"name": "Old"}], "orgs": [], "locations": []},
+                    "votes": {"votes": []},
+                }
+            )
+        )
+
+        with (
+            patch("clerk.extract_cli.EXTRACTION_ENABLED", True),
+            patch("clerk.extract_cli._extract_entities") as mock_extract,
+            patch("clerk.extract_cli.get_nlp") as mock_nlp,
+        ):
             mock_nlp.return_value = MagicMock()
             mock_nlp.return_value.pipe = MagicMock(return_value=[MagicMock()])
             mock_extract.return_value = {"persons": [{"name": "New"}], "orgs": [], "locations": []}
@@ -142,19 +159,30 @@ class TestRunExtraction:
         (meeting_dir / "0001.txt").write_text(text)
 
         from clerk.utils import hash_text_content
-        cache_file = meeting_dir / "0001.txt.extracted.json"
-        cache_file.write_text(json.dumps({
-            "content_hash": hash_text_content(text),
-            "entities": {"persons": [], "orgs": [], "locations": []},
-            "votes": {"votes": [{"result": "passed"}]},
-        }))
 
-        with patch("clerk.extract_cli.EXTRACTION_ENABLED", True), \
-             patch("clerk.extract_cli._extract_entities") as mock_extract, \
-             patch("clerk.extract_cli.get_nlp") as mock_nlp:
+        cache_file = meeting_dir / "0001.txt.extracted.json"
+        cache_file.write_text(
+            json.dumps(
+                {
+                    "content_hash": hash_text_content(text),
+                    "entities": {"persons": [], "orgs": [], "locations": []},
+                    "votes": {"votes": [{"result": "passed"}]},
+                }
+            )
+        )
+
+        with (
+            patch("clerk.extract_cli.EXTRACTION_ENABLED", True),
+            patch("clerk.extract_cli._extract_entities") as mock_extract,
+            patch("clerk.extract_cli.get_nlp") as mock_nlp,
+        ):
             mock_nlp.return_value = MagicMock()
             mock_nlp.return_value.pipe = MagicMock(return_value=[MagicMock()])
-            mock_extract.return_value = {"persons": [{"name": "Smith"}], "orgs": [], "locations": []}
+            mock_extract.return_value = {
+                "persons": [{"name": "Smith"}],
+                "orgs": [],
+                "locations": [],
+            }
 
             _run_extraction_for_site(
                 subdomain="test-site",

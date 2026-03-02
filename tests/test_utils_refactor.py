@@ -1,6 +1,5 @@
 """Tests for refactored utility functions."""
 
-
 import sqlite_utils
 
 from clerk.utils import (
@@ -118,5 +117,3 @@ def test_collect_page_files_empty(tmp_path):
     page_files = collect_page_files(str(txt_dir))
 
     assert page_files == []
-
-
