@@ -199,6 +199,39 @@ MOTION_OBJECTS = {
     "adoption",
 }
 
+# Agenda item reference patterns (compiled once)
+_AGENDA_ITEM_PATTERNS = [
+    (re.compile(r"\bOrdinance\s+(\d+[\-\.]\d+)\b", re.IGNORECASE), "ordinance"),
+    (re.compile(r"\bResolution\s+(\d+[\-\.]\d+)\b", re.IGNORECASE), "resolution"),
+    (re.compile(r"\bItem\s+(\d+(?:\.\d+)?)\b", re.IGNORECASE), "item"),
+    (re.compile(r"\bConsent\s+Calendar\s+(?:Item\s+)?(\d+(?:\.\d+)?)\b", re.IGNORECASE), "consent_calendar"),
+    (re.compile(r"\bPublic\s+Hearing\s+(?:Item\s+)?(\d+(?:\.\d+)?)\b", re.IGNORECASE), "public_hearing"),
+    (re.compile(r"\bAgenda\s+Item\s+(\d+(?:\.\d+)?)\b", re.IGNORECASE), "item"),
+]
+
+
+def extract_agenda_item_refs(doc: Any) -> list[dict]:
+    """Extract formal agenda item references from a spaCy Doc."""
+    text = doc.text
+    refs = []
+    seen = set()
+
+    for pattern, ref_type in _AGENDA_ITEM_PATTERNS:
+        for match in pattern.finditer(text):
+            number = match.group(1)
+            key = (ref_type, number)
+            if key not in seen:
+                seen.add(key)
+                refs.append({
+                    "type": ref_type,
+                    "number": number,
+                    "char_start": match.start(),
+                    "char_end": match.end(),
+                })
+
+    refs.sort(key=lambda r: r["char_start"])
+    return refs
+
 
 def _get_vote_matcher(nlp):
     """Get Token Matcher for vote results, initializing lazily.

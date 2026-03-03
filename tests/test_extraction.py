@@ -661,6 +661,86 @@ class TestRollcallMatcher:
         assert matcher1 is matcher2
 
 
+class TestAgendaItemExtraction:
+    """Tests for extract_agenda_item_refs function."""
+
+    def test_extracts_ordinance_reference(self, monkeypatch):
+        """Extracts 'Ordinance 2024-15' as ordinance type."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        doc = nlp("The council voted on Ordinance 2024-15.")
+        refs = extraction.extract_agenda_item_refs(doc)
+
+        assert len(refs) == 1
+        assert refs[0]["type"] == "ordinance"
+        assert refs[0]["number"] == "2024-15"
+
+    def test_extracts_resolution_reference(self, monkeypatch):
+        """Extracts 'Resolution 2024-03' as resolution type."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        doc = nlp("Resolution 2024-03 was adopted unanimously.")
+        refs = extraction.extract_agenda_item_refs(doc)
+
+        assert len(refs) == 1
+        assert refs[0]["type"] == "resolution"
+        assert refs[0]["number"] == "2024-03"
+
+    def test_extracts_item_reference(self, monkeypatch):
+        """Extracts 'Item 4.2' as item type."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        doc = nlp("Discussion of Item 4.2 continued.")
+        refs = extraction.extract_agenda_item_refs(doc)
+
+        assert len(refs) == 1
+        assert refs[0]["type"] == "item"
+        assert refs[0]["number"] == "4.2"
+
+    def test_extracts_consent_calendar_reference(self, monkeypatch):
+        """Extracts 'Consent Calendar Item 3' as consent_calendar type."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        doc = nlp("Consent Calendar Item 3 was approved.")
+        refs = extraction.extract_agenda_item_refs(doc)
+
+        assert any(r["type"] == "consent_calendar" for r in refs)
+
+    def test_returns_empty_for_plain_text(self, monkeypatch):
+        """Returns empty list for text with no agenda item references."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        doc = nlp("The meeting was called to order at seven PM.")
+        refs = extraction.extract_agenda_item_refs(doc)
+
+        assert refs == []
+
+
 class TestSpacyRollcallExtraction:
     """Tests for spaCy-based roll call vote extraction."""
 
