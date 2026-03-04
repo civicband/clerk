@@ -1206,3 +1206,57 @@ class TestEntityCategorization:
 
         assert len(result["persons"]) == 1
         assert result["persons"][0]["category"] == "unknown"
+
+
+class TestEndToEndExtraction:
+    """Integration test for the full extraction pipeline."""
+
+    def test_full_pipeline_with_civic_text(self, monkeypatch):
+        """End-to-end test with realistic civic meeting text."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        text = """
+        CONSENT CALENDAR
+        Item 1. Approval of minutes from January 15, 2024.
+        Councilmember Smith moved approval. Seconded by Councilmember Jones.
+        Motion passed unanimously.
+
+        PUBLIC HEARING
+        Item 2. Ordinance 2024-15 regarding the downtown parking structure.
+        Mayor Johnson opened the public hearing.
+        City Manager Williams presented the staff report.
+        Councilmember Smith moved to approve Ordinance 2024-15.
+        Seconded by Councilmember Jones. Motion passed 5-2.
+        Ayes: Smith, Jones, Lee, Chen, Davis. Nays: Brown, Garcia.
+        """
+
+        doc = nlp(text)
+
+        # Test entity extraction
+        entities = extraction.extract_entities(text, doc=doc)
+        assert len(entities["persons"]) >= 2  # Should find council members
+
+        # Test vote extraction
+        votes_result = extraction.extract_votes(text, doc=doc)
+        votes = votes_result["votes"]
+        assert len(votes) >= 2  # Unanimous + tally vote
+
+        # Test agenda item refs
+        refs = extraction.extract_agenda_item_refs(doc)
+        assert any(r["type"] == "ordinance" and r["number"] == "2024-15" for r in refs)
+
+        # Test section detection
+        section = extraction.detect_section(text)
+        assert section is not None
+
+        # Test entity resolution with meeting context
+        ctx = extraction.create_meeting_context()
+        ctx["attendees"] = ["Smith", "Jones", "Lee", "Chen", "Davis", "Brown", "Garcia"]
+        resolved = extraction.resolve_entities(entities, meeting_context=ctx)
+        for person in resolved["persons"]:
+            assert "category" in person
+            assert "variants" in person
