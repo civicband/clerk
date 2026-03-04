@@ -520,9 +520,16 @@ def _extract_vote_results_spacy(doc: Any) -> list[dict]:
     votes = []
     matches = matcher(doc)
 
+    # Cache agenda item refs and section for topic/ref lookups
+    refs = extract_agenda_item_refs(doc)
+
     for match_id, start, end in matches:
         span = doc[start:end]
         match_name = nlp.vocab.strings[match_id]
+
+        # Extract topic and nearest ref for this vote position
+        nearest_ref = _find_nearest_ref(refs, span.start_char)
+        topic = extract_vote_topic(doc, vote_char_offset=span.start_char)
 
         if match_name == "TALLY_VOTE":
             # Extract numbers from span
@@ -555,6 +562,8 @@ def _extract_vote_results_spacy(doc: Any) -> list[dict]:
                         ayes=ayes,
                         nays=nays,
                         raw_text=span.text,
+                        agenda_item_ref=nearest_ref,
+                        topic=topic,
                     )
                 )
 
@@ -565,6 +574,8 @@ def _extract_vote_results_spacy(doc: Any) -> list[dict]:
                     ayes=None,
                     nays=0,
                     raw_text=span.text,
+                    agenda_item_ref=nearest_ref,
+                    topic=topic,
                 )
             )
 
@@ -575,6 +586,8 @@ def _extract_vote_results_spacy(doc: Any) -> list[dict]:
                     ayes=None,
                     nays=None,
                     raw_text=span.text,
+                    agenda_item_ref=nearest_ref,
+                    topic=topic,
                 )
             )
 
@@ -893,6 +906,9 @@ def _extract_rollcall_votes_spacy(doc: Any) -> list[dict]:
     if not matches:
         return []
 
+    # Cache agenda item refs for topic/ref lookups
+    refs = extract_agenda_item_refs(doc)
+
     # Find positions of Ayes/Nays markers
     ayes_positions = []
     nays_positions = []
@@ -952,12 +968,19 @@ def _extract_rollcall_votes_spacy(doc: Any) -> list[dict]:
             raw_end = nays_end + 1 if nays_end < len(doc) else len(doc)
             raw_text = doc[raw_start:raw_end].text
 
+            # Extract topic and nearest ref for this roll call
+            rollcall_char_offset = doc[ayes_pos - 2].idx if ayes_pos >= 2 else 0
+            nearest_ref = _find_nearest_ref(refs, rollcall_char_offset)
+            topic = extract_vote_topic(doc, vote_char_offset=rollcall_char_offset)
+
             vote = _create_vote_record(
                 result="passed" if len(ayes_names) > len(nays_names) else "failed",
                 ayes=len(ayes_names),
                 nays=len(nays_names),
                 raw_text=raw_text,
                 individual_votes=individual_votes,
+                agenda_item_ref=nearest_ref,
+                topic=topic,
             )
             votes.append(vote)
 
@@ -1073,12 +1096,27 @@ def _extract_votes_regex(text: str, meeting_context: dict) -> dict:
     return {"votes": votes}
 
 
+def _find_nearest_ref(refs: list[dict], vote_char_offset: int) -> dict | None:
+    """Find the agenda item ref nearest to (and before) the vote position."""
+    best = None
+    best_distance = float("inf")
+    for ref in refs:
+        distance = vote_char_offset - ref["char_end"]
+        if 0 <= distance < best_distance:
+            best = {"type": ref["type"], "number": ref["number"]}
+            best_distance = distance
+    return best
+
+
 def _create_vote_record(
     result: str,
     ayes: int | None,
     nays: int | None,
     raw_text: str,
     individual_votes: list | None = None,
+    agenda_item_ref: dict | None = None,
+    topic: str | None = None,
+    section: str | None = None,
 ) -> dict:
     """Create a standardized vote record."""
     return {
@@ -1093,6 +1131,9 @@ def _create_vote_record(
         },
         "individual_votes": individual_votes or [],
         "raw_text": raw_text,
+        "agenda_item_ref": agenda_item_ref,
+        "topic": topic,
+        "section": section,
     }
 
 

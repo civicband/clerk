@@ -1026,6 +1026,113 @@ class TestEntityResolution:
         assert result["locations"] == [{"text": "Oakland", "confidence": 0.80}]
 
 
+class TestVoteRecordTopicIntegration:
+    """Tests that vote records include topic and agenda_item_ref fields."""
+
+    def test_vote_record_has_topic_fields(self, monkeypatch):
+        """Vote records include agenda_item_ref, topic, and section fields."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        record = extraction._create_vote_record(
+            result="passed", ayes=7, nays=0, raw_text="passed 7-0"
+        )
+        assert "agenda_item_ref" in record
+        assert "topic" in record
+        assert "section" in record
+
+    def test_vote_record_accepts_topic_fields(self, monkeypatch):
+        """Vote records can be created with topic, agenda_item_ref, and section."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        record = extraction._create_vote_record(
+            result="passed",
+            ayes=7,
+            nays=0,
+            raw_text="passed 7-0",
+            agenda_item_ref={"type": "ordinance", "number": "2024-15"},
+            topic="downtown parking structure",
+            section="public_hearing",
+        )
+        assert record["agenda_item_ref"] == {"type": "ordinance", "number": "2024-15"}
+        assert record["topic"] == "downtown parking structure"
+        assert record["section"] == "public_hearing"
+
+    def test_extract_votes_includes_topic(self, monkeypatch):
+        """Full vote extraction populates topic from context."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        text = "Motion to approve Ordinance 2024-15 regarding the downtown parking structure passed 7-0."
+        result = extraction.extract_votes(text)
+        votes = result["votes"]
+        if votes:
+            vote = votes[0]
+            assert "topic" in vote
+            assert "agenda_item_ref" in vote
+            assert "section" in vote
+
+    def test_find_nearest_ref(self, monkeypatch):
+        """_find_nearest_ref returns the closest preceding ref."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        refs = [
+            {"type": "ordinance", "number": "2024-10", "char_start": 0, "char_end": 20},
+            {"type": "resolution", "number": "2024-03", "char_start": 50, "char_end": 70},
+        ]
+        # Vote at position 80 should find the resolution (closer)
+        result = extraction._find_nearest_ref(refs, 80)
+        assert result is not None
+        assert result["type"] == "resolution"
+        assert result["number"] == "2024-03"
+
+    def test_find_nearest_ref_ignores_after(self, monkeypatch):
+        """_find_nearest_ref ignores refs that come after the vote."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        refs = [
+            {"type": "ordinance", "number": "2024-10", "char_start": 100, "char_end": 120},
+        ]
+        # Vote at position 50 should not find a ref after it
+        result = extraction._find_nearest_ref(refs, 50)
+        assert result is None
+
+    def test_find_nearest_ref_empty_list(self, monkeypatch):
+        """_find_nearest_ref returns None for empty refs list."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        result = extraction._find_nearest_ref([], 50)
+        assert result is None
+
+    def test_regex_fallback_has_topic_fields(self, monkeypatch):
+        """Regex fallback vote records include topic fields set to None."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        # Force spaCy to be unavailable so regex fallback is used
+        extraction._nlp = None
+        extraction._nlp_load_attempted = True
+
+        text = "The motion passed 7-0."
+        result = extraction.extract_votes(text)
+
+        assert len(result["votes"]) == 1
+        vote = result["votes"][0]
+        assert "topic" in vote
+        assert vote["topic"] is None
+        assert "agenda_item_ref" in vote
+        assert vote["agenda_item_ref"] is None
+        assert "section" in vote
+        assert vote["section"] is None
+
+
 class TestEntityCategorization:
     """Tests for entity categorization (pure Python, no spaCy needed)."""
 
