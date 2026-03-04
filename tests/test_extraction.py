@@ -63,6 +63,24 @@ class TestEntityConfidenceThreshold:
         assert extraction.ENTITY_CONFIDENCE_THRESHOLD == 0.85
 
 
+class TestModelSelection:
+    """Tests for configurable spaCy model selection."""
+
+    def test_default_model_is_md(self, monkeypatch):
+        """Default model should be en_core_web_md."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        monkeypatch.delenv("SPACY_MODEL", raising=False)
+        extraction = load_extraction_module()
+        assert extraction.SPACY_MODEL == "en_core_web_md"
+
+    def test_model_configurable_via_env(self, monkeypatch):
+        """SPACY_MODEL env var overrides the default."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        monkeypatch.setenv("SPACY_MODEL", "en_core_web_trf")
+        extraction = load_extraction_module()
+        assert extraction.SPACY_MODEL == "en_core_web_trf"
+
+
 class TestGetNlp:
     """Tests for lazy NLP model loading."""
 

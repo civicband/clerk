@@ -23,6 +23,9 @@ EXTRACTION_ENABLED = os.environ.get("ENABLE_EXTRACTION", "0") == "1"
 # Confidence threshold for entity filtering
 ENTITY_CONFIDENCE_THRESHOLD = float(os.environ.get("ENTITY_CONFIDENCE_THRESHOLD", "0.7"))
 
+# Configurable spaCy model - default to medium for speed, use trf for accuracy
+SPACY_MODEL = os.environ.get("SPACY_MODEL", "en_core_web_md")
+
 # Lazy-loaded spaCy model
 _nlp = None
 _nlp_load_attempted = False
@@ -52,17 +55,17 @@ def get_nlp():
         return None
 
     try:
-        _nlp = spacy.load("en_core_web_md")
+        _nlp = spacy.load(SPACY_MODEL)
         output_log(
             "Loaded spaCy model",
             operation="spacy_model_loaded",
-            model="en_core_web_md",
+            model=SPACY_MODEL,
         )
     except OSError:
         output_log(
-            "spaCy model not found. Run: python -m spacy download en_core_web_md",
+            f"spaCy model not found. Run: python -m spacy download {SPACY_MODEL}",
             operation="spacy_model_missing",
-            model="en_core_web_md",
+            model=SPACY_MODEL,
             level="error",
         )
         return None
