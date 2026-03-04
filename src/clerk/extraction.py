@@ -115,6 +115,19 @@ CIVIC_TITLES = [
     "Dr.",
 ]
 
+ELECTED_TITLES = {
+    "mayor", "vice mayor", "council member", "councilmember", "councilwoman",
+    "councilman", "commissioner", "chair", "vice chair", "chairman",
+    "chairwoman", "president", "vice president", "supervisor", "alderman",
+    "alderwoman", "selectman", "selectwoman",
+}
+
+STAFF_TITLES = {
+    "city manager", "city attorney", "director", "secretary", "treasurer",
+    "clerk", "city clerk", "deputy clerk", "assistant city manager",
+    "fire chief", "police chief", "chief",
+}
+
 
 def _add_title_patterns(ruler) -> None:
     """Add patterns for civic titles + proper names to EntityRuler."""
@@ -1248,9 +1261,9 @@ def update_context(
             context["known_persons"].add(name)
 
 
-def resolve_entities(entities: dict) -> dict:
+def resolve_entities(entities: dict, meeting_context: dict | None = None) -> dict:
     """Resolve and deduplicate entities by merging name variants."""
-    resolved_persons = _resolve_person_names(entities.get("persons", []))
+    resolved_persons = _resolve_person_names(entities.get("persons", []), meeting_context=meeting_context)
     return {
         "persons": resolved_persons,
         "orgs": entities.get("orgs", []),
@@ -1311,7 +1324,33 @@ def _names_match(name_a: str, name_b: str) -> bool:
     return False
 
 
-def _resolve_person_names(persons: list[dict]) -> list[dict]:
+def _categorize_person(name: str, variants: list[str], meeting_context: dict | None) -> str:
+    """Categorize a person as elected_official, staff, or unknown."""
+    all_names = [name] + variants
+
+    for n in all_names:
+        lower = n.lower()
+        for title in ELECTED_TITLES:
+            if lower.startswith(title):
+                return "elected_official"
+
+    if meeting_context:
+        attendees_lower = {a.lower() for a in meeting_context.get("attendees", [])}
+        for n in all_names:
+            stripped = _strip_civic_title(n).lower()
+            if stripped in attendees_lower:
+                return "elected_official"
+
+    for n in all_names:
+        lower = n.lower()
+        for title in STAFF_TITLES:
+            if lower.startswith(title):
+                return "staff"
+
+    return "unknown"
+
+
+def _resolve_person_names(persons: list[dict], meeting_context: dict | None = None) -> list[dict]:
     """Group person name variants and select canonical forms."""
     if not persons:
         return []
@@ -1341,10 +1380,13 @@ def _resolve_person_names(persons: list[dict]) -> list[dict]:
 
         best_confidence = max(p["confidence"] for p in group)
 
+        category = _categorize_person(canonical_text, variants, meeting_context)
+
         entry = {
             "text": canonical_text,
             "confidence": best_confidence,
             "variants": variants,
+            "category": category,
         }
         resolved.append(entry)
 

@@ -1024,3 +1024,78 @@ class TestEntityResolution:
 
         assert result["orgs"] == [{"text": "City Council", "confidence": 0.85}]
         assert result["locations"] == [{"text": "Oakland", "confidence": 0.80}]
+
+
+class TestEntityCategorization:
+    """Tests for entity categorization (pure Python, no spaCy needed)."""
+
+    def test_categorizes_elected_official_by_title(self, monkeypatch):
+        """Entity with 'Councilmember Smith' gets category 'elected_official'."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        entities = {
+            "persons": [
+                {"text": "Councilmember Smith", "confidence": 0.85},
+            ],
+            "orgs": [],
+            "locations": [],
+        }
+        result = extraction.resolve_entities(entities)
+
+        assert len(result["persons"]) == 1
+        assert result["persons"][0]["category"] == "elected_official"
+
+    def test_categorizes_elected_official_by_roll_call(self, monkeypatch):
+        """Entity 'Smith' in meeting_context attendees list gets 'elected_official'."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        entities = {
+            "persons": [
+                {"text": "Smith", "confidence": 0.85},
+            ],
+            "orgs": [],
+            "locations": [],
+        }
+        ctx = extraction.create_meeting_context()
+        ctx["attendees"] = ["Smith", "Jones", "Lee"]
+
+        result = extraction.resolve_entities(entities, meeting_context=ctx)
+
+        assert len(result["persons"]) == 1
+        assert result["persons"][0]["category"] == "elected_official"
+
+    def test_categorizes_staff(self, monkeypatch):
+        """Entity 'City Manager Johnson' gets category 'staff'."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        entities = {
+            "persons": [
+                {"text": "City Manager Johnson", "confidence": 0.85},
+            ],
+            "orgs": [],
+            "locations": [],
+        }
+        result = extraction.resolve_entities(entities)
+
+        assert len(result["persons"]) == 1
+        assert result["persons"][0]["category"] == "staff"
+
+    def test_defaults_to_unknown(self, monkeypatch):
+        """Entity 'John Doe' with no title and not in attendees gets 'unknown'."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        entities = {
+            "persons": [
+                {"text": "John Doe", "confidence": 0.85},
+            ],
+            "orgs": [],
+            "locations": [],
+        }
+        result = extraction.resolve_entities(entities)
+
+        assert len(result["persons"]) == 1
+        assert result["persons"][0]["category"] == "unknown"
