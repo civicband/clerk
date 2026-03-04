@@ -919,3 +919,90 @@ class TestSectionDetection:
         context = extraction.create_meeting_context()
         assert "current_section" in context
         assert context["current_section"] is None
+
+
+class TestEntityResolution:
+    """Tests for entity name resolution (pure Python, no spaCy needed)."""
+
+    def test_merges_name_variants(self, monkeypatch):
+        """Entities with 'Smith', 'John Smith', 'Councilmember Smith' resolve to 1 person."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        entities = {
+            "persons": [
+                {"text": "Smith", "confidence": 0.85},
+                {"text": "John Smith", "confidence": 0.90},
+                {"text": "Councilmember Smith", "confidence": 0.80},
+            ],
+            "orgs": [],
+            "locations": [],
+        }
+        result = extraction.resolve_entities(entities)
+
+        assert len(result["persons"]) == 1
+        person = result["persons"][0]
+        assert person["text"] == "John Smith"
+        assert "Smith" in person["variants"] or "Councilmember Smith" in person["variants"]
+        assert person["confidence"] == 0.90
+
+    def test_keeps_distinct_persons(self, monkeypatch):
+        """'John Smith' and 'Jane Doe' stay as 2 separate persons."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        entities = {
+            "persons": [
+                {"text": "John Smith", "confidence": 0.90},
+                {"text": "Jane Doe", "confidence": 0.85},
+            ],
+            "orgs": [],
+            "locations": [],
+        }
+        result = extraction.resolve_entities(entities)
+
+        assert len(result["persons"]) == 2
+        names = [p["text"] for p in result["persons"]]
+        assert "John Smith" in names
+        assert "Jane Doe" in names
+
+    def test_handles_initials(self, monkeypatch):
+        """'J. Smith' and 'John Smith' merge into 1 person with canonical 'John Smith'."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        entities = {
+            "persons": [
+                {"text": "J. Smith", "confidence": 0.80},
+                {"text": "John Smith", "confidence": 0.90},
+            ],
+            "orgs": [],
+            "locations": [],
+        }
+        result = extraction.resolve_entities(entities)
+
+        assert len(result["persons"]) == 1
+        person = result["persons"][0]
+        assert person["text"] == "John Smith"
+        assert "J. Smith" in person["variants"]
+
+    def test_preserves_orgs_and_locations(self, monkeypatch):
+        """Orgs and locations pass through unchanged."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        entities = {
+            "persons": [
+                {"text": "John Smith", "confidence": 0.90},
+            ],
+            "orgs": [
+                {"text": "City Council", "confidence": 0.85},
+            ],
+            "locations": [
+                {"text": "Oakland", "confidence": 0.80},
+            ],
+        }
+        result = extraction.resolve_entities(entities)
+
+        assert result["orgs"] == [{"text": "City Council", "confidence": 0.85}]
+        assert result["locations"] == [{"text": "Oakland", "confidence": 0.80}]

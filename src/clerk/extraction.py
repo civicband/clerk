@@ -1243,3 +1243,106 @@ def update_context(
         # Also add attendees to known_persons
         for name in attendees:
             context["known_persons"].add(name)
+
+
+def resolve_entities(entities: dict) -> dict:
+    """Resolve and deduplicate entities by merging name variants."""
+    resolved_persons = _resolve_person_names(entities.get("persons", []))
+    return {
+        "persons": resolved_persons,
+        "orgs": entities.get("orgs", []),
+        "locations": entities.get("locations", []),
+    }
+
+
+def _strip_civic_title(name: str) -> str:
+    """Remove civic titles from a name string."""
+    for title in CIVIC_TITLES:
+        pattern = re.compile(rf"^\s*{re.escape(title)}\s+", re.IGNORECASE)
+        name = pattern.sub("", name)
+    return name.strip()
+
+
+def _get_last_name(name: str) -> str:
+    """Extract the last name from a full name string."""
+    parts = name.strip().split()
+    return parts[-1] if parts else name
+
+
+def _names_match(name_a: str, name_b: str) -> bool:
+    """Check if two names refer to the same person.
+
+    Handles:
+    - Exact match after title stripping
+    - Last name match with initial match ('J. Smith' == 'John Smith')
+    - Last name only match ('Smith' == 'John Smith')
+    """
+    a = _strip_civic_title(name_a)
+    b = _strip_civic_title(name_b)
+
+    if a.lower() == b.lower():
+        return True
+
+    a_parts = a.split()
+    b_parts = b.split()
+
+    a_last = a_parts[-1].lower() if a_parts else ""
+    b_last = b_parts[-1].lower() if b_parts else ""
+
+    if a_last != b_last:
+        return False
+
+    # Same last name - check if one is just the last name
+    if len(a_parts) == 1 or len(b_parts) == 1:
+        return True
+
+    # Check initial match: 'J.' matches 'John'
+    a_first = a_parts[0] if len(a_parts) > 1 else ""
+    b_first = b_parts[0] if len(b_parts) > 1 else ""
+
+    if a_first.endswith(".") and b_first.lower().startswith(a_first[0].lower()):
+        return True
+    if b_first.endswith(".") and a_first.lower().startswith(b_first[0].lower()):
+        return True
+
+    return False
+
+
+def _resolve_person_names(persons: list[dict]) -> list[dict]:
+    """Group person name variants and select canonical forms."""
+    if not persons:
+        return []
+
+    groups: list[list[dict]] = []
+
+    for person in persons:
+        matched = False
+        for group in groups:
+            if any(_names_match(person["text"], existing["text"]) for existing in group):
+                group.append(person)
+                matched = True
+                break
+        if not matched:
+            groups.append([person])
+
+    resolved = []
+    for group in groups:
+        stripped = [(p, _strip_civic_title(p["text"])) for p in group]
+        canonical_entry = max(stripped, key=lambda x: len(x[1]))
+        canonical_text = canonical_entry[1]
+
+        variants = []
+        for p in group:
+            if p["text"] != canonical_text:
+                variants.append(p["text"])
+
+        best_confidence = max(p["confidence"] for p in group)
+
+        entry = {
+            "text": canonical_text,
+            "confidence": best_confidence,
+            "variants": variants,
+        }
+        resolved.append(entry)
+
+    return resolved
