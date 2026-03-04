@@ -15,7 +15,11 @@ from sqlalchemy import update
 from .db import civic_db_connection
 from .extraction import (
     EXTRACTION_ENABLED,
+    create_meeting_context,
+    detect_section,
     get_nlp,
+    resolve_entities,
+    update_context,
 )
 from .extraction import (
     extract_entities as _extract_entities,
@@ -27,6 +31,7 @@ from .models import sites_table
 from .output import log
 from .utils import (
     collect_page_files,
+    group_pages_by_meeting_date,
     hash_text_content,
     load_extraction_cache,
     save_extraction_cache,
@@ -172,36 +177,97 @@ def _run_extraction_for_site(subdomain, txt_dir, mode, rebuild):
         docs = [None] * len(texts_to_parse)
 
     # Phase 3: Extract and save cache for each page
+    # Build a lookup from (meeting, date, page_num) to (doc_index, existing_cache)
+    extract_lookup = {}
     for i, (_, pf, existing_cache) in enumerate(pages_to_extract):
-        doc = docs[i]
-        cache_file = os.path.join(
-            txt_dir, pf.meeting, pf.date, f"{pf.page_num:04d}.txt.extracted.json"
-        )
+        extract_lookup[(pf.meeting, pf.date, pf.page_num)] = (i, existing_cache)
 
-        # Start with existing cache data or empty structure
-        if existing_cache is not None:
-            cache_data = dict(existing_cache)
-        else:
-            cache_data = {
-                "entities": {"persons": [], "orgs": [], "locations": []},
-                "votes": {"votes": []},
+    # Group all pages by meeting/date for context management
+    meeting_groups = group_pages_by_meeting_date(page_files)
+
+    for group in meeting_groups:
+        meeting_context = create_meeting_context()
+        # Track cache files and data for entity resolution post-processing
+        group_cache_entries = []  # (cache_file, cache_data) for resolution pass
+
+        for page_idx in group.page_indices:
+            pf = page_files[page_idx]
+            cache_file = os.path.join(
+                txt_dir, pf.meeting, pf.date, f"{pf.page_num:04d}.txt.extracted.json"
+            )
+
+            key = (pf.meeting, pf.date, pf.page_num)
+            if key not in extract_lookup:
+                # This page was cached, skip extraction
+                continue
+
+            doc_i, existing_cache = extract_lookup[key]
+            doc = docs[doc_i]
+
+            # Start with existing cache data or empty structure
+            if existing_cache is not None:
+                cache_data = dict(existing_cache)
+            else:
+                cache_data = {
+                    "entities": {"persons": [], "orgs": [], "locations": []},
+                    "votes": {"votes": []},
+                }
+
+            # Detect section from page text
+            section = detect_section(pf.text)
+            if section is not None:
+                meeting_context["current_section"] = section
+
+            # Extract entities if needed
+            if mode in ("entities", "all"):
+                entities = _extract_entities(pf.text, doc=doc)
+                cache_data["entities"] = entities
+                update_context(meeting_context, entities=entities)
+
+            # Extract votes if needed
+            if mode in ("votes", "all"):
+                votes = _extract_votes(pf.text, doc=doc, meeting_context=meeting_context)
+                # Tag votes with current section
+                current_section = meeting_context.get("current_section")
+                if current_section:
+                    for v in votes.get("votes", []):
+                        if v.get("section") is None:
+                            v["section"] = current_section
+                cache_data["votes"] = votes
+
+            # Update hash and timestamp
+            cache_data["content_hash"] = hash_text_content(pf.text)
+            cache_data["extracted_at"] = datetime.datetime.now().isoformat()
+
+            save_extraction_cache(cache_file, cache_data)
+            group_cache_entries.append((cache_file, cache_data))
+
+        # Post-processing: resolve entities across the meeting group
+        if mode in ("entities", "all") and group_cache_entries:
+            # Accumulate all entities from this meeting group
+            all_persons = []
+            all_orgs = []
+            all_locations = []
+            for _, cd in group_cache_entries:
+                ents = cd.get("entities", {})
+                all_persons.extend(ents.get("persons", []))
+                all_orgs.extend(ents.get("orgs", []))
+                all_locations.extend(ents.get("locations", []))
+
+            # Filter to entries with required fields for resolution
+            valid_persons = [p for p in all_persons if "text" in p and "confidence" in p]
+            combined = {
+                "persons": valid_persons,
+                "orgs": all_orgs,
+                "locations": all_locations,
             }
+            resolved = resolve_entities(combined, meeting_context=meeting_context)
 
-        # Extract entities if needed
-        if mode in ("entities", "all"):
-            entities = _extract_entities(pf.text, doc=doc)
-            cache_data["entities"] = entities
-
-        # Extract votes if needed
-        if mode in ("votes", "all"):
-            votes = _extract_votes(pf.text, doc=doc)
-            cache_data["votes"] = votes
-
-        # Update hash and timestamp
-        cache_data["content_hash"] = hash_text_content(pf.text)
-        cache_data["extracted_at"] = datetime.datetime.now().isoformat()
-
-        save_extraction_cache(cache_file, cache_data)
+            # Store resolved entities in a meeting-level cache entry
+            # (We update the last page's cache with the resolved data for now)
+            last_cache_file, last_cache_data = group_cache_entries[-1]
+            last_cache_data["resolved_entities"] = resolved
+            save_extraction_cache(last_cache_file, last_cache_data)
 
     log(
         f"Extraction complete: processed {len(pages_to_extract)} pages",

@@ -1286,9 +1286,13 @@ def update_context(
     """
     if entities:
         for person in entities.get("persons", []):
-            context["known_persons"].add(person["text"])
+            name = person.get("text")
+            if name:
+                context["known_persons"].add(name)
         for org in entities.get("orgs", []):
-            context["known_orgs"].add(org["text"])
+            name = org.get("text")
+            if name:
+                context["known_orgs"].add(name)
 
     if attendees:
         # Accumulate attendees, avoiding duplicates
