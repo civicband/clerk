@@ -1092,6 +1092,82 @@ def _extract_motion_info(text: str) -> dict | None:
     return None
 
 
+def extract_vote_topic(doc: Any, vote_char_offset: int, max_length: int = 150) -> str | None:
+    """Extract a natural language topic for a vote from surrounding context.
+
+    Strategy:
+    1. Find the sentence containing the vote
+    2. Try to extract the object of the motion/approval verb via dependency parsing
+    3. If the vote sentence is terse, look at the preceding sentence
+    """
+    # Find the sentence containing the vote
+    vote_sent = None
+    prev_sent = None
+    for sent in doc.sents:
+        if sent.start_char <= vote_char_offset < sent.end_char:
+            vote_sent = sent
+            break
+        prev_sent = sent
+
+    if vote_sent is None:
+        return None
+
+    # Strategy 1: Extract object of motion/approval verb via dependency parsing
+    topic = _extract_topic_from_verb(vote_sent)
+
+    # Strategy 2: If vote sentence is short/terse, use preceding sentence
+    if topic is None and prev_sent is not None and len(vote_sent.text.split()) < 8:
+        topic = _clean_topic_text(prev_sent.text)
+
+    # Strategy 3: Use the full vote sentence minus the tally portion
+    if topic is None and len(vote_sent.text.split()) >= 8:
+        topic = _clean_topic_text(vote_sent.text)
+
+    if topic and len(topic) > max_length:
+        topic = topic[:max_length].rsplit(" ", 1)[0] + "..."
+
+    # Skip very short or meaningless topics
+    if topic and len(topic.strip()) < 5:
+        return None
+
+    return topic
+
+
+def _extract_topic_from_verb(sent) -> str | None:
+    """Extract topic from the object of a motion/approval verb in a sentence."""
+    motion_lemmas = {"move", "approve", "adopt", "pass", "carry", "accept", "deny", "reject"}
+
+    for token in sent:
+        if token.lemma_.lower() in motion_lemmas and token.pos_ == "VERB":
+            for child in token.children:
+                if child.dep_ in ("dobj", "xcomp", "ccomp", "attr"):
+                    subtree_tokens = sorted(child.subtree, key=lambda t: t.i)
+                    topic_text = " ".join(t.text for t in subtree_tokens)
+                    return _clean_topic_text(topic_text)
+
+                if child.dep_ == "xcomp" and child.pos_ == "VERB":
+                    for grandchild in child.children:
+                        if grandchild.dep_ in ("dobj", "attr"):
+                            subtree_tokens = sorted(grandchild.subtree, key=lambda t: t.i)
+                            topic_text = " ".join(t.text for t in subtree_tokens)
+                            return _clean_topic_text(topic_text)
+
+    return None
+
+
+def _clean_topic_text(text: str) -> str:
+    """Clean up topic text by removing vote tally patterns and extra whitespace."""
+    cleaned = re.sub(
+        r"\b(passed|approved|carried|defeated|failed|rejected)\s+\d+-\d+\.?\s*$",
+        "", text, flags=re.IGNORECASE
+    )
+    cleaned = re.sub(r"\bunanimously\.?\s*$", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bby voice vote\.?\s*$", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^[Mm]otion\s+to\s+", "", cleaned)
+    cleaned = " ".join(cleaned.split()).strip(" .,;:")
+    return cleaned
+
+
 def create_meeting_context() -> dict:
     """Create an empty meeting context for accumulating information across pages.
 

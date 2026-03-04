@@ -806,3 +806,76 @@ class TestSpacyRollcallExtraction:
         # Create a mock doc-like object (shouldn't be used since nlp is None)
         result = extraction._extract_rollcall_votes_spacy(None)
         assert result == []
+
+
+class TestVoteTopicExtraction:
+    """Tests for extract_vote_topic function."""
+
+    def test_extracts_topic_from_motion_sentence(self, monkeypatch):
+        """Given a sentence with a motion verb, extract the topic."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        text = "Motion to approve the downtown parking structure plan passed 7-0."
+        doc = nlp(text)
+        # Vote is at "passed 7-0" - find its char offset
+        offset = text.index("passed")
+        topic = extraction.extract_vote_topic(doc, offset)
+
+        assert topic is not None
+        assert "parking" in topic.lower()
+
+    def test_extracts_topic_from_preceding_sentence(self, monkeypatch):
+        """Falls back to preceding sentence when vote sentence is terse."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        text = "The Council discussed the new zoning amendment for District 5. The motion passed 5-2."
+        doc = nlp(text)
+        offset = text.index("passed")
+        topic = extraction.extract_vote_topic(doc, offset)
+
+        assert topic is not None
+        assert "zoning" in topic.lower()
+
+    def test_returns_none_for_no_context(self, monkeypatch):
+        """Returns None when the text is too terse to extract a topic."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        text = "Passed 7-0."
+        doc = nlp(text)
+        topic = extraction.extract_vote_topic(doc, 0)
+
+        assert topic is None
+
+    def test_topic_truncated_to_max_length(self, monkeypatch):
+        """Topic should be truncated to max_length characters."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        # Create a very long sentence that will produce a long topic
+        long_subject = " ".join(["comprehensive"] * 30)
+        text = f"The Council discussed the {long_subject} infrastructure development plan for the entire metropolitan region. The motion passed 5-2."
+        doc = nlp(text)
+        offset = text.index("passed")
+        topic = extraction.extract_vote_topic(doc, offset, max_length=150)
+
+        assert topic is not None
+        assert len(topic) <= 150
