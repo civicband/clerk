@@ -879,3 +879,43 @@ class TestVoteTopicExtraction:
 
         assert topic is not None
         assert len(topic) <= 150
+
+
+class TestSectionDetection:
+    """Tests for detect_section function."""
+
+    def test_detects_consent_calendar(self, monkeypatch):
+        """detect_section identifies CONSENT CALENDAR section."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+        result = extraction.detect_section("CONSENT CALENDAR\nItem 1. Approve minutes.")
+        assert result == "consent_calendar"
+
+    def test_detects_public_hearing(self, monkeypatch):
+        """detect_section identifies PUBLIC HEARING section."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+        result = extraction.detect_section("PUBLIC HEARING\nOrdinance 2024-15.")
+        assert result == "public_hearing"
+
+    def test_detects_new_business(self, monkeypatch):
+        """detect_section identifies NEW BUSINESS section."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+        result = extraction.detect_section("NEW BUSINESS\nCouncil discussed parking.")
+        assert result == "new_business"
+
+    def test_returns_none_for_no_section(self, monkeypatch):
+        """detect_section returns None when no section header found."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+        result = extraction.detect_section("The mayor welcomed everyone.")
+        assert result is None
+
+    def test_meeting_context_tracks_section(self, monkeypatch):
+        """create_meeting_context includes current_section key set to None."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+        context = extraction.create_meeting_context()
+        assert "current_section" in context
+        assert context["current_section"] is None

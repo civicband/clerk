@@ -1168,11 +1168,42 @@ def _clean_topic_text(text: str) -> str:
     return cleaned
 
 
+_SECTION_PATTERNS = [
+    (re.compile(r"^\s*CONSENT\s+CALENDAR\b", re.IGNORECASE | re.MULTILINE), "consent_calendar"),
+    (re.compile(r"^\s*PUBLIC\s+HEAR(?:ING|INGS)\b", re.IGNORECASE | re.MULTILINE), "public_hearing"),
+    (re.compile(r"^\s*NEW\s+BUSINESS\b", re.IGNORECASE | re.MULTILINE), "new_business"),
+    (re.compile(r"^\s*OLD\s+BUSINESS\b", re.IGNORECASE | re.MULTILINE), "old_business"),
+    (re.compile(r"^\s*UNFINISHED\s+BUSINESS\b", re.IGNORECASE | re.MULTILINE), "old_business"),
+    (re.compile(r"^\s*ACTION\s+ITEMS?\b", re.IGNORECASE | re.MULTILINE), "action_items"),
+    (re.compile(r"^\s*PUBLIC\s+COMMENT\b", re.IGNORECASE | re.MULTILINE), "public_comment"),
+    (re.compile(r"^\s*STAFF\s+REPORT\b", re.IGNORECASE | re.MULTILINE), "staff_report"),
+    (re.compile(r"^\s*CLOSED\s+SESSION\b", re.IGNORECASE | re.MULTILINE), "closed_session"),
+]
+
+
+def detect_section(text: str) -> str | None:
+    """Detect the meeting section from text content.
+
+    Looks for section headers like 'CONSENT CALENDAR', 'PUBLIC HEARING', etc.
+    Returns the last (most recent) section found in the text.
+    """
+    last_section = None
+    last_pos = -1
+
+    for pattern, section_name in _SECTION_PATTERNS:
+        match = pattern.search(text)
+        if match and match.start() > last_pos:
+            last_section = section_name
+            last_pos = match.start()
+
+    return last_section
+
+
 def create_meeting_context() -> dict:
     """Create an empty meeting context for accumulating information across pages.
 
     Returns:
-        Dict with keys for tracking persons, orgs, attendees, and meeting type
+        Dict with keys for tracking persons, orgs, attendees, meeting type, and current section
     """
     return {
         "known_persons": set(),
@@ -1180,6 +1211,7 @@ def create_meeting_context() -> dict:
         "attendees": [],
         # meeting_type is reserved for future use (e.g., "regular", "special", "closed session")
         "meeting_type": None,
+        "current_section": None,
     }
 
 
