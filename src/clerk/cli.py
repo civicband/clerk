@@ -365,13 +365,14 @@ def worker(worker_type, num_workers, burst):
     else:
         # Worker pool for multiple workers
         # WorkerPool passes worker_class parameter to use our DiagnosticWorker
-        with WorkerPool(
+        pool = WorkerPool(
             queues,
             num_workers=num_workers,
             connection=get_redis(),
             default_worker_ttl=default_timeout,
-        ) as pool:  # type: ignore
-            pool.start()
+            worker_class=DiagnosticWorker,
+        )
+        pool.start(burst=burst)
 
 
 @cli.command()
