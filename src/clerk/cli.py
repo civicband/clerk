@@ -370,7 +370,6 @@ def worker(worker_type, num_workers, burst):
             num_workers=num_workers,
             connection=get_redis(),
             default_worker_ttl=default_timeout,
-            worker_class=DiagnosticWorker,
         ) as pool:  # type: ignore
             pool.start()
 
