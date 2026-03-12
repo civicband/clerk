@@ -275,7 +275,7 @@ def queue_ocr(fetcher, run_id, stage, ocr_backend, proceed=True) -> int:
             ocr_document_job,
             kwargs=params,
             timeout=ocr_timeout_seconds,
-            description=f"OCR ({ocr_backend}): {pdf_path.name}",
+            description=f"OCR ({ocr_backend}): {pdf_path}",
         )
         job_datas.append(job_data)
 
