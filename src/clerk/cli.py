@@ -352,6 +352,10 @@ def worker(worker_type, num_workers, burst):
     queues = queue_map[worker_type]
     default_timeout = timeout_map[worker_type]
 
+    if num_workers == 0:
+        click.secho(f"Not starting workers for {worker_type}")
+        return
+
     if num_workers == 1:
         # Single worker with diagnostic logging
         worker_instance = DiagnosticWorker(
