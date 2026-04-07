@@ -31,6 +31,7 @@ from .fetcher import Fetcher
 from .output import log
 from .plugin_loader import load_plugins_from_directory, load_plugins_from_entry_points
 from .sentry import init_sentry
+from .sheets import sheets
 from .utils import assert_db_exists, pm
 
 # Initialize Sentry for error tracking (if SENTRY_DSN is configured)
@@ -375,3 +376,4 @@ cli.add_command(extract)
 cli.add_command(db)
 cli.add_command(debug)
 cli.add_command(etl)
+cli.add_command(sheets)

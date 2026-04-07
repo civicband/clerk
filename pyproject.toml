@@ -19,6 +19,7 @@ dependencies = [
     "rq>=2.6.0",
     "redis>=5.0.0,<8.0.0",
     "sentry-sdk>=2.0.0",
+    "ezsheets>=2025.11.11",
 ]
 
 [dependency-groups]
