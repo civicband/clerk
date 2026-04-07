@@ -23,6 +23,9 @@ EXTRACTION_ENABLED = os.environ.get("ENABLE_EXTRACTION", "0") == "1"
 # Confidence threshold for entity filtering
 ENTITY_CONFIDENCE_THRESHOLD = float(os.environ.get("ENTITY_CONFIDENCE_THRESHOLD", "0.7"))
 
+# Configurable spaCy model - default to medium for speed, use trf for accuracy
+SPACY_MODEL = os.environ.get("SPACY_MODEL", "en_core_web_md")
+
 # Lazy-loaded spaCy model
 _nlp = None
 _nlp_load_attempted = False
@@ -52,17 +55,17 @@ def get_nlp():
         return None
 
     try:
-        _nlp = spacy.load("en_core_web_md")
+        _nlp = spacy.load(SPACY_MODEL)
         output_log(
             "Loaded spaCy model",
             operation="spacy_model_loaded",
-            model="en_core_web_md",
+            model=SPACY_MODEL,
         )
     except OSError:
         output_log(
-            "spaCy model not found. Run: python -m spacy download en_core_web_md",
+            f"spaCy model not found. Run: python -m spacy download {SPACY_MODEL}",
             operation="spacy_model_missing",
-            model="en_core_web_md",
+            model=SPACY_MODEL,
             level="error",
         )
         return None
@@ -111,6 +114,19 @@ CIVIC_TITLES = [
     "Ms.",
     "Dr.",
 ]
+
+ELECTED_TITLES = {
+    "mayor", "vice mayor", "council member", "councilmember", "councilwoman",
+    "councilman", "commissioner", "chair", "vice chair", "chairman",
+    "chairwoman", "president", "vice president", "supervisor", "alderman",
+    "alderwoman", "selectman", "selectwoman",
+}
+
+STAFF_TITLES = {
+    "city manager", "city attorney", "director", "secretary", "treasurer",
+    "clerk", "city clerk", "deputy clerk", "assistant city manager",
+    "fire chief", "police chief", "chief",
+}
 
 
 def _add_title_patterns(ruler) -> None:
@@ -198,6 +214,39 @@ MOTION_OBJECTS = {
     "action",
     "adoption",
 }
+
+# Agenda item reference patterns (compiled once)
+_AGENDA_ITEM_PATTERNS = [
+    (re.compile(r"\bOrdinance\s+(\d+[\-\.]\d+)\b", re.IGNORECASE), "ordinance"),
+    (re.compile(r"\bResolution\s+(\d+[\-\.]\d+)\b", re.IGNORECASE), "resolution"),
+    (re.compile(r"\bItem\s+(\d+(?:\.\d+)?)\b", re.IGNORECASE), "item"),
+    (re.compile(r"\bConsent\s+Calendar\s+(?:Item\s+)?(\d+(?:\.\d+)?)\b", re.IGNORECASE), "consent_calendar"),
+    (re.compile(r"\bPublic\s+Hearing\s+(?:Item\s+)?(\d+(?:\.\d+)?)\b", re.IGNORECASE), "public_hearing"),
+    (re.compile(r"\bAgenda\s+Item\s+(\d+(?:\.\d+)?)\b", re.IGNORECASE), "item"),
+]
+
+
+def extract_agenda_item_refs(doc: Any) -> list[dict]:
+    """Extract formal agenda item references from a spaCy Doc."""
+    text = doc.text
+    refs = []
+    seen = set()
+
+    for pattern, ref_type in _AGENDA_ITEM_PATTERNS:
+        for match in pattern.finditer(text):
+            number = match.group(1)
+            key = (ref_type, number)
+            if key not in seen:
+                seen.add(key)
+                refs.append({
+                    "type": ref_type,
+                    "number": number,
+                    "char_start": match.start(),
+                    "char_end": match.end(),
+                })
+
+    refs.sort(key=lambda r: r["char_start"])
+    return refs
 
 
 def _get_vote_matcher(nlp):
@@ -471,9 +520,16 @@ def _extract_vote_results_spacy(doc: Any) -> list[dict]:
     votes = []
     matches = matcher(doc)
 
+    # Cache agenda item refs and section for topic/ref lookups
+    refs = extract_agenda_item_refs(doc)
+
     for match_id, start, end in matches:
         span = doc[start:end]
         match_name = nlp.vocab.strings[match_id]
+
+        # Extract topic and nearest ref for this vote position
+        nearest_ref = _find_nearest_ref(refs, span.start_char)
+        topic = extract_vote_topic(doc, vote_char_offset=span.start_char)
 
         if match_name == "TALLY_VOTE":
             # Extract numbers from span
@@ -506,6 +562,8 @@ def _extract_vote_results_spacy(doc: Any) -> list[dict]:
                         ayes=ayes,
                         nays=nays,
                         raw_text=span.text,
+                        agenda_item_ref=nearest_ref,
+                        topic=topic,
                     )
                 )
 
@@ -516,6 +574,8 @@ def _extract_vote_results_spacy(doc: Any) -> list[dict]:
                     ayes=None,
                     nays=0,
                     raw_text=span.text,
+                    agenda_item_ref=nearest_ref,
+                    topic=topic,
                 )
             )
 
@@ -526,6 +586,8 @@ def _extract_vote_results_spacy(doc: Any) -> list[dict]:
                     ayes=None,
                     nays=None,
                     raw_text=span.text,
+                    agenda_item_ref=nearest_ref,
+                    topic=topic,
                 )
             )
 
@@ -844,6 +906,9 @@ def _extract_rollcall_votes_spacy(doc: Any) -> list[dict]:
     if not matches:
         return []
 
+    # Cache agenda item refs for topic/ref lookups
+    refs = extract_agenda_item_refs(doc)
+
     # Find positions of Ayes/Nays markers
     ayes_positions = []
     nays_positions = []
@@ -903,12 +968,19 @@ def _extract_rollcall_votes_spacy(doc: Any) -> list[dict]:
             raw_end = nays_end + 1 if nays_end < len(doc) else len(doc)
             raw_text = doc[raw_start:raw_end].text
 
+            # Extract topic and nearest ref for this roll call
+            rollcall_char_offset = doc[ayes_pos - 2].idx if ayes_pos >= 2 else 0
+            nearest_ref = _find_nearest_ref(refs, rollcall_char_offset)
+            topic = extract_vote_topic(doc, vote_char_offset=rollcall_char_offset)
+
             vote = _create_vote_record(
                 result="passed" if len(ayes_names) > len(nays_names) else "failed",
                 ayes=len(ayes_names),
                 nays=len(nays_names),
                 raw_text=raw_text,
                 individual_votes=individual_votes,
+                agenda_item_ref=nearest_ref,
+                topic=topic,
             )
             votes.append(vote)
 
@@ -1024,12 +1096,27 @@ def _extract_votes_regex(text: str, meeting_context: dict) -> dict:
     return {"votes": votes}
 
 
+def _find_nearest_ref(refs: list[dict], vote_char_offset: int) -> dict | None:
+    """Find the agenda item ref nearest to (and before) the vote position."""
+    best = None
+    best_distance = float("inf")
+    for ref in refs:
+        distance = vote_char_offset - ref["char_end"]
+        if 0 <= distance < best_distance:
+            best = {"type": ref["type"], "number": ref["number"]}
+            best_distance = distance
+    return best
+
+
 def _create_vote_record(
     result: str,
     ayes: int | None,
     nays: int | None,
     raw_text: str,
     individual_votes: list | None = None,
+    agenda_item_ref: dict | None = None,
+    topic: str | None = None,
+    section: str | None = None,
 ) -> dict:
     """Create a standardized vote record."""
     return {
@@ -1044,6 +1131,9 @@ def _create_vote_record(
         },
         "individual_votes": individual_votes or [],
         "raw_text": raw_text,
+        "agenda_item_ref": agenda_item_ref,
+        "topic": topic,
+        "section": section,
     }
 
 
@@ -1059,11 +1149,118 @@ def _extract_motion_info(text: str) -> dict | None:
     return None
 
 
+def extract_vote_topic(doc: Any, vote_char_offset: int, max_length: int = 150) -> str | None:
+    """Extract a natural language topic for a vote from surrounding context.
+
+    Strategy:
+    1. Find the sentence containing the vote
+    2. Try to extract the object of the motion/approval verb via dependency parsing
+    3. If the vote sentence is terse, look at the preceding sentence
+    """
+    # Find the sentence containing the vote
+    vote_sent = None
+    prev_sent = None
+    for sent in doc.sents:
+        if sent.start_char <= vote_char_offset < sent.end_char:
+            vote_sent = sent
+            break
+        prev_sent = sent
+
+    if vote_sent is None:
+        return None
+
+    # Strategy 1: Extract object of motion/approval verb via dependency parsing
+    topic = _extract_topic_from_verb(vote_sent)
+
+    # Strategy 2: If vote sentence is short/terse, use preceding sentence
+    if topic is None and prev_sent is not None and len(vote_sent.text.split()) < 8:
+        topic = _clean_topic_text(prev_sent.text)
+
+    # Strategy 3: Use the full vote sentence minus the tally portion
+    if topic is None and len(vote_sent.text.split()) >= 8:
+        topic = _clean_topic_text(vote_sent.text)
+
+    if topic and len(topic) > max_length:
+        topic = topic[:max_length].rsplit(" ", 1)[0] + "..."
+
+    # Skip very short or meaningless topics
+    if topic and len(topic.strip()) < 5:
+        return None
+
+    return topic
+
+
+def _extract_topic_from_verb(sent) -> str | None:
+    """Extract topic from the object of a motion/approval verb in a sentence."""
+    motion_lemmas = {"move", "approve", "adopt", "pass", "carry", "accept", "deny", "reject"}
+
+    for token in sent:
+        if token.lemma_.lower() in motion_lemmas and token.pos_ == "VERB":
+            for child in token.children:
+                if child.dep_ in ("dobj", "xcomp", "ccomp", "attr"):
+                    subtree_tokens = sorted(child.subtree, key=lambda t: t.i)
+                    topic_text = " ".join(t.text for t in subtree_tokens)
+                    return _clean_topic_text(topic_text)
+
+                if child.dep_ == "xcomp" and child.pos_ == "VERB":
+                    for grandchild in child.children:
+                        if grandchild.dep_ in ("dobj", "attr"):
+                            subtree_tokens = sorted(grandchild.subtree, key=lambda t: t.i)
+                            topic_text = " ".join(t.text for t in subtree_tokens)
+                            return _clean_topic_text(topic_text)
+
+    return None
+
+
+def _clean_topic_text(text: str) -> str:
+    """Clean up topic text by removing vote tally patterns and extra whitespace."""
+    cleaned = re.sub(
+        r"\b(passed|approved|carried|defeated|failed|rejected)\s+\d+-\d+\.?\s*$",
+        "", text, flags=re.IGNORECASE
+    )
+    cleaned = re.sub(r"\bunanimously\.?\s*$", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bby voice vote\.?\s*$", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^[Mm]otion\s+to\s+", "", cleaned)
+    cleaned = " ".join(cleaned.split()).strip(" .,;:")
+    return cleaned
+
+
+_SECTION_PATTERNS = [
+    (re.compile(r"^\s*CONSENT\s+CALENDAR\b", re.IGNORECASE | re.MULTILINE), "consent_calendar"),
+    (re.compile(r"^\s*PUBLIC\s+HEAR(?:ING|INGS)\b", re.IGNORECASE | re.MULTILINE), "public_hearing"),
+    (re.compile(r"^\s*NEW\s+BUSINESS\b", re.IGNORECASE | re.MULTILINE), "new_business"),
+    (re.compile(r"^\s*OLD\s+BUSINESS\b", re.IGNORECASE | re.MULTILINE), "old_business"),
+    (re.compile(r"^\s*UNFINISHED\s+BUSINESS\b", re.IGNORECASE | re.MULTILINE), "old_business"),
+    (re.compile(r"^\s*ACTION\s+ITEMS?\b", re.IGNORECASE | re.MULTILINE), "action_items"),
+    (re.compile(r"^\s*PUBLIC\s+COMMENT\b", re.IGNORECASE | re.MULTILINE), "public_comment"),
+    (re.compile(r"^\s*STAFF\s+REPORT\b", re.IGNORECASE | re.MULTILINE), "staff_report"),
+    (re.compile(r"^\s*CLOSED\s+SESSION\b", re.IGNORECASE | re.MULTILINE), "closed_session"),
+]
+
+
+def detect_section(text: str) -> str | None:
+    """Detect the meeting section from text content.
+
+    Looks for section headers like 'CONSENT CALENDAR', 'PUBLIC HEARING', etc.
+    Returns the last (most recent) section found in the text.
+    """
+    last_section = None
+    last_pos = -1
+
+    for pattern, section_name in _SECTION_PATTERNS:
+        match = pattern.search(text)
+        if match and match.start() > last_pos:
+            last_section = section_name
+            last_pos = match.start()
+
+    return last_section
+
+
 def create_meeting_context() -> dict:
     """Create an empty meeting context for accumulating information across pages.
 
     Returns:
-        Dict with keys for tracking persons, orgs, attendees, and meeting type
+        Dict with keys for tracking persons, orgs, attendees, meeting type, and current section
     """
     return {
         "known_persons": set(),
@@ -1071,6 +1268,7 @@ def create_meeting_context() -> dict:
         "attendees": [],
         # meeting_type is reserved for future use (e.g., "regular", "special", "closed session")
         "meeting_type": None,
+        "current_section": None,
     }
 
 
@@ -1088,9 +1286,13 @@ def update_context(
     """
     if entities:
         for person in entities.get("persons", []):
-            context["known_persons"].add(person["text"])
+            name = person.get("text")
+            if name:
+                context["known_persons"].add(name)
         for org in entities.get("orgs", []):
-            context["known_orgs"].add(org["text"])
+            name = org.get("text")
+            if name:
+                context["known_orgs"].add(name)
 
     if attendees:
         # Accumulate attendees, avoiding duplicates
@@ -1102,3 +1304,135 @@ def update_context(
         # Also add attendees to known_persons
         for name in attendees:
             context["known_persons"].add(name)
+
+
+def resolve_entities(entities: dict, meeting_context: dict | None = None) -> dict:
+    """Resolve and deduplicate entities by merging name variants."""
+    resolved_persons = _resolve_person_names(entities.get("persons", []), meeting_context=meeting_context)
+    return {
+        "persons": resolved_persons,
+        "orgs": entities.get("orgs", []),
+        "locations": entities.get("locations", []),
+    }
+
+
+def _strip_civic_title(name: str) -> str:
+    """Remove civic titles from a name string."""
+    for title in CIVIC_TITLES:
+        pattern = re.compile(rf"^\s*{re.escape(title)}\s+", re.IGNORECASE)
+        name = pattern.sub("", name)
+    return name.strip()
+
+
+def _get_last_name(name: str) -> str:
+    """Extract the last name from a full name string."""
+    parts = name.strip().split()
+    return parts[-1] if parts else name
+
+
+def _names_match(name_a: str, name_b: str) -> bool:
+    """Check if two names refer to the same person.
+
+    Handles:
+    - Exact match after title stripping
+    - Last name match with initial match ('J. Smith' == 'John Smith')
+    - Last name only match ('Smith' == 'John Smith')
+    """
+    a = _strip_civic_title(name_a)
+    b = _strip_civic_title(name_b)
+
+    if a.lower() == b.lower():
+        return True
+
+    a_parts = a.split()
+    b_parts = b.split()
+
+    a_last = a_parts[-1].lower() if a_parts else ""
+    b_last = b_parts[-1].lower() if b_parts else ""
+
+    if a_last != b_last:
+        return False
+
+    # Same last name - check if one is just the last name
+    if len(a_parts) == 1 or len(b_parts) == 1:
+        return True
+
+    # Check initial match: 'J.' matches 'John'
+    a_first = a_parts[0] if len(a_parts) > 1 else ""
+    b_first = b_parts[0] if len(b_parts) > 1 else ""
+
+    if a_first.endswith(".") and b_first.lower().startswith(a_first[0].lower()):
+        return True
+    if b_first.endswith(".") and a_first.lower().startswith(b_first[0].lower()):
+        return True
+
+    return False
+
+
+def _categorize_person(name: str, variants: list[str], meeting_context: dict | None) -> str:
+    """Categorize a person as elected_official, staff, or unknown."""
+    all_names = [name] + variants
+
+    for n in all_names:
+        lower = n.lower()
+        for title in ELECTED_TITLES:
+            if lower.startswith(title):
+                return "elected_official"
+
+    if meeting_context:
+        attendees_lower = {a.lower() for a in meeting_context.get("attendees", [])}
+        for n in all_names:
+            stripped = _strip_civic_title(n).lower()
+            if stripped in attendees_lower:
+                return "elected_official"
+
+    for n in all_names:
+        lower = n.lower()
+        for title in STAFF_TITLES:
+            if lower.startswith(title):
+                return "staff"
+
+    return "unknown"
+
+
+def _resolve_person_names(persons: list[dict], meeting_context: dict | None = None) -> list[dict]:
+    """Group person name variants and select canonical forms."""
+    if not persons:
+        return []
+
+    groups: list[list[dict]] = []
+
+    for person in persons:
+        matched = False
+        for group in groups:
+            if any(_names_match(person["text"], existing["text"]) for existing in group):
+                group.append(person)
+                matched = True
+                break
+        if not matched:
+            groups.append([person])
+
+    resolved = []
+    for group in groups:
+        stripped = [(p, _strip_civic_title(p["text"])) for p in group]
+        canonical_entry = max(stripped, key=lambda x: len(x[1]))
+        canonical_text = canonical_entry[1]
+
+        variants = []
+        for p in group:
+            if p["text"] != canonical_text:
+                variants.append(p["text"])
+
+        best_confidence = max(p["confidence"] for p in group)
+
+        category = _categorize_person(canonical_text, variants, meeting_context)
+
+        entry = {
+            "text": canonical_text,
+            "confidence": best_confidence,
+            "variants": variants,
+            "category": category,
+        }
+        resolved.append(entry)
+
+    return resolved

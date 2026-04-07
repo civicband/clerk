@@ -63,6 +63,24 @@ class TestEntityConfidenceThreshold:
         assert extraction.ENTITY_CONFIDENCE_THRESHOLD == 0.85
 
 
+class TestModelSelection:
+    """Tests for configurable spaCy model selection."""
+
+    def test_default_model_is_md(self, monkeypatch):
+        """Default model should be en_core_web_md."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        monkeypatch.delenv("SPACY_MODEL", raising=False)
+        extraction = load_extraction_module()
+        assert extraction.SPACY_MODEL == "en_core_web_md"
+
+    def test_model_configurable_via_env(self, monkeypatch):
+        """SPACY_MODEL env var overrides the default."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        monkeypatch.setenv("SPACY_MODEL", "en_core_web_trf")
+        extraction = load_extraction_module()
+        assert extraction.SPACY_MODEL == "en_core_web_trf"
+
+
 class TestGetNlp:
     """Tests for lazy NLP model loading."""
 
@@ -661,6 +679,86 @@ class TestRollcallMatcher:
         assert matcher1 is matcher2
 
 
+class TestAgendaItemExtraction:
+    """Tests for extract_agenda_item_refs function."""
+
+    def test_extracts_ordinance_reference(self, monkeypatch):
+        """Extracts 'Ordinance 2024-15' as ordinance type."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        doc = nlp("The council voted on Ordinance 2024-15.")
+        refs = extraction.extract_agenda_item_refs(doc)
+
+        assert len(refs) == 1
+        assert refs[0]["type"] == "ordinance"
+        assert refs[0]["number"] == "2024-15"
+
+    def test_extracts_resolution_reference(self, monkeypatch):
+        """Extracts 'Resolution 2024-03' as resolution type."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        doc = nlp("Resolution 2024-03 was adopted unanimously.")
+        refs = extraction.extract_agenda_item_refs(doc)
+
+        assert len(refs) == 1
+        assert refs[0]["type"] == "resolution"
+        assert refs[0]["number"] == "2024-03"
+
+    def test_extracts_item_reference(self, monkeypatch):
+        """Extracts 'Item 4.2' as item type."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        doc = nlp("Discussion of Item 4.2 continued.")
+        refs = extraction.extract_agenda_item_refs(doc)
+
+        assert len(refs) == 1
+        assert refs[0]["type"] == "item"
+        assert refs[0]["number"] == "4.2"
+
+    def test_extracts_consent_calendar_reference(self, monkeypatch):
+        """Extracts 'Consent Calendar Item 3' as consent_calendar type."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        doc = nlp("Consent Calendar Item 3 was approved.")
+        refs = extraction.extract_agenda_item_refs(doc)
+
+        assert any(r["type"] == "consent_calendar" for r in refs)
+
+    def test_returns_empty_for_plain_text(self, monkeypatch):
+        """Returns empty list for text with no agenda item references."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        doc = nlp("The meeting was called to order at seven PM.")
+        refs = extraction.extract_agenda_item_refs(doc)
+
+        assert refs == []
+
+
 class TestSpacyRollcallExtraction:
     """Tests for spaCy-based roll call vote extraction."""
 
@@ -726,3 +824,439 @@ class TestSpacyRollcallExtraction:
         # Create a mock doc-like object (shouldn't be used since nlp is None)
         result = extraction._extract_rollcall_votes_spacy(None)
         assert result == []
+
+
+class TestVoteTopicExtraction:
+    """Tests for extract_vote_topic function."""
+
+    def test_extracts_topic_from_motion_sentence(self, monkeypatch):
+        """Given a sentence with a motion verb, extract the topic."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        text = "Motion to approve the downtown parking structure plan passed 7-0."
+        doc = nlp(text)
+        # Vote is at "passed 7-0" - find its char offset
+        offset = text.index("passed")
+        topic = extraction.extract_vote_topic(doc, offset)
+
+        assert topic is not None
+        assert "parking" in topic.lower()
+
+    def test_extracts_topic_from_preceding_sentence(self, monkeypatch):
+        """Falls back to preceding sentence when vote sentence is terse."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        text = "The Council discussed the new zoning amendment for District 5. The motion passed 5-2."
+        doc = nlp(text)
+        offset = text.index("passed")
+        topic = extraction.extract_vote_topic(doc, offset)
+
+        assert topic is not None
+        assert "zoning" in topic.lower()
+
+    def test_returns_none_for_no_context(self, monkeypatch):
+        """Returns None when the text is too terse to extract a topic."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        text = "Passed 7-0."
+        doc = nlp(text)
+        topic = extraction.extract_vote_topic(doc, 0)
+
+        assert topic is None
+
+    def test_topic_truncated_to_max_length(self, monkeypatch):
+        """Topic should be truncated to max_length characters."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        # Create a very long sentence that will produce a long topic
+        long_subject = " ".join(["comprehensive"] * 30)
+        text = f"The Council discussed the {long_subject} infrastructure development plan for the entire metropolitan region. The motion passed 5-2."
+        doc = nlp(text)
+        offset = text.index("passed")
+        topic = extraction.extract_vote_topic(doc, offset, max_length=150)
+
+        assert topic is not None
+        assert len(topic) <= 150
+
+
+class TestSectionDetection:
+    """Tests for detect_section function."""
+
+    def test_detects_consent_calendar(self, monkeypatch):
+        """detect_section identifies CONSENT CALENDAR section."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+        result = extraction.detect_section("CONSENT CALENDAR\nItem 1. Approve minutes.")
+        assert result == "consent_calendar"
+
+    def test_detects_public_hearing(self, monkeypatch):
+        """detect_section identifies PUBLIC HEARING section."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+        result = extraction.detect_section("PUBLIC HEARING\nOrdinance 2024-15.")
+        assert result == "public_hearing"
+
+    def test_detects_new_business(self, monkeypatch):
+        """detect_section identifies NEW BUSINESS section."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+        result = extraction.detect_section("NEW BUSINESS\nCouncil discussed parking.")
+        assert result == "new_business"
+
+    def test_returns_none_for_no_section(self, monkeypatch):
+        """detect_section returns None when no section header found."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+        result = extraction.detect_section("The mayor welcomed everyone.")
+        assert result is None
+
+    def test_meeting_context_tracks_section(self, monkeypatch):
+        """create_meeting_context includes current_section key set to None."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+        context = extraction.create_meeting_context()
+        assert "current_section" in context
+        assert context["current_section"] is None
+
+
+class TestEntityResolution:
+    """Tests for entity name resolution (pure Python, no spaCy needed)."""
+
+    def test_merges_name_variants(self, monkeypatch):
+        """Entities with 'Smith', 'John Smith', 'Councilmember Smith' resolve to 1 person."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        entities = {
+            "persons": [
+                {"text": "Smith", "confidence": 0.85},
+                {"text": "John Smith", "confidence": 0.90},
+                {"text": "Councilmember Smith", "confidence": 0.80},
+            ],
+            "orgs": [],
+            "locations": [],
+        }
+        result = extraction.resolve_entities(entities)
+
+        assert len(result["persons"]) == 1
+        person = result["persons"][0]
+        assert person["text"] == "John Smith"
+        assert "Smith" in person["variants"] or "Councilmember Smith" in person["variants"]
+        assert person["confidence"] == 0.90
+
+    def test_keeps_distinct_persons(self, monkeypatch):
+        """'John Smith' and 'Jane Doe' stay as 2 separate persons."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        entities = {
+            "persons": [
+                {"text": "John Smith", "confidence": 0.90},
+                {"text": "Jane Doe", "confidence": 0.85},
+            ],
+            "orgs": [],
+            "locations": [],
+        }
+        result = extraction.resolve_entities(entities)
+
+        assert len(result["persons"]) == 2
+        names = [p["text"] for p in result["persons"]]
+        assert "John Smith" in names
+        assert "Jane Doe" in names
+
+    def test_handles_initials(self, monkeypatch):
+        """'J. Smith' and 'John Smith' merge into 1 person with canonical 'John Smith'."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        entities = {
+            "persons": [
+                {"text": "J. Smith", "confidence": 0.80},
+                {"text": "John Smith", "confidence": 0.90},
+            ],
+            "orgs": [],
+            "locations": [],
+        }
+        result = extraction.resolve_entities(entities)
+
+        assert len(result["persons"]) == 1
+        person = result["persons"][0]
+        assert person["text"] == "John Smith"
+        assert "J. Smith" in person["variants"]
+
+    def test_preserves_orgs_and_locations(self, monkeypatch):
+        """Orgs and locations pass through unchanged."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        entities = {
+            "persons": [
+                {"text": "John Smith", "confidence": 0.90},
+            ],
+            "orgs": [
+                {"text": "City Council", "confidence": 0.85},
+            ],
+            "locations": [
+                {"text": "Oakland", "confidence": 0.80},
+            ],
+        }
+        result = extraction.resolve_entities(entities)
+
+        assert result["orgs"] == [{"text": "City Council", "confidence": 0.85}]
+        assert result["locations"] == [{"text": "Oakland", "confidence": 0.80}]
+
+
+class TestVoteRecordTopicIntegration:
+    """Tests that vote records include topic and agenda_item_ref fields."""
+
+    def test_vote_record_has_topic_fields(self, monkeypatch):
+        """Vote records include agenda_item_ref, topic, and section fields."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        record = extraction._create_vote_record(
+            result="passed", ayes=7, nays=0, raw_text="passed 7-0"
+        )
+        assert "agenda_item_ref" in record
+        assert "topic" in record
+        assert "section" in record
+
+    def test_vote_record_accepts_topic_fields(self, monkeypatch):
+        """Vote records can be created with topic, agenda_item_ref, and section."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        record = extraction._create_vote_record(
+            result="passed",
+            ayes=7,
+            nays=0,
+            raw_text="passed 7-0",
+            agenda_item_ref={"type": "ordinance", "number": "2024-15"},
+            topic="downtown parking structure",
+            section="public_hearing",
+        )
+        assert record["agenda_item_ref"] == {"type": "ordinance", "number": "2024-15"}
+        assert record["topic"] == "downtown parking structure"
+        assert record["section"] == "public_hearing"
+
+    def test_extract_votes_includes_topic(self, monkeypatch):
+        """Full vote extraction populates topic from context."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        text = "Motion to approve Ordinance 2024-15 regarding the downtown parking structure passed 7-0."
+        result = extraction.extract_votes(text)
+        votes = result["votes"]
+        if votes:
+            vote = votes[0]
+            assert "topic" in vote
+            assert "agenda_item_ref" in vote
+            assert "section" in vote
+
+    def test_find_nearest_ref(self, monkeypatch):
+        """_find_nearest_ref returns the closest preceding ref."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        refs = [
+            {"type": "ordinance", "number": "2024-10", "char_start": 0, "char_end": 20},
+            {"type": "resolution", "number": "2024-03", "char_start": 50, "char_end": 70},
+        ]
+        # Vote at position 80 should find the resolution (closer)
+        result = extraction._find_nearest_ref(refs, 80)
+        assert result is not None
+        assert result["type"] == "resolution"
+        assert result["number"] == "2024-03"
+
+    def test_find_nearest_ref_ignores_after(self, monkeypatch):
+        """_find_nearest_ref ignores refs that come after the vote."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        refs = [
+            {"type": "ordinance", "number": "2024-10", "char_start": 100, "char_end": 120},
+        ]
+        # Vote at position 50 should not find a ref after it
+        result = extraction._find_nearest_ref(refs, 50)
+        assert result is None
+
+    def test_find_nearest_ref_empty_list(self, monkeypatch):
+        """_find_nearest_ref returns None for empty refs list."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        result = extraction._find_nearest_ref([], 50)
+        assert result is None
+
+    def test_regex_fallback_has_topic_fields(self, monkeypatch):
+        """Regex fallback vote records include topic fields set to None."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        # Force spaCy to be unavailable so regex fallback is used
+        extraction._nlp = None
+        extraction._nlp_load_attempted = True
+
+        text = "The motion passed 7-0."
+        result = extraction.extract_votes(text)
+
+        assert len(result["votes"]) == 1
+        vote = result["votes"][0]
+        assert "topic" in vote
+        assert vote["topic"] is None
+        assert "agenda_item_ref" in vote
+        assert vote["agenda_item_ref"] is None
+        assert "section" in vote
+        assert vote["section"] is None
+
+
+class TestEntityCategorization:
+    """Tests for entity categorization (pure Python, no spaCy needed)."""
+
+    def test_categorizes_elected_official_by_title(self, monkeypatch):
+        """Entity with 'Councilmember Smith' gets category 'elected_official'."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        entities = {
+            "persons": [
+                {"text": "Councilmember Smith", "confidence": 0.85},
+            ],
+            "orgs": [],
+            "locations": [],
+        }
+        result = extraction.resolve_entities(entities)
+
+        assert len(result["persons"]) == 1
+        assert result["persons"][0]["category"] == "elected_official"
+
+    def test_categorizes_elected_official_by_roll_call(self, monkeypatch):
+        """Entity 'Smith' in meeting_context attendees list gets 'elected_official'."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        entities = {
+            "persons": [
+                {"text": "Smith", "confidence": 0.85},
+            ],
+            "orgs": [],
+            "locations": [],
+        }
+        ctx = extraction.create_meeting_context()
+        ctx["attendees"] = ["Smith", "Jones", "Lee"]
+
+        result = extraction.resolve_entities(entities, meeting_context=ctx)
+
+        assert len(result["persons"]) == 1
+        assert result["persons"][0]["category"] == "elected_official"
+
+    def test_categorizes_staff(self, monkeypatch):
+        """Entity 'City Manager Johnson' gets category 'staff'."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        entities = {
+            "persons": [
+                {"text": "City Manager Johnson", "confidence": 0.85},
+            ],
+            "orgs": [],
+            "locations": [],
+        }
+        result = extraction.resolve_entities(entities)
+
+        assert len(result["persons"]) == 1
+        assert result["persons"][0]["category"] == "staff"
+
+    def test_defaults_to_unknown(self, monkeypatch):
+        """Entity 'John Doe' with no title and not in attendees gets 'unknown'."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+
+        entities = {
+            "persons": [
+                {"text": "John Doe", "confidence": 0.85},
+            ],
+            "orgs": [],
+            "locations": [],
+        }
+        result = extraction.resolve_entities(entities)
+
+        assert len(result["persons"]) == 1
+        assert result["persons"][0]["category"] == "unknown"
+
+
+class TestEndToEndExtraction:
+    """Integration test for the full extraction pipeline."""
+
+    def test_full_pipeline_with_civic_text(self, monkeypatch):
+        """End-to-end test with realistic civic meeting text."""
+        monkeypatch.setenv("ENABLE_EXTRACTION", "1")
+        extraction = load_extraction_module()
+        nlp = extraction.get_nlp()
+        if nlp is None:
+            pytest.skip("spaCy not available")
+
+        text = """
+        CONSENT CALENDAR
+        Item 1. Approval of minutes from January 15, 2024.
+        Councilmember Smith moved approval. Seconded by Councilmember Jones.
+        Motion passed unanimously.
+
+        PUBLIC HEARING
+        Item 2. Ordinance 2024-15 regarding the downtown parking structure.
+        Mayor Johnson opened the public hearing.
+        City Manager Williams presented the staff report.
+        Councilmember Smith moved to approve Ordinance 2024-15.
+        Seconded by Councilmember Jones. Motion passed 5-2.
+        Ayes: Smith, Jones, Lee, Chen, Davis. Nays: Brown, Garcia.
+        """
+
+        doc = nlp(text)
+
+        # Test entity extraction
+        entities = extraction.extract_entities(text, doc=doc)
+        assert len(entities["persons"]) >= 2  # Should find council members
+
+        # Test vote extraction
+        votes_result = extraction.extract_votes(text, doc=doc)
+        votes = votes_result["votes"]
+        assert len(votes) >= 2  # Unanimous + tally vote
+
+        # Test agenda item refs
+        refs = extraction.extract_agenda_item_refs(doc)
+        assert any(r["type"] == "ordinance" and r["number"] == "2024-15" for r in refs)
+
+        # Test section detection
+        section = extraction.detect_section(text)
+        assert section is not None
+
+        # Test entity resolution with meeting context
+        ctx = extraction.create_meeting_context()
+        ctx["attendees"] = ["Smith", "Jones", "Lee", "Chen", "Davis", "Brown", "Garcia"]
+        resolved = extraction.resolve_entities(entities, meeting_context=ctx)
+        for person in resolved["persons"]:
+            assert "category" in person
+            assert "variants" in person
