@@ -1,10 +1,11 @@
-# clerk-scrapers Package Design
+# clerk-fetchers Package Design
 
 ## Overview
 
-A separate Python package (`clerk-scrapers`) that provides community-contributed fetchers to clerk via its existing pluggy-based plugin system. Installing clerk-scrapers alongside clerk makes its fetchers available automatically — no configuration required.
+A separate Python package (`clerk-fetchers`) that provides community-contributed fetchers to clerk via its existing pluggy-based plugin system. Installing clerk-scrapers alongside clerk makes its fetchers available automatically — no configuration required.
 
 This package serves two roles:
+
 1. A **curated shared package** where vetted community fetchers live (PRs reviewed by CivicBand maintainers)
 2. A **reference implementation** for anyone who wants to publish their own independent fetcher package
 
@@ -23,14 +24,14 @@ Independent third-party fetcher packages work identically — any package that d
 
 ## Package Structure
 
-```
-clerk-scrapers/
+```text
+clerk-fetchers/
 ├── pyproject.toml
 ├── README.md
 ├── CONTRIBUTING.md
 ├── src/
-│   └── clerk_scrapers/
-│       ├── __init__.py          # ClerkScrapersPlugin with @hookimpl methods
+│   └── clerk_fetchers/
+│       ├── __init__.py          # ClerkFetchersPlugin with @hookimpl methods
 │       ├── _registry.py         # Label-to-class and label-to-extra mappings
 │       └── fetchers/
 │           ├── __init__.py
@@ -51,11 +52,11 @@ Each fetcher lives in its own subdirectory under `fetchers/`. Naming uses "fetch
 The plugin class delegates to simple dictionaries, keeping it stable across fetcher additions:
 
 ```python
-# src/clerk_scrapers/__init__.py
+# src/clerk_fetchers/__init__.py
 from clerk import hookimpl
-from clerk_scrapers._registry import FETCHER_REGISTRY, EXTRA_REGISTRY
+from clerk_fetchers._registry import FETCHER_REGISTRY, EXTRA_REGISTRY
 
-class ClerkScrapersPlugin:
+class ClerkFetchersPlugin:
     @hookimpl
     def fetcher_class(self, label):
         return FETCHER_REGISTRY.get(label)
@@ -66,8 +67,8 @@ class ClerkScrapersPlugin:
 ```
 
 ```python
-# src/clerk_scrapers/_registry.py
-from clerk_scrapers.fetchers.example_city import ExampleCityFetcher
+# src/clerk_fetchers/_registry.py
+from clerk_fetchers.fetchers.example_city import ExampleCityFetcher
 
 FETCHER_REGISTRY = {
     "example_city": ExampleCityFetcher,
@@ -100,14 +101,14 @@ class ExampleCityFetcher(Fetcher):
 
 ```toml
 [project]
-name = "clerk-scrapers"
+name = "clerk-fetchers"
 requires-python = ">=3.12"
 dependencies = [
     "clerk>=<current_version>",
 ]
 
 [project.entry-points."clerk.plugins"]
-clerk-scrapers = "clerk_scrapers:ClerkScrapersPlugin"
+clerk-fetchers = "clerk_scrapers:ClerkFetchersPlugin"
 
 [build-system]
 requires = ["hatchling"]
@@ -115,15 +116,15 @@ build-backend = "hatchling.build"
 ```
 
 - **Hatchling** build system, matching clerk
-- **Loose lower bound** on clerk dependency — the plugin API (hookspecs + Fetcher base class) is the contract; clerk-scrapers doesn't need to track every clerk release
+- **Loose lower bound** on clerk dependency — the plugin API (hookspecs + Fetcher base class) is the contract; clerk-fetchers doesn't need to track every clerk release
 - **Python 3.12+**, matching clerk
 
 ## Contributor Workflow
 
-### Adding a fetcher to clerk-scrapers (shared package)
+### Adding a fetcher to clerk-fetchers (shared package)
 
-1. Fork clerk-scrapers, create a branch
-2. Create `src/clerk_scrapers/fetchers/<municipality_name>/`
+1. Fork clerk-fetchers, create a branch
+2. Create `src/clerk_fetchers/fetchers/<municipality_name>/`
 3. Implement a `Fetcher` subclass with at minimum `fetch_events()`
 4. Add the label-to-class mapping in `_registry.py`
 5. If the fetcher uses extra config, add the defaults to `EXTRA_REGISTRY`
@@ -133,7 +134,7 @@ build-backend = "hatchling.build"
 
 ### Publishing an independent fetcher package
 
-Same pattern, different packaging. Create a standalone package with a `clerk.plugins` entry point that implements the `fetcher_class` hook (and optionally `fetcher_extra`). The clerk-scrapers repo serves as a reference implementation. `CONTRIBUTING.md` documents both paths.
+Same pattern, different packaging. Create a standalone package with a `clerk.plugins` entry point that implements the `fetcher_class` hook (and optionally `fetcher_extra`). The clerk-fetchers repo serves as a reference implementation. `CONTRIBUTING.md` documents both paths.
 
 ## Testing Strategy
 
@@ -147,6 +148,6 @@ CI runs the full test suite on every PR. Tests plus maintainer review is the qua
 
 ## Scope
 
-- **Fetchers only** for now. The plugin hook system supports other extension points (compilation, extraction, deployment), but clerk-scrapers is scoped to fetchers.
+- **Fetchers only** for now. The plugin hook system supports other extension points (compilation, extraction, deployment), but clerk-fetchers is scoped to fetchers.
 - **Any municipality worldwide** — no geographic restrictions on what fetchers can be contributed.
-- **Community-contributed** — this is separate from both clerk core and the official CivicBand fetchers in the civic-band repo.
+- **Community-contributed** — this is separate from both clerk core and the internal CivicBand fetchers.
