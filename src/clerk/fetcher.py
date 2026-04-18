@@ -1059,7 +1059,10 @@ class Fetcher:
                         )
 
                     try:
-                        text = self._ocr_with_tesseract(Path(page_image_path))
+                        if backend == "paddleocr":
+                            text = _ocr_with_paddleocr(Path(page_image_path))
+                        else:
+                            text = self._ocr_with_tesseract(Path(page_image_path))
 
                         with open(txt_filepath, "w", encoding="utf-8") as textfile:
                             textfile.write(text)
@@ -1165,3 +1168,65 @@ def get_fetcher(site, all_years=False, all_agendas=False) -> Fetcher:  # type: i
         module_path = f"fetchers.custom.{site['subdomain'].replace('.', '_')}"
         fetcher = importlib.import_module(module_path)
         return fetcher.custom_fetcher(site, start_year, all_agendas)  # type: ignore[no-any-return]
+
+
+def _ocr_with_paddleocr(image_path: Path) -> str:
+    """Perform OCR using PaddleOCR (PP-OCRv4).
+
+    PaddleOCR is an open-source OCR toolkit that excels at:
+    - Document layout analysis (tables, multi-column text)
+    - Handling skewed/rotated text
+    - Better accuracy on low-quality scans
+    - CPU-friendly inference with small models
+
+    Args:
+        image_path: Path to image file to OCR
+
+    Returns:
+        Extracted text string
+
+    Raises:
+        ImportError: If paddleocr package is not installed
+        RuntimeError: If OCR processing fails
+    """
+    try:
+        from paddleocr import PaddleOCR  # pyright: ignore[reportMissingImports]
+    except ImportError:
+        raise ImportError(
+            "PaddleOCR backend requires the 'paddleocr' package. "
+            "Install with: pip install paddleocr"
+        )
+
+    # Initialize PaddleOCR with CPU-friendly settings
+    # use_angle_cls: Enable text orientation classification
+    # lang: 'en' for English documents
+    # use_gpu: False for CPU-only workers
+    # show_log: False to reduce noise
+    ocr = PaddleOCR(
+        use_angle_cls=True,
+        lang="en",
+        use_gpu=False,
+        show_log=False,
+    )
+
+    try:
+        # Run OCR on the image
+        # result format: [[box, (text, confidence)], ...]
+        result = ocr.ocr(str(image_path), cls=True)
+
+        if not result or not result[0]:
+            logger.debug("No text detected in image: %s", image_path)
+            return ""
+
+        # Extract text from all detected boxes
+        # result[0] is the list of detections for the first (only) image
+        lines = []
+        for line in result[0]:
+            text = line[1][0]  # Extract text from (text, confidence) tuple
+            lines.append(text)
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.error("PaddleOCR failed on %s: %s", image_path, str(e))
+        raise RuntimeError(f"PaddleOCR processing failed: {e}") from e
