@@ -12,36 +12,30 @@ from clerk.fetcher import _ocr_with_paddleocr
 class TestPaddleOCRBackend:
     """Test the PaddleOCR OCR backend."""
 
-    def test_import_error_when_paddleocr_missing(self):
-        """Should raise ImportError when paddleocr is not installed."""
-        # Simulate missing paddleocr by patching the import to fail
-        with patch.dict("sys.modules", {"paddleocr": None}):
-            with tempfile.TemporaryDirectory() as tmpdir:
-                dummy_image = Path(tmpdir) / "test.png"
-                dummy_image.touch()
-
-                with pytest.raises(ImportError, match="PaddleOCR backend requires"):
-                    _ocr_with_paddleocr(dummy_image)
-
     def test_paddleocr_success(self):
         """Should extract text from image using PaddleOCR."""
-        # Mock the PaddleOCR class and its ocr method
         mock_ocr_instance = Mock()
-        # Simulate PaddleOCR result format: [[box, (text, confidence)], ...]
+        # PaddleOCR returns: [detections_for_image_1, detections_for_image_2, ...]
+        # Each detection is: [box_coordinates, (text, confidence)]
+        # We pass one image, so result has 1 element.
         mock_ocr_instance.ocr.return_value = [
-            [
-                [[0, 0], [100, 0], [100, 50], [0, 50]],  # box coordinates
-                ("Hello World", 0.95),  # (text, confidence)
-            ],
-            [
-                [[0, 60], [100, 60], [100, 110], [0, 110]],
-                ("Second Line", 0.92),
-            ],
+            [  # result[0]: List of detections for the first image
+                [  # Detection 1
+                    [[0, 0], [100, 0], [100, 50], [0, 50]],  # box
+                    ("Hello World", 0.95),  # (text, confidence)
+                ],
+                [  # Detection 2
+                    [[0, 60], [100, 60], [100, 110], [0, 110]],
+                    ("Second Line", 0.92),
+                ],
+            ]
         ]
 
         mock_paddleocr_class = Mock(return_value=mock_ocr_instance)
+        mock_paddleocr_module = Mock()
+        mock_paddleocr_module.PaddleOCR = mock_paddleocr_class
 
-        with patch("clerk.fetcher.PaddleOCR", mock_paddleocr_class):
+        with patch.dict("sys.modules", {"paddleocr": mock_paddleocr_module}):
             with tempfile.TemporaryDirectory() as tmpdir:
                 dummy_image = Path(tmpdir) / "test.png"
                 dummy_image.touch()
@@ -57,11 +51,14 @@ class TestPaddleOCRBackend:
     def test_paddleocr_empty_result(self):
         """Should return empty string when no text is detected."""
         mock_ocr_instance = Mock()
-        mock_ocr_instance.ocr.return_value = None  # No text detected
+        # PaddleOCR returns None or an empty list when no text is found
+        mock_ocr_instance.ocr.return_value = None
 
         mock_paddleocr_class = Mock(return_value=mock_ocr_instance)
+        mock_paddleocr_module = Mock()
+        mock_paddleocr_module.PaddleOCR = mock_paddleocr_class
 
-        with patch("clerk.fetcher.PaddleOCR", mock_paddleocr_class):
+        with patch.dict("sys.modules", {"paddleocr": mock_paddleocr_module}):
             with tempfile.TemporaryDirectory() as tmpdir:
                 dummy_image = Path(tmpdir) / "test.png"
                 dummy_image.touch()
@@ -76,11 +73,23 @@ class TestPaddleOCRBackend:
         mock_ocr_instance.ocr.side_effect = Exception("OCR engine crashed")
 
         mock_paddleocr_class = Mock(return_value=mock_ocr_instance)
+        mock_paddleocr_module = Mock()
+        mock_paddleocr_module.PaddleOCR = mock_paddleocr_class
 
-        with patch("clerk.fetcher.PaddleOCR", mock_paddleocr_class):
+        with patch.dict("sys.modules", {"paddleocr": mock_paddleocr_module}):
             with tempfile.TemporaryDirectory() as tmpdir:
                 dummy_image = Path(tmpdir) / "test.png"
                 dummy_image.touch()
 
                 with pytest.raises(RuntimeError, match="PaddleOCR processing failed"):
+                    _ocr_with_paddleocr(dummy_image)
+
+    def test_paddleocr_import_error(self):
+        """Should raise ImportError when paddleocr is not installed."""
+        with patch.dict("sys.modules", {"paddleocr": None}):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                dummy_image = Path(tmpdir) / "test.png"
+                dummy_image.touch()
+
+                with pytest.raises(ImportError, match="PaddleOCR backend requires"):
                     _ocr_with_paddleocr(dummy_image)
