@@ -419,16 +419,22 @@ def test_coordinator_resets_enqueued_flag(mock_site, tmp_path, monkeypatch, mock
     """Coordinator should reset coordinator_enqueued flag for next stage."""
     from pathlib import Path
 
-    from sqlalchemy import select
+    from sqlalchemy import create_engine, select
 
     from clerk.db import civic_db_connection, upsert_site
-    from clerk.models import sites_table
+    from clerk.models import metadata, sites_table
     from clerk.pipeline_state import (
         claim_coordinator_enqueue,
         increment_completed,
         initialize_stage,
     )
     from clerk.workers import ocr_complete_coordinator
+
+    # Create temp DB with tables
+    db_path = tmp_path / "civic.db"
+    engine = create_engine(f"sqlite:///{db_path}")
+    metadata.create_all(engine)
+    monkeypatch.setattr("clerk.db.get_civic_db", lambda: engine)
 
     subdomain = "test-site"
     mock_site["subdomain"] = subdomain

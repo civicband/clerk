@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 
+import pytest
 import sqlite_utils
 
 from clerk.utils import STORAGE_DIR, assert_db_exists, pm
@@ -11,6 +12,11 @@ from clerk.utils import STORAGE_DIR, assert_db_exists, pm
 
 class TestAssertDbExists:
     """Tests for the assert_db_exists function."""
+
+    @pytest.fixture(autouse=True)
+    def _use_sqlite(self, monkeypatch):
+        """Ensure tests use local SQLite, not a production DATABASE_URL."""
+        monkeypatch.delenv("DATABASE_URL", raising=False)
 
     def test_creates_database_if_not_exists(self, tmp_path, monkeypatch):
         """Test that assert_db_exists creates a new database if it doesn't exist."""
