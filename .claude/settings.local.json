@@ -17,7 +17,8 @@
       "Bash(uv run python -m pytest tests/ --tb=no -q 2>&1 | grep \"FAILED\")",
       "Bash(uv run python -m pytest tests/ --tb=short -q 2>&1 | tail -20)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(python:*)"
     ]
   }
 }
