@@ -314,6 +314,9 @@ def test_ocr_document_job_accepts_run_id_parameter(mocker):
     mock_fetcher = mocker.MagicMock()
     mocker.patch("clerk.workers.get_fetcher", return_value=mock_fetcher)
     mocker.patch("clerk.workers.increment_stage_progress")
+    mocker.patch("clerk.workers.increment_completed")
+    mocker.patch("clerk.workers.increment_failed")
+    mocker.patch("clerk.workers.should_trigger_coordinator", return_value=False)
     mocker.patch("clerk.workers.ClerkLogger")
 
     ocr_document_job("test.civic.band", "/path/to/test.pdf", "tesseract", run_id="test_123_abc")
@@ -328,6 +331,9 @@ def test_ocr_document_job_logs_with_stage_ocr(mocker):
     mock_fetcher = mocker.MagicMock()
     mocker.patch("clerk.workers.get_fetcher", return_value=mock_fetcher)
     mocker.patch("clerk.workers.increment_stage_progress")
+    mocker.patch("clerk.workers.increment_completed")
+    mocker.patch("clerk.workers.increment_failed")
+    mocker.patch("clerk.workers.should_trigger_coordinator", return_value=False)
     mock_clerk_logger = mocker.patch("clerk.workers.ClerkLogger")
 
     ocr_document_job("test.civic.band", "/path/to/test.pdf", "tesseract", run_id="test_123_abc")
