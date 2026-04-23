@@ -128,7 +128,9 @@ def test_fetch_site_job_logs_fetch_started_milestone(mocker):
     fetch_site_job("test.civic.band", run_id="test_123_abc")
 
     # Verify fetch_started was logged
-    started_calls = [call for call in mock_logger.log.call_args_list if call[0][0] == "fetch_started"]
+    started_calls = [
+        call for call in mock_logger.log.call_args_list if call[0][0] == "fetch_started"
+    ]
     assert len(started_calls) == 1
 
 
@@ -162,7 +164,9 @@ def test_fetch_site_job_logs_fetch_completed_with_metrics(mocker):
     fetch_site_job("test.civic.band", run_id="test_123_abc")
 
     # Verify fetch_completed was logged
-    completed_calls = [call for call in mock_logger.log.call_args_list if call[0][0] == "fetch_completed"]
+    completed_calls = [
+        call for call in mock_logger.log.call_args_list if call[0][0] == "fetch_completed"
+    ]
     assert len(completed_calls) == 1
 
     # Verify it has duration_seconds and total_pdfs
@@ -241,8 +245,6 @@ def test_deploy_job_accepts_run_id(mocker):
 
     deploy_job("test.civic.band", run_id="test_123_abc")
 
-    # Verify ClerkLogger was created with stage="deploy"
-    constructor_call = mocker.patch("clerk.workers.ClerkLogger").call_args
     # Just verify deploy_job ran without errors
 
 
@@ -265,7 +267,9 @@ def test_deploy_job_logs_deploy_completed(mocker):
 
     deploy_job("test.civic.band", run_id="test_123_abc")
 
-    completed_calls = [call for call in mock_logger.log.call_args_list if "deploy_completed" in call[0][0]]
+    completed_calls = [
+        call for call in mock_logger.log.call_args_list if "deploy_completed" in call[0][0]
+    ]
     assert len(completed_calls) == 1
 
 
@@ -298,8 +302,6 @@ def test_ocr_complete_coordinator_accepts_run_id(mocker):
 
     ocr_complete_coordinator("test.civic.band", run_id="test_123_abc")
 
-    # Verify ClerkLogger was created with run_id and stage
-    constructor_calls = mocker.patch("clerk.workers.ClerkLogger").call_args_list
     # Just verify coordinator ran without errors
 
 

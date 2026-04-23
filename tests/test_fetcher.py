@@ -1,7 +1,5 @@
 """Tests for the Fetcher base class."""
 
-import sys
-
 import pytest
 
 

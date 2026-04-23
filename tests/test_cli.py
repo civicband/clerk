@@ -1,11 +1,9 @@
 """Unit tests for clerk.cli module."""
 
-import json
 from unittest.mock import MagicMock, patch
 
 import pytest
 import sqlite_utils
-from click.testing import CliRunner
 
 from clerk.cli import (
     cli,
@@ -345,7 +343,6 @@ class TestBuildDbFromTextInternal:
         # Check data was inserted
         minutes_count = db["minutes"].count
         assert minutes_count == 2
-
 
 
 @pytest.mark.unit
