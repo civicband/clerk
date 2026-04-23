@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
 import shutil
 import time
@@ -13,7 +12,7 @@ import pluggy
 import sqlite_utils
 
 from .hookspecs import ClerkSpec
-from .output import log
+from .output import logger
 
 
 @dataclass
@@ -46,8 +45,6 @@ class PageData:
     content_hash: str | None
     cached_extraction: dict | None  # {"entities": ..., "votes": ...}
 
-
-logger = logging.getLogger(__name__)
 
 pm = pluggy.PluginManager("civicband.clerk")
 pm.add_hookspecs(ClerkSpec)
@@ -133,7 +130,7 @@ def collect_page_files(txt_dir: str) -> list[PageFile]:
     if not os.path.exists(txt_dir):
         return page_files
 
-    logger.info("Started collecting page files")
+    logger.log("Started collecting page files")
     meetings = sorted(
         [
             d
@@ -143,7 +140,7 @@ def collect_page_files(txt_dir: str) -> list[PageFile]:
     )
 
     for meeting in meetings:
-        logger.info(f"Collecting for {meeting}")
+        logger.log(f"Collecting for {meeting}")
         meeting_path = os.path.join(txt_dir, meeting)
         dates = sorted(
             [
@@ -207,17 +204,17 @@ def load_extraction_cache(cache_file: str, expected_hash: str) -> dict | None:
         # Validate structure
         required_keys = {"content_hash", "entities", "votes"}
         if not required_keys.issubset(data.keys()):
-            logger.debug(f"Cache invalid: missing keys in {cache_file}")
+            logger.log(f"Cache invalid: missing keys in {cache_file}")
             return None
 
         # Validate hash match
         if data["content_hash"] != expected_hash:
-            logger.debug(f"Cache invalid: hash mismatch in {cache_file}")
+            logger.log(f"Cache invalid: hash mismatch in {cache_file}")
             return None
 
         return data
     except (json.JSONDecodeError, FileNotFoundError, KeyError) as e:
-        logger.debug(f"Cache invalid: {e} in {cache_file}")
+        logger.log(f"Cache invalid: {e} in {cache_file}")
         return None
 
 
@@ -232,7 +229,7 @@ def save_extraction_cache(cache_file: str, data: dict) -> None:
         with open(cache_file, "w") as f:
             json.dump(data, f, indent=2)
     except Exception as e:
-        log(f"Failed to save cache {cache_file}: {e}", level="warning")
+        logger.log(f"Failed to save cache {cache_file}: {e}", level="warning")
 
 
 def assert_db_exists():
@@ -293,9 +290,9 @@ def build_table_from_text(
         municipality: Optional municipality name for aggregate database
     """
     st = time.time()
-    log(
+    logger.subdomain = subdomain
+    logger.log(
         f"Building table from text table_name={table_name} municipality={municipality}",
-        subdomain=subdomain,
     )
 
     # Phase 1: Collect page files
@@ -380,7 +377,7 @@ def build_table_from_text(
 
             entries.append(entry)
 
-    log(
+    logger.log(
         f"Cache status: {cache_hits} hits, {cache_misses} misses",
         subdomain=subdomain,
         cache_hits=cache_hits,
@@ -394,7 +391,7 @@ def build_table_from_text(
     et = time.time()
     elapsed = et - st
 
-    log(
+    logger.log(
         f"Build completed in {elapsed:.2f}s",
         subdomain=subdomain,
         elapsed_time=f"{elapsed:.2f}",
@@ -412,10 +409,8 @@ def build_db_from_text_internal(subdomain):
         subdomain: Site subdomain
     """
     st = time.time()
-    log(
-        "Building database from text",
-        subdomain=subdomain,
-    )
+    logger.subdomain = subdomain
+    logger.log("Building database from text")
     minutes_txt_dir = f"{STORAGE_DIR}/{subdomain}/txt"
     agendas_txt_dir = f"{STORAGE_DIR}/{subdomain}/_agendas/txt"
     database = f"{STORAGE_DIR}/{subdomain}/meetings.db"
@@ -444,8 +439,5 @@ def build_db_from_text_internal(subdomain):
 
     et = time.time()
     elapsed_time = et - st
-    log(
-        f"Database build completed elapsed_time={elapsed_time:.2f}",
-        subdomain=subdomain,
-    )
-    click.echo(f"Execution time: {elapsed_time} seconds")
+    logger.subdomain = subdomain
+    logger.log(f"Database build completed elapsed_time={elapsed_time:.2f}")

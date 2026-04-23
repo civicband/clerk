@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import concurrent.futures
 import json
-import logging
 import os
 import shutil
 import sqlite3
@@ -33,10 +32,8 @@ from clerk.ocr_utils import (
     print_progress,
     retry_on_transient,
 )
-from clerk.output import log as output_log
+from clerk.output import logger
 from clerk.utils import STORAGE_DIR, build_db_from_text_internal, pm
-
-logger = logging.getLogger(__name__)
 
 # Optional PDF dependencies
 try:
@@ -277,6 +274,9 @@ class Fetcher:
         self.total_minutes = 0
         self.total_agendas = 0
 
+        self.logger = logger
+        self.logger.subdomain = self.subdomain
+
         self.child_init()
 
     def child_init(self) -> None:
@@ -298,7 +298,7 @@ class Fetcher:
     def assert_site_db_exists(self) -> None:
         self.db = sqlite_utils.Database(f"{STORAGE_DIR}/{self.subdomain}/meetings.db")
         if not self.db["minutes"].exists():
-            self.db["minutes"].create(  # type: ignore[union-attr]
+            _ = self.db["minutes"].create(  # type: ignore[union-attr]  # pyright: ignore[reportUnknownMemberType]
                 {
                     "id": str,
                     "meeting": str,
@@ -310,7 +310,7 @@ class Fetcher:
                 pk=("id"),
             )
         if not self.db["agendas"].exists():
-            self.db["agendas"].create(  # type: ignore[union-attr]
+            _ = self.db["agendas"].create(  # type: ignore[union-attr]  # pyright: ignore[reportUnknownMemberType]
                 {
                     "id": str,
                     "meeting": str,
@@ -351,9 +351,8 @@ class Fetcher:
                 start_time = time.time()
                 response = httpx.request(**args_dict)  # type: ignore[arg-type]
                 elapsed_ms = int((time.time() - start_time) * 1000)
-                output_log(
+                self.logger.log(
                     f"HTTP {method} {url}",
-                    subdomain=self.subdomain,
                     method=method,
                     url=url,
                     status_code=response.status_code,
@@ -361,17 +360,15 @@ class Fetcher:
                 )
                 return response
             except httpx.ConnectTimeout:
-                output_log(
+                self.logger.log(
                     f"Timeout fetching url, trying again {i - 1} more times",
-                    subdomain=self.subdomain,
                     level="warning",
                     url=url,
                     retries_remaining=i - 1,
                 )
             except httpx.RemoteProtocolError:
-                output_log(
+                self.logger.log(
                     f"Remote error fetching url, trying again {i - 1} more times",
-                    subdomain=self.subdomain,
                     level="warning",
                     url=url,
                     retries_remaining=i - 1,
@@ -417,6 +414,7 @@ class Fetcher:
             )
         # TODO: Assert minutes and agenda output dir exists
         self.assert_fetch_dirs()
+        self.logger.meeting = meeting
         if kind == "minutes":
             output_dir = self.minutes_output_dir
         if kind == "agenda":
@@ -425,32 +423,26 @@ class Fetcher:
         try:
             doc_response = self.request("GET", url, headers)
         except httpx.ReadTimeout:
-            output_log(
+            self.logger.log(
                 f"Timeout fetching {url} for {meeting}",
-                subdomain=self.subdomain,
                 level="error",
                 url=url,
-                meeting=meeting,
                 kind=kind,
             )
             return
         if not doc_response or doc_response.status_code != 200:
-            output_log(
+            self.logger.log(
                 f"Error fetching {url} for {meeting}",
-                subdomain=self.subdomain,
                 level="error",
                 url=url,
-                meeting=meeting,
                 kind=kind,
                 status_code=doc_response.status_code if doc_response else None,
             )
             return
         if "pdf" in doc_response.headers.get("content-type", "").lower():
-            output_log(
+            self.logger.log(
                 "Writing PDF file",
-                subdomain=self.subdomain,
                 operation="write_pdf",
-                meeting=meeting,
                 date=date,
                 kind=kind,
                 output_path=output_path,
@@ -458,55 +450,38 @@ class Fetcher:
             with open(output_path, "wb") as doc_pdf:
                 doc_pdf.write(doc_response.content)
         elif "html" in doc_response.headers.get("content-type", "").lower():
-            output_log(
+            self.logger.log(
                 "Converting HTML to PDF",
-                subdomain=self.subdomain,
                 operation="html_to_pdf",
-                meeting=meeting,
                 date=date,
                 kind=kind,
                 output_path=output_path,
             )
             try:
                 pdfkit.from_string(doc_response.content, output_path)  # type: ignore
-                output_log(
+                self.logger.log(
                     "Wrote file using pdfkit",
-                    subdomain=self.subdomain,
                     operation="pdfkit_conversion",
-                    meeting=meeting,
                     output_path=output_path,
                 )
             except Exception:
-                output_log(
+                self.logger.log(
                     f"pdfkit HTML->PDF error for {url}",
-                    subdomain=self.subdomain,
                     level="warning",
                     url=url,
-                    meeting=meeting,
                 )
         else:
-            try:
-                output_log(
-                    f"Unknown content type {doc_response.headers['content-type']}, meeting: {meeting}",
-                    subdomain=self.subdomain,
-                    level="warning",
-                    content_type=doc_response.headers["content-type"],
-                    meeting=meeting,
-                )
-            except KeyError:
-                output_log(
-                    f"Couldn't find content-type headers for {url}",
-                    subdomain=self.subdomain,
-                    level="error",
-                    url=url,
-                )
+            self.logger.log(
+                "Unknown content type",
+                level="warning",
+            )
+
         # Validate PDF is readable (use subprocess isolation to prevent segfaults)
         if USE_PDF_SUBPROCESS_ISOLATION:
             success, _, error_msg = _safe_pdf_read(output_path, timeout=PDF_READ_TIMEOUT)
             if not success:
-                output_log(
+                self.logger.log(
                     f"PDF downloaded from {url} failed validation: {error_msg}, removing {output_path}",
-                    subdomain=self.subdomain,
                     level="error",
                     url=url,
                     output_path=output_path,
@@ -519,26 +494,23 @@ class Fetcher:
             try:
                 PdfReader(output_path)  # pyright: ignore[reportOptionalCall]
             except PdfReadError:
-                output_log(
+                self.logger.log(
                     f"PDF downloaded from {url} errored on read, removing {output_path}",
-                    subdomain=self.subdomain,
                     level="error",
                     url=url,
                     output_path=output_path,
                 )
                 os.remove(output_path)
             except FileNotFoundError:
-                output_log(
+                self.logger.log(
                     f"PDF from {url} not found at {output_path}",
-                    subdomain=self.subdomain,
                     level="error",
                     url=url,
                     output_path=output_path,
                 )
             except ValueError:
-                output_log(
+                self.logger.log(
                     f"PDF downloaded from {url} errored on read, removing {output_path}",
-                    subdomain=self.subdomain,
                     level="error",
                     url=url,
                     output_path=output_path,
@@ -573,9 +545,8 @@ class Fetcher:
                     ).hexdigest()
                     doc_id = doc_id[:12]
                     output_path = os.path.join(self.docs_output_dir, f"{doc_id}.pdf")
-                    output_log(
+                    self.logger.log(
                         "Writing document file",
-                        subdomain=self.subdomain,
                         operation="write_document",
                         doc_id=doc_id,
                         filename=filename_from_resp,
@@ -610,9 +581,8 @@ class Fetcher:
             backend: OCR backend to use ('tesseract' or 'vision')
         """
         st = time.time()
-        output_log(
+        self.logger.log(
             "Starting OCR for all documents",
-            subdomain=self.subdomain,
             operation="ocr_start",
             backend=backend,
         )
@@ -620,9 +590,8 @@ class Fetcher:
         self.do_ocr(prefix="/_agendas", backend=backend)
         et = time.time()
         elapsed_time = et - st
-        output_log(
+        self.logger.log(
             f"Total OCR execution time: {elapsed_time:.2f} seconds",
-            subdomain=self.subdomain,
             operation="ocr_complete",
             backend=backend,
             duration_seconds=round(elapsed_time, 2),
@@ -637,9 +606,8 @@ class Fetcher:
             agendas_count = 0
         minutes_count = self.db["minutes"].count
         page_count = agendas_count + minutes_count
-        output_log(
+        self.logger.log(
             f"Processed {page_count} pages, {agendas_count} agendas, {minutes_count} minutes. Formerly {self.previous_page_count} pages processed.",
-            subdomain=self.subdomain,
             operation="transform_complete",
             pages=page_count,
             agendas=agendas_count,
@@ -654,8 +622,10 @@ class Fetcher:
             prefix: Directory prefix (e.g., "" for minutes, "/_agendas" for agendas)
             backend: OCR backend to use ('tesseract' or 'vision')
         """
+
         # Generate unique job ID
         job_id = f"ocr_{int(time.time())}"
+        self.logger.job_id = job_id
 
         # Setup directories
         self.images_dir = f"{self.dir_prefix}{prefix}/images"
@@ -667,9 +637,8 @@ class Fetcher:
             os.makedirs(processed_dir)
 
         if not os.path.exists(f"{pdf_dir}"):
-            output_log(
+            self.logger.log(
                 f"No PDFs found in {pdf_dir}",
-                subdomain=self.subdomain,
                 operation="ocr_skip",
                 pdf_dir=pdf_dir,
                 prefix=prefix,
@@ -702,9 +671,8 @@ class Fetcher:
                 jobs.append((prefix, meeting, date))
 
         if not jobs:
-            output_log(
+            self.logger.log(
                 f"No PDF documents to process in {pdf_dir}",
-                subdomain=self.subdomain,
                 operation="ocr_skip",
                 pdf_dir=pdf_dir,
                 prefix=prefix,
@@ -716,9 +684,8 @@ class Fetcher:
         manifest_path = f"{self.dir_prefix}/ocr_failures_{job_id}.jsonl"
         manifest = FailureManifest(manifest_path)
 
-        output_log(
+        self.logger.log(
             "OCR job started",
-            subdomain=self.subdomain,
             operation="ocr_job_start",
             job_id=job_id,
             total_documents=len(jobs),
@@ -742,11 +709,9 @@ class Fetcher:
                     state.failed += 1
                 except CRITICAL_ERRORS as e:
                     manifest.close()
-                    output_log(
+                    self.logger.log(
                         "Critical error, halting OCR job",
-                        subdomain=self.subdomain,
                         operation="ocr_critical_error",
-                        job_id=job_id,
                         error_class=e.__class__.__name__,
                         error_message=str(e),
                         level="error",
@@ -754,11 +719,9 @@ class Fetcher:
                     raise
                 except Exception as exc:
                     # Catch-all for unexpected errors
-                    output_log(
+                    self.logger.log(
                         f"{job!r} generated an exception: {exc}",
-                        subdomain=self.subdomain,
                         operation="ocr_unexpected_error",
-                        job_id=job_id,
                         error_message=str(exc),
                         level="error",
                     )
@@ -773,11 +736,9 @@ class Fetcher:
 
         # Log job completion
         elapsed = time.time() - state.start_time
-        output_log(
+        self.logger.log(
             "OCR job completed",
-            subdomain=self.subdomain,
             operation="ocr_job_complete",
-            job_id=job_id,
             backend=backend,
             completed=state.completed,
             failed=state.failed,
@@ -788,17 +749,15 @@ class Fetcher:
         )
 
         # Print final summary
-        output_log(
+        self.logger.log(
             f"OCR job {job_id} completed: {state.completed} succeeded, "
             f"{state.failed} failed, {state.skipped} skipped "
             f"(total: {state.total_documents} documents in {elapsed:.1f}s)",
-            subdomain=self.subdomain,
         )
 
         if state.failed > 0:
-            output_log(
+            self.logger.log(
                 f"Failure manifest written to: {manifest_path}",
-                subdomain=self.subdomain,
                 manifest_path=manifest_path,
                 failed_count=state.failed,
             )
@@ -846,6 +805,9 @@ class Fetcher:
             backend: OCR backend to use ('tesseract' or 'vision')
             run_id: Pipeline run identifier for correlation across jobs (optional)
         """
+        self.logger.job_id = job_id
+        self.logger.run_id = run_id
+        self.logger.backend = backend
         if not PDF_SUPPORT:
             raise ImportError(
                 "PDF support requires optional dependencies. Install with: pip install clerk[pdf]"
@@ -856,21 +818,18 @@ class Fetcher:
         meeting = job[1]
         date = job[2]
 
+        self.logger.meeting = meeting
+        self.logger.date = date
+
         # Build paths early for diagnostics
         doc_path = f"{self.dir_prefix}{prefix}/pdfs/{meeting}/{date}.pdf"
         doc_image_dir_path = f"{self.dir_prefix}{prefix}/images/{meeting}/{date}"
         doc_txt_dir_path = f"{self.dir_prefix}{prefix}/txt/{meeting}/{date}"
 
         # Log job start with all context immediately
-        output_log(
+        self.logger.log(
             "OCR job started",
-            subdomain=self.subdomain,
             operation="ocr_job_start",
-            rq_job_id=job_id,
-            run_id=run_id,
-            meeting=meeting,
-            date=date,
-            backend=backend,
             prefix=prefix,
             doc_path=doc_path,
             subprocess_isolation_enabled=USE_PDF_SUBPROCESS_ISOLATION,
@@ -878,53 +837,34 @@ class Fetcher:
 
         try:
             # Log before file system checks
-            output_log(
+            self.logger.log(
                 "Checking PDF file existence",
-                subdomain=self.subdomain,
                 operation="check_file_exists",
-                rq_job_id=job_id,
-                run_id=run_id,
                 doc_path=doc_path,
             )
 
             # Check if PDF file exists before attempting to read
             if not os.path.exists(doc_path):
-                output_log(
+                self.logger.log(
                     f"PDF file not found: {doc_path}. "
                     "Fetch job may have failed or file was deleted.",
-                    subdomain=self.subdomain,
                     level="error",
                     doc_path=doc_path,
-                    meeting=meeting,
-                    date=date,
                     error_type="missing_pdf",
                 )
                 return  # Skip this job without raising exception
 
             # Log file metadata before reading
             file_size = os.path.getsize(doc_path)
-            output_log(
-                "PDF file metadata",
-                subdomain=self.subdomain,
-                operation="check_file_metadata",
-                rq_job_id=job_id,
-                run_id=run_id,
-                doc_path=doc_path,
-                file_size_bytes=file_size,
-                file_size_mb=round(file_size / (1024 * 1024), 2),
-            )
 
             # Check for empty/corrupted PDF before attempting to read
             if file_size == 0:
-                output_log(
+                self.logger.log(
                     f"Skipping empty PDF file (0 bytes): {doc_path}. "
                     "File likely from failed download. Manual cleanup required.",
-                    subdomain=self.subdomain,
                     level="error",
                     doc_path=doc_path,
                     file_size=0,
-                    meeting=meeting,
-                    date=date,
                     error_type="empty_pdf",
                 )
                 return  # Skip this job without raising exception
@@ -932,12 +872,9 @@ class Fetcher:
             # PDF reading with timing (isolated subprocess to prevent segfaults in production)
             read_st = time.time()
 
-            output_log(
+            self.logger.log(
                 "About to read PDF",
-                subdomain=self.subdomain,
                 operation="pdf_read_start",
-                rq_job_id=job_id,
-                run_id=run_id,
                 doc_path=doc_path,
                 file_size_mb=round(file_size / (1024 * 1024), 2),
                 subprocess_isolation=USE_PDF_SUBPROCESS_ISOLATION,
@@ -971,10 +908,9 @@ class Fetcher:
                         retry_count=0,
                     )
 
-                output_log(
+                self.logger.log(
                     f"{doc_path} failed to read: {error_msg}. "
                     "PDF may be corrupted or too large. Skipping this document.",
-                    subdomain=self.subdomain,
                     level="error",
                     doc_path=doc_path,
                     error_message=error_msg,
@@ -985,28 +921,19 @@ class Fetcher:
             # At this point, total_pages is guaranteed to be an int (not None)
             assert total_pages is not None, "total_pages should not be None after successful read"
 
-            output_log(
+            self.logger.log(
                 "PDF read successfully",
-                subdomain=self.subdomain,
                 operation="pdf_read_complete",
-                rq_job_id=job_id,
-                run_id=run_id,
-                meeting=meeting,
-                date=date,
                 page_count=total_pages,
-                backend=backend,
                 duration_ms=int((time.time() - read_st) * 1000),
             )
 
             # Image conversion with timing
             conv_st = time.time()
 
-            output_log(
+            self.logger.log(
                 "Starting PDF to images conversion",
-                subdomain=self.subdomain,
                 operation="pdf_convert_start",
-                rq_job_id=job_id,
-                run_id=run_id,
                 doc_path=doc_path,
                 total_pages=total_pages,
                 chunk_size=PDF_CHUNK_SIZE,
@@ -1027,9 +954,8 @@ class Fetcher:
                 chunk_end = min(chunk_start + PDF_CHUNK_SIZE - 1, total_pages)
 
                 if USE_PDF_SUBPROCESS_ISOLATION:
-                    output_log(
+                    self.logger.log(
                         f"Using subprocess isolation for PDF to images (pages {chunk_start}-{chunk_end})",
-                        subdomain=self.subdomain,
                         operation="pdf_convert_isolated",
                         chunk_start=chunk_start,
                         chunk_end=chunk_end,
@@ -1082,10 +1008,9 @@ class Fetcher:
                             retry_count=0,
                         )
 
-                    output_log(
+                    self.logger.log(
                         f"{doc_path} failed to process (chunk {chunk_start}-{chunk_end}): {error_msg}. "
                         "PDF conversion to images failed. Skipping this document.",
-                        subdomain=self.subdomain,
                         level="error",
                         doc_path=doc_path,
                         error_message=error_msg,
@@ -1098,29 +1023,21 @@ class Fetcher:
             if conversion_failed:
                 return  # Skip this job without raising exception
 
-            output_log(
+            self.logger.log(
                 "Image conversion completed",
-                subdomain=self.subdomain,
                 operation="pdf_to_images",
-                meeting=meeting,
-                date=date,
                 page_count=total_pages,
-                backend=backend,
                 duration_ms=int((time.time() - conv_st) * 1000),
             )
 
             # OCR with timing
             ocr_st = time.time()
 
-            output_log(
+            self.logger.log(
                 "Starting OCR processing",
-                subdomain=self.subdomain,
                 operation="ocr_start",
-                rq_job_id=job_id,
-                run_id=run_id,
                 doc_path=doc_path,
                 total_pages=total_pages,
-                backend=backend,
             )
 
             pages_processed = 0
@@ -1133,30 +1050,23 @@ class Fetcher:
                 if not os.path.exists(txt_filepath):
                     # Log every 10th page to track progress
                     if pages_processed % 10 == 0:
-                        output_log(
+                        self.logger.log(
                             f"OCR progress: processing page {pages_processed}/{total_pages}",
-                            subdomain=self.subdomain,
                             operation="ocr_progress",
-                            rq_job_id=job_id,
-                            run_id=run_id,
                             pages_processed=pages_processed,
                             total_pages=total_pages,
                             current_page=page_image,
                         )
 
                     try:
-                        if backend == "paddleocr":
-                            text = _ocr_with_paddleocr(Path(page_image_path))
-                        else:
-                            text = self._ocr_with_tesseract(Path(page_image_path))
+                        text = self._ocr_with_tesseract(Path(page_image_path))
 
                         with open(txt_filepath, "w", encoding="utf-8") as textfile:
                             textfile.write(text)
                         pages_processed += 1
                     except Exception as e:
-                        output_log(
+                        self.logger.log(
                             f"error processing {page_image_path}, {e}",
-                            subdomain=self.subdomain,
                             level="error",
                             page_image_path=page_image_path,
                             error_message=str(e),
@@ -1169,15 +1079,9 @@ class Fetcher:
                 if page_image.endswith(".txt"):
                     continue
 
-            output_log(
+            self.logger.log(
                 "OCR completed",
-                subdomain=self.subdomain,
                 operation="ocr_complete",
-                rq_job_id=job_id,
-                run_id=run_id,
-                backend=backend,
-                meeting=meeting,
-                date=date,
                 page_count=total_pages,
                 duration_ms=int((time.time() - ocr_st) * 1000),
             )
@@ -1194,15 +1098,9 @@ class Fetcher:
 
             # Completion logging with full processing stats
             total_duration = time.time() - st
-            output_log(
+            self.logger.log(
                 f"Document completed: {total_pages} pages in {total_duration:.2f}s",
-                subdomain=self.subdomain,
                 operation="document_complete",
-                rq_job_id=job_id,
-                run_id=run_id,
-                backend=backend,
-                meeting=meeting,
-                date=date,
                 page_count=total_pages,
                 duration_seconds=round(total_duration, 2),
                 prefix=prefix,
@@ -1220,15 +1118,9 @@ class Fetcher:
                     error_message=str(e),
                     retry_count=0,  # Already retried by decorator if transient
                 )
-            output_log(
+            self.logger.log(
                 "Document failed with permanent error",
-                subdomain=self.subdomain,
                 operation="document_permanent_error",
-                rq_job_id=job_id,
-                run_id=run_id,
-                backend=backend,
-                meeting=meeting,
-                date=date,
                 error_class=e.__class__.__name__,
                 error_message=str(e),
                 level="error",
@@ -1236,13 +1128,9 @@ class Fetcher:
             return  # Skip and continue
 
         except CRITICAL_ERRORS as e:
-            output_log(
+            self.logger.log(
                 "Critical error in OCR job",
-                subdomain=self.subdomain,
                 operation="document_critical_error",
-                rq_job_id=job_id,
-                run_id=run_id,
-                backend=backend,
                 error_class=e.__class__.__name__,
                 error_message=str(e),
                 level="error",
@@ -1277,65 +1165,3 @@ def get_fetcher(site, all_years=False, all_agendas=False) -> Fetcher:  # type: i
         module_path = f"fetchers.custom.{site['subdomain'].replace('.', '_')}"
         fetcher = importlib.import_module(module_path)
         return fetcher.custom_fetcher(site, start_year, all_agendas)  # type: ignore[no-any-return]
-
-
-def _ocr_with_paddleocr(image_path: Path) -> str:
-    """Perform OCR using PaddleOCR (PP-OCRv4).
-
-    PaddleOCR is an open-source OCR toolkit that excels at:
-    - Document layout analysis (tables, multi-column text)
-    - Handling skewed/rotated text
-    - Better accuracy on low-quality scans
-    - CPU-friendly inference with small models
-
-    Args:
-        image_path: Path to image file to OCR
-
-    Returns:
-        Extracted text string
-
-    Raises:
-        ImportError: If paddleocr package is not installed
-        RuntimeError: If OCR processing fails
-    """
-    try:
-        from paddleocr import PaddleOCR  # pyright: ignore[reportMissingImports]
-    except ImportError:
-        raise ImportError(
-            "PaddleOCR backend requires the 'paddleocr' package. "
-            "Install with: pip install paddleocr"
-        )
-
-    # Initialize PaddleOCR with CPU-friendly settings
-    # use_angle_cls: Enable text orientation classification
-    # lang: 'en' for English documents
-    # use_gpu: False for CPU-only workers
-    # show_log: False to reduce noise
-    ocr = PaddleOCR(
-        use_angle_cls=True,
-        lang="en",
-        use_gpu=False,
-        show_log=False,
-    )
-
-    try:
-        # Run OCR on the image
-        # result format: [[box, (text, confidence)], ...]
-        result = ocr.ocr(str(image_path), cls=True)
-
-        if not result or not result[0]:
-            logger.debug("No text detected in image: %s", image_path)
-            return ""
-
-        # Extract text from all detected boxes
-        # result[0] is the list of detections for the first (only) image
-        lines = []
-        for line in result[0]:
-            text = line[1][0]  # Extract text from (text, confidence) tuple
-            lines.append(text)
-
-        return "\n".join(lines)
-
-    except Exception as e:
-        logger.error("PaddleOCR failed on %s: %s", image_path, str(e))
-        raise RuntimeError(f"PaddleOCR processing failed: {e}") from e

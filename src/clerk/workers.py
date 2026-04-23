@@ -1,20 +1,18 @@
 """RQ worker job functions."""
 
-import logging
 import os
 import time
 import traceback
 from datetime import UTC, datetime
 from pathlib import Path
 
-from rq import get_current_job
 from rq.utils import parse_timeout
 from sqlalchemy import select, update
 
 from .db import civic_db_connection, get_site_by_subdomain, update_site
 from .fetcher import Fetcher, get_fetcher
 from .models import sites_table
-from .output import log as output_log
+from .output import ClerkLogger
 from .pipeline_state import (
     claim_coordinator_enqueue,
     increment_completed,
@@ -30,42 +28,6 @@ from .queue_db import (
     update_site_progress,
 )
 from .settings import get_env
-
-logger = logging.getLogger(__name__)
-
-
-def log_with_context(message, subdomain, run_id=None, stage=None, **kwargs):
-    """Log with automatic run_id, stage, job_id context.
-
-    Extracts job_id and parent_job_id from RQ job context automatically.
-
-    Args:
-        message: Log message
-        subdomain: Site subdomain
-        run_id: Pipeline run identifier (optional)
-        stage: Pipeline stage (fetch/ocr/compilation/extraction/deploy) (optional)
-        **kwargs: Additional structured fields for logging (can override job_id/parent_job_id)
-    """
-    job = get_current_job()
-
-    # Only extract job_id if not already provided in kwargs (allows logging spawned job IDs)
-    if "job_id" not in kwargs:
-        kwargs["job_id"] = job.id if job else None
-
-    # Get parent_job_id if this job has a dependency (unless already in kwargs)
-    if "parent_job_id" not in kwargs:
-        if job and hasattr(job, "dependency_id"):
-            kwargs["parent_job_id"] = job.dependency_id  # type: ignore
-        else:
-            kwargs["parent_job_id"] = None
-
-    output_log(
-        message,
-        subdomain=subdomain,
-        run_id=run_id,
-        stage=stage,
-        **kwargs,
-    )
 
 
 def fetch_site_job(
@@ -91,11 +53,10 @@ def fetch_site_job(
     stage = "fetch"
     start_time = time.time()
 
-    log_with_context(
+    logger = ClerkLogger(subdomain=subdomain, run_id=run_id, backend=ocr_backend, stage=stage)
+
+    logger.log(
         "fetch_started",
-        subdomain=subdomain,
-        run_id=run_id,
-        stage=stage,
         all_years=all_years,
         all_agendas=all_agendas,
     )
@@ -106,16 +67,11 @@ def fetch_site_job(
             site = get_site_by_subdomain(conn, subdomain)
 
         if not site:
-            log_with_context(
-                "Site not found", subdomain=subdomain, run_id=run_id, stage=stage, level="error"
-            )
+            logger.log("Site not found", stage=stage, level="error")
             raise ValueError(f"Site not found: {subdomain}")
 
-        log_with_context(
+        logger.log(
             "Found site",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
             scraper=site.get("scraper"),
         )
 
@@ -125,36 +81,28 @@ def fetch_site_job(
             # Update progress to fetch stage
             with civic_db_connection() as conn:
                 create_site_progress(conn, subdomain, "fetch")
-            log_with_context(
-                "Created fetch progress", subdomain=subdomain, run_id=run_id, stage=stage
-            )
+            logger.log("Created fetch progress", stage=stage)
 
             # Perform fetch using existing logic
-            log_with_context("Starting PDF fetch", subdomain=subdomain, run_id=run_id, stage=stage)
+            logger.log("Starting PDF fetch", stage=stage)
             fetch_internal(subdomain, fetcher)
-            log_with_context("Completed PDF fetch", subdomain=subdomain, run_id=run_id, stage=stage)
+            logger.log("Completed PDF fetch", stage=stage)
 
         pdf_file_count = 0
         if proceed:
             pdf_file_count = queue_ocr(fetcher, run_id, stage, ocr_backend, proceed)
 
         duration = time.time() - start_time
-        log_with_context(
+        logger.log(
             "fetch_completed",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
             duration_seconds=round(duration, 2),
             total_pdfs=pdf_file_count,
         )
 
     except Exception as e:
         duration = time.time() - start_time
-        log_with_context(
+        logger.log(
             f"fetch_failed: {e}",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
             level="error",
             duration_seconds=round(duration, 2),
             error_type=type(e).__name__,
@@ -172,51 +120,43 @@ def queue_ocr(fetcher, run_id, stage, ocr_backend, proceed=True) -> int:
     minutes_dir: Path = Path(fetcher.minutes_output_dir)
     agendas_dir: Path = Path(fetcher.agendas_output_dir)
 
+    logger = ClerkLogger(
+        subdomain=fetcher.subdomain, run_id=run_id, backend=ocr_backend, stage=stage
+    )
+
     # Collect minutes PDFs
     if minutes_dir.exists():
         minutes_pdfs = list(minutes_dir.glob("**/*.pdf"))
-        log_with_context(
+        logger.log(
             "Found minutes PDFs",
-            subdomain=fetcher.subdomain,
-            run_id=run_id,
-            stage=stage,
             count=len(minutes_pdfs),
             directory=str(fetcher.minutes_output_dir),
         )
         pdf_files.extend(minutes_pdfs)
     else:
-        logger.info("Minutes PDF directory does not exist: %s", fetcher.minutes_output_dir)
+        logger.log("Minutes PDF directory does not exist: %s", fetcher.minutes_output_dir)
 
     # Collect agenda PDFs
     if agendas_dir.exists():
         agendas_pdfs = list(agendas_dir.glob("**/*.pdf"))
-        log_with_context(
+        logger.log(
             "Found agenda PDFs",
-            subdomain=fetcher.subdomain,
-            run_id=run_id,
-            stage=stage,
             count=len(agendas_pdfs),
             directory=str(fetcher.agendas_output_dir),
         )
         pdf_files.extend(agendas_pdfs)
     else:
-        logger.info("Agendas PDF directory does not exist: %s", fetcher.agendas_output_dir)
+        logger.log("Agendas PDF directory does not exist: %s", fetcher.agendas_output_dir)
 
-    log_with_context(
+    logger.log(
         "Total PDFs found for OCR",
-        subdomain=fetcher.subdomain,
-        run_id=run_id,
-        stage=stage,
         total_pdfs=len(pdf_files),
     )
 
     # Verify fetch produced PDFs
     if len(pdf_files) == 0:
-        log_with_context(
+        logger.log(
             "WARNING: No PDFs found after fetch - site may have no documents or fetch failed",
-            subdomain=fetcher.subdomain,
-            run_id=run_id,
-            stage=stage,
             level="warning",
             minutes_dir_exists=minutes_dir.exists(),
             agendas_dir_exists=agendas_dir.exists(),
@@ -234,13 +174,8 @@ def queue_ocr(fetcher, run_id, stage, ocr_backend, proceed=True) -> int:
                 "last_updated": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
             },
         )
-    log_with_context(
-        "Updated progress to OCR stage",
-        subdomain=fetcher.subdomain,
-        run_id=run_id,
-        stage=stage,
-        ocr_stage_total=len(pdf_files),
-    )
+    logger.stage = "ocr"
+    logger.log("Updated progress to OCR stage", ocr_stage_total=len(pdf_files))
 
     # Spawn OCR jobs (fan-out)
     ocr_queue = get_ocr_queue()
@@ -248,13 +183,7 @@ def queue_ocr(fetcher, run_id, stage, ocr_backend, proceed=True) -> int:
     # Use parameter if provided, otherwise fall back to environment variable
     if ocr_backend is None:
         ocr_backend = get_env("DEFAULT_OCR_BACKEND", "tesseract")
-    log_with_context(
-        "Using OCR backend",
-        subdomain=fetcher.subdomain,
-        run_id=run_id,
-        stage=stage,
-        backend=ocr_backend,
-    )
+    logger.log("Using OCR backend")
 
     # Allow timeout to be configured via env var, default to 20m
     # Previous default was 10m, which was too short for large/complex PDFs
@@ -283,13 +212,7 @@ def queue_ocr(fetcher, run_id, stage, ocr_backend, proceed=True) -> int:
     # This is much faster than individual enqueue() calls for large batches
     ocr_jobs = ocr_queue.enqueue_many(job_datas) if job_datas else []
 
-    log_with_context(
-        "Batch enqueued OCR jobs to RQ",
-        subdomain=fetcher.subdomain,
-        run_id=run_id,
-        stage=stage,
-        job_count=len(ocr_jobs),
-    )
+    logger.log("Batch enqueued OCR jobs to RQ", job_count=len(ocr_jobs))
 
     # Phase 3: Atomically update database in a single transaction
     # This prevents partial state if DB connection fails mid-operation
@@ -303,21 +226,17 @@ def queue_ocr(fetcher, run_id, stage, ocr_backend, proceed=True) -> int:
         # Initialize atomic counters for OCR stage (even if 0 jobs)
         # This ensures the coordinator can trigger immediately for empty stages
         initialize_stage(fetcher.subdomain, stage="ocr", total_jobs=len(ocr_jobs))
-    log_with_context(
+    logger.log(
         "Initialized OCR stage with atomic counters",
-        subdomain=fetcher.subdomain,
-        run_id=run_id,
-        stage=stage,
         total_jobs=len(ocr_jobs),
         has_jobs=len(ocr_jobs) > 0,
     )
 
     if len(ocr_jobs) == 0:
-        log_with_context(
+        logger.log(
             "No PDFs found after fetch - OCR stage initialized with total=0",
             subdomain=fetcher.subdomain,
             run_id=run_id,
-            stage=stage,
             level="warning",
         )
         # Immediately try to enqueue coordinator since (0 completed + 0 failed) == 0 total
@@ -339,18 +258,14 @@ def _attempt_coordinator_enqueue(subdomain, stage, run_id):
         stage: Pipeline stage (e.g., "ocr")
         run_id: Pipeline run identifier
     """
+    logger = ClerkLogger(subdomain=subdomain, stage=stage, run_id=run_id)
     # Check if this is the last job and we should trigger coordinator
     if should_trigger_coordinator(subdomain, stage):
-        logger.debug("All %s jobs complete, attempting to claim coordinator enqueue", stage)
+        logger.log("All stage jobs complete, attempting to claim coordinator enqueue")
 
         # Atomically claim the right to enqueue coordinator (only one job wins)
         if claim_coordinator_enqueue(subdomain):
-            log_with_context(
-                "Successfully claimed coordinator enqueue",
-                subdomain=subdomain,
-                run_id=run_id,
-                stage=stage,
-            )
+            logger.log("Successfully claimed coordinator enqueue")
 
             # Enqueue coordinator job
             from .queue import get_compilation_queue
@@ -368,20 +283,9 @@ def _attempt_coordinator_enqueue(subdomain, stage, run_id):
             with civic_db_connection() as conn:
                 track_job(conn, coord_job.id, subdomain, "ocr-coordinator", "ocr")
 
-            log_with_context(
-                "Enqueued OCR coordinator job",
-                subdomain=subdomain,
-                run_id=run_id,
-                stage=stage,
-                coordinator_job_id=coord_job.id,
-            )
+            logger.log("Enqueued OCR coordinator job", coordinator_job_id=coord_job.id)
         else:
-            log_with_context(
-                "Coordinator already enqueued by another job",
-                subdomain=subdomain,
-                run_id=run_id,
-                stage=stage,
-            )
+            logger.log("Coordinator already enqueued by another job")
 
 
 def ocr_document_job(subdomain, pdf_path, backend="tesseract", run_id=None, proceed=True):
@@ -423,14 +327,9 @@ def ocr_document_job(subdomain, pdf_path, backend="tesseract", run_id=None, proc
     current_job = get_current_job()
     rq_job_id = current_job.id if current_job else "unknown"
 
-    log_with_context(
-        "ocr_started",
-        subdomain=subdomain,
-        run_id=run_id,
-        stage=stage,
-        pdf_name=path_obj.name,
-        backend=backend,
-    )
+    logger = ClerkLogger(subdomain=subdomain, stage=stage, job_id=rq_job_id, backend=backend)
+
+    logger.log("ocr_started", pdf_name=path_obj.name)
     sys.stderr.flush()  # Ensure early log reaches disk
 
     try:
@@ -439,19 +338,12 @@ def ocr_document_job(subdomain, pdf_path, backend="tesseract", run_id=None, proc
             site = get_site_by_subdomain(conn, subdomain)
 
         if not site:
-            log_with_context(
-                "Site not found in ocr_document_job",
-                subdomain=subdomain,
-                run_id=run_id,
-                stage=stage,
-                level="error",
-                pdf_path=pdf_path,
-            )
+            logger.log("Site not found in ocr_document_job", level="error", pdf_path=pdf_path)
             raise ValueError(f"Site not found: {subdomain}")
 
         # Create fetcher instance to use its OCR methods
         fetcher: Fetcher | None = get_fetcher(site)
-        logger.debug("Created fetcher for subdomain=%s", subdomain)
+        logger.log("Created fetcher for subdomain")
 
         # Parse PDF path to extract meeting and date
         # Expected path format: {storage_dir}/{subdomain}/pdfs/{meeting}/{date}.pdf
@@ -462,61 +354,35 @@ def ocr_document_job(subdomain, pdf_path, backend="tesseract", run_id=None, proc
         prefix = ""
         if "/_agendas/" in str(pdf_path):
             prefix = "/_agendas"
-            logger.debug("PDF is an agenda: %s", pdf_path)
-        else:
-            logger.debug("PDF is a minute: %s", pdf_path)
 
         # Create job tuple for do_ocr_job
         job = (prefix, meeting, date)
-        logger.debug(
-            "OCR job tuple: prefix=%s meeting=%s date=%s (subdomain=%s)",
-            prefix,
-            meeting,
-            date,
-            subdomain,
-        )
 
         # Run OCR job without manifest (RQ tracks job failures)
-        log_with_context(
-            "Running OCR",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
-            rq_job_id=rq_job_id,
-            pdf_name=path_obj.name,
-            backend=backend,
-        )
+        logger.log("Running OCR", pdf_name=path_obj.name)
 
         # Wrap do_ocr_job in try/except to handle failures gracefully
         try:
             fetcher.do_ocr_job(job, None, rq_job_id, backend=backend, run_id=run_id)  # type: ignore
 
             duration = time.time() - start_time
-            log_with_context(
+            logger.log(
                 "ocr_completed",
-                subdomain=subdomain,
-                run_id=run_id,
-                stage=stage,
-                rq_job_id=rq_job_id,
                 pdf_name=path_obj.name,
                 duration_seconds=round(duration, 2),
             )
 
             # Increment completed counter (atomic)
             increment_completed(subdomain, stage)
-            logger.debug("Incremented completed counter for subdomain=%s", subdomain)
+            logger.log("Incremented completed counter for subdomain")
 
         except Exception as ocr_error:
             duration = time.time() - start_time
-            log_with_context(
+            logger.log(
                 f"ocr_failed: {ocr_error}",
-                subdomain=subdomain,
-                run_id=run_id,
-                stage=stage,
                 level="error",
                 duration_seconds=round(duration, 2),
                 pdf_path=pdf_path,
-                backend=backend,
                 error_type=type(ocr_error).__name__,
                 error_message=str(ocr_error),
                 traceback=traceback.format_exc(),
@@ -529,7 +395,6 @@ def ocr_document_job(subdomain, pdf_path, backend="tesseract", run_id=None, proc
                 error_message=str(ocr_error),
                 error_class=type(ocr_error).__name__,
             )
-            logger.debug("Incremented failed counter for subdomain=%s", subdomain)
 
         if proceed:
             # Attempt to enqueue coordinator (if all jobs done)
@@ -537,15 +402,11 @@ def ocr_document_job(subdomain, pdf_path, backend="tesseract", run_id=None, proc
 
     except Exception as e:
         duration = time.time() - start_time
-        log_with_context(
+        logger.log(
             f"ocr_job_error: {e}",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
             level="error",
             duration_seconds=round(duration, 2),
             pdf_path=pdf_path,
-            backend=backend,
             error_type=type(e).__name__,
             error_message=str(e),
             traceback=traceback.format_exc(),
@@ -558,7 +419,6 @@ def ocr_document_job(subdomain, pdf_path, backend="tesseract", run_id=None, proc
             error_message=str(e),
             error_class=type(e).__name__,
         )
-        logger.debug("Incremented failed counter for setup error, subdomain=%s", subdomain)
 
         if proceed:
             # Attempt to enqueue coordinator (if all jobs done)
@@ -580,7 +440,9 @@ def ocr_complete_coordinator(subdomain, run_id):
     stage = "ocr"
     start_time = time.time()
 
-    log_with_context("ocr_coordinator_started", subdomain=subdomain, run_id=run_id, stage=stage)
+    logger = ClerkLogger(subdomain=subdomain, run_id=run_id, stage=stage)
+
+    logger.log("ocr_coordinator_started")
 
     try:
         # Verify OCR completed by checking for txt files
@@ -596,13 +458,7 @@ def ocr_complete_coordinator(subdomain, run_id):
 
         if site and site.ocr_total == 0:
             # No PDFs were fetched - mark site as completed with error
-            log_with_context(
-                "No documents to process - fetch found 0 PDFs",
-                subdomain=subdomain,
-                run_id=run_id,
-                stage=stage,
-                level="warning",
-            )
+            logger.log("No documents to process - fetch found 0 PDFs", level="warning")
 
             with civic_db_connection() as conn:
                 conn.execute(
@@ -626,12 +482,7 @@ def ocr_complete_coordinator(subdomain, run_id):
                     },
                 )
 
-            log_with_context(
-                "Marked site as completed with no_documents status",
-                subdomain=subdomain,
-                run_id=run_id,
-                stage=stage,
-            )
+            logger.log("Marked site as completed with no_documents status")
             return  # Exit coordinator successfully
 
         if not minutes_txt_dir.exists() and not agendas_txt_dir.exists():
@@ -647,13 +498,7 @@ def ocr_complete_coordinator(subdomain, run_id):
                 f"No text files found in {minutes_txt_dir}/{agendas_txt_dir} - OCR may have failed for all PDFs"
             )
 
-        log_with_context(
-            "Verified OCR completion",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
-            txt_file_count=len(txt_files),
-        )
+        logger.log("Verified OCR completion", txt_file_count=len(txt_files))
 
         # Update progress: transition to next stage
         with civic_db_connection() as conn:
@@ -677,13 +522,7 @@ def ocr_complete_coordinator(subdomain, run_id):
                     "last_updated": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
                 },
             )
-        log_with_context(
-            "Updated progress to compilation stage",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
-            next_stage="compilation",
-        )
+        logger.log("Updated progress to compilation stage", next_stage="compilation")
 
         compilation_queue = get_compilation_queue()
 
@@ -695,33 +534,20 @@ def ocr_complete_coordinator(subdomain, run_id):
             description=f"DB compilation: {subdomain}",
         )
 
+        logger.stage = "compilation"
+
         # Track in PostgreSQL
         with civic_db_connection() as conn:
             track_job(conn, db_job.id, subdomain, "db-compilation", "compilation")
-        log_with_context(
-            "Enqueued DB compilation job",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
-            job_id=db_job.id,
-        )
+        logger.log("Enqueued DB compilation job")
 
         duration = time.time() - start_time
-        log_with_context(
-            "ocr_coordinator_completed",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
-            duration_seconds=round(duration, 2),
-        )
+        logger.log("ocr_coordinator_completed", duration_seconds=round(duration, 2))
 
     except Exception as e:
         duration = time.time() - start_time
-        log_with_context(
+        logger.log(
             f"ocr_coordinator_failed: {e}",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
             level="error",
             duration_seconds=round(duration, 2),
             error_type=type(e).__name__,
@@ -744,13 +570,10 @@ def db_compilation_job(subdomain, run_id=None):
     stage = "compilation"
     start_time = time.time()
 
+    logger = ClerkLogger(subdomain=subdomain, run_id=run_id, stage=stage)
+
     # Milestone: started
-    log_with_context(
-        "compilation_started",
-        subdomain=subdomain,
-        run_id=run_id,
-        stage=stage,
-    )
+    logger.log("compilation_started")
 
     try:
         # Count text files to process
@@ -759,31 +582,20 @@ def db_compilation_job(subdomain, run_id=None):
 
         if txt_dir.exists():
             txt_files = list(txt_dir.glob("**/*.txt"))
-            log_with_context(
-                "Found text files for compilation",
-                subdomain=subdomain,
-                run_id=run_id,
-                stage=stage,
-                count=len(txt_files),
-                directory=str(txt_dir),
+            logger.log(
+                "Found text files for compilation", count=len(txt_files), directory=str(txt_dir)
             )
         else:
             txt_files = []
-            logger.warning("Text directory does not exist: %s for subdomain=%s", txt_dir, subdomain)
+            logger.log("Text directory does not exist: %s", str(txt_dir))
 
         # Update progress counter
         with civic_db_connection() as conn:
             update_site_progress(conn, subdomain, stage="compilation", stage_total=len(txt_files))
-        logger.debug("Updated compilation progress with %d total files", len(txt_files))
+        logger.log(f"Updated compilation progress with {len(txt_files)} total files")
 
         # Build database
-        log_with_context(
-            "Building database",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
-            text_file_count=len(txt_files),
-        )
+        logger.log("Building database", text_file_count=len(txt_files))
         build_db_from_text_internal(subdomain)
 
         # Verify meetings.db was created
@@ -803,11 +615,8 @@ def db_compilation_job(subdomain, run_id=None):
         if table_count == 0:
             raise ValueError(f"meetings.db created but contains no tables for {subdomain}")
 
-        log_with_context(
+        logger.log(
             "Completed database build",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
             tables_created=table_count,
             db_size_bytes=os.path.getsize(meetings_db_path),
         )
@@ -815,12 +624,7 @@ def db_compilation_job(subdomain, run_id=None):
         # Update page count in civic.db from meetings.db
         from .cli import rebuild_site_fts_internal, update_page_count
 
-        log_with_context(
-            "Updating page count",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
-        )
+        logger.log("Updating page count")
         update_page_count(subdomain)
 
         # Verify page count was updated
@@ -831,29 +635,12 @@ def db_compilation_job(subdomain, run_id=None):
 
             pages = site.get("pages", 0)
             if pages == 0:
-                log_with_context(
-                    "WARNING: Page count is 0 after update",
-                    subdomain=subdomain,
-                    run_id=run_id,
-                    stage=stage,
-                    level="warning",
-                )
+                logger.log("WARNING: Page count is 0 after update", level="warning")
 
-        log_with_context(
-            "Page count updated",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
-            pages=pages,
-        )
+        logger.log("Page count updated", pages=pages)
 
         # Rebuild full-text search indexes
-        log_with_context(
-            "Rebuilding FTS indexes",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
-        )
+        logger.log("Rebuilding FTS indexes")
         rebuild_site_fts_internal(subdomain)
 
         # Both paths spawn deploy (may deploy twice - once for fast path, once for entities path)
@@ -869,12 +656,8 @@ def db_compilation_job(subdomain, run_id=None):
                     "last_updated": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
                 },
             )
-        log_with_context(
-            "Updated progress to deploy stage",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
-        )
+        logger.stage = "deploy"
+        logger.log("Updated progress to deploy stage")
 
         # Spawn deploy job
         deploy_queue = get_deploy_queue()
@@ -889,32 +672,20 @@ def db_compilation_job(subdomain, run_id=None):
         # Track in PostgreSQL
         with civic_db_connection() as conn:
             track_job(conn, job.id, subdomain, "deploy-site", "deploy")
-        log_with_context(
-            "Enqueued deploy job",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
-            deploy_job_id=job.id,
-        )
+        logger.log("Enqueued deploy job", job_id=job.id)
 
         # Milestone: completed
         duration = time.time() - start_time
-        log_with_context(
+        logger.log(
             "compilation_completed",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
             duration_seconds=round(duration, 2),
             text_file_count=len(txt_files),
         )
 
     except Exception as e:
         duration = time.time() - start_time
-        log_with_context(
+        logger.log(
             f"compilation_failed: {e}",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
             level="error",
             duration_seconds=round(duration, 2),
             error_type=type(e).__name__,
@@ -931,7 +702,8 @@ def coordinator_job(subdomain, run_id=None):
         subdomain: Site subdomain
         run_id: Pipeline run identifier
     """
-    log_with_context(
+    logger = ClerkLogger(subdomain=subdomain, run_id=run_id)
+    logger.log(
         "Running coordinator job",
         subdomain=subdomain,
         run_id=run_id,
@@ -957,7 +729,9 @@ def deploy_job(subdomain, run_id=None):
     if run_id is None:
         run_id = f"deploy_{subdomain}_{int(time.time())}"
 
-    log_with_context("deploy_started", subdomain=subdomain, run_id=run_id, stage=stage)
+    logger = ClerkLogger(subdomain=subdomain, run_id=run_id, stage=stage)
+
+    logger.log("deploy_started")
 
     try:
         # Get site data for post_deploy hook
@@ -968,9 +742,9 @@ def deploy_job(subdomain, run_id=None):
             raise ValueError(f"Site not found: {subdomain}")
 
         # Use existing deploy logic
-        log_with_context("Running deploy hook", subdomain=subdomain, run_id=run_id, stage=stage)
+        logger.log("Running deploy hook")
         pm.hook.deploy_municipality(subdomain=subdomain)
-        log_with_context("Completed deploy hook", subdomain=subdomain, run_id=run_id, stage=stage)
+        logger.log("Completed deploy hook")
 
         # Mark complete
         with civic_db_connection() as conn:
@@ -994,59 +768,35 @@ def deploy_job(subdomain, run_id=None):
                     "last_updated": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
                 },
             )
-        log_with_context(
-            "Marked site as completed", subdomain=subdomain, run_id=run_id, stage=stage
-        )
+        logger.log("Marked site as completed")
 
         # Run post-deploy hook (creates sites.db, uploads to production, updates civic.observer)
-        log_with_context(
-            "Running post_deploy hook", subdomain=subdomain, run_id=run_id, stage=stage
-        )
+        logger.log("Running post_deploy hook")
         pm.hook.post_deploy(site=site)
-        log_with_context(
-            "Completed post_deploy hook", subdomain=subdomain, run_id=run_id, stage=stage
-        )
+        logger.log("Completed post_deploy hook")
 
         # Verify post_deploy created sites.db
         from .utils import STORAGE_DIR
 
         sites_db_path = f"{STORAGE_DIR}/sites.db"
         if not os.path.exists(sites_db_path):
-            log_with_context(
+            logger.log(
                 "WARNING: sites.db not found after post_deploy",
-                subdomain=subdomain,
-                run_id=run_id,
-                stage=stage,
                 level="warning",
                 expected_path=sites_db_path,
             )
         else:
             sites_db_size = os.path.getsize(sites_db_path)
-            log_with_context(
-                "Verified sites.db creation",
-                subdomain=subdomain,
-                run_id=run_id,
-                stage=stage,
-                sites_db_size_bytes=sites_db_size,
-            )
+            logger.log("Verified sites.db creation", sites_db_size_bytes=sites_db_size)
 
         # Verify site is marked as deployed
         with civic_db_connection() as conn:
             deployed_site = get_site_by_subdomain(conn, subdomain)
             if deployed_site and deployed_site.get("status") == "deployed":
-                log_with_context(
-                    "Verified deployment status",
-                    subdomain=subdomain,
-                    run_id=run_id,
-                    stage=stage,
-                    status=deployed_site.get("status"),
-                )
+                logger.log("Verified deployment status", status=deployed_site.get("status"))
             else:
-                log_with_context(
+                logger.log(
                     "WARNING: Site status not 'deployed' after deploy_job",
-                    subdomain=subdomain,
-                    run_id=run_id,
-                    stage=stage,
                     level="warning",
                     actual_status=deployed_site.get("status")
                     if deployed_site
@@ -1054,21 +804,12 @@ def deploy_job(subdomain, run_id=None):
                 )
 
         duration = time.time() - start_time
-        log_with_context(
-            "deploy_completed",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
-            duration_seconds=round(duration, 2),
-        )
+        logger.log("deploy_completed", duration_seconds=round(duration, 2))
 
     except Exception as e:
         duration = time.time() - start_time
-        log_with_context(
+        logger.log(
             f"deploy_failed: {e}",
-            subdomain=subdomain,
-            run_id=run_id,
-            stage=stage,
             level="error",
             duration_seconds=round(duration, 2),
             error_type=type(e).__name__,
