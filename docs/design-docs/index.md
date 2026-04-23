@@ -41,6 +41,7 @@ The following documents are available in the [plans directory](https://github.co
 :glob:
 
 ../plans/*
+../superpowers/specs/*
 ```
 
 ## Using These Documents

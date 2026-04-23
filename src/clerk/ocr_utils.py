@@ -10,7 +10,7 @@ from xml.etree.ElementTree import ParseError
 
 import httpx
 
-from clerk.output import log
+from clerk.output import logger
 
 # Optional PDF dependencies
 try:
@@ -181,10 +181,9 @@ def retry_on_transient(max_attempts: int = 3, delay_seconds: float = 2):
 
                     # Extract subdomain from kwargs if available for logging
                     subdomain = kwargs.get("subdomain", "unknown")
-
-                    log(
+                    logger.subdomain = subdomain
+                    logger.log(
                         f"Transient error, retrying in {delay_seconds}s",
-                        subdomain=subdomain,
                         level="warning",
                         error_class=e.__class__.__name__,
                         error_message=str(e),
@@ -208,15 +207,13 @@ def print_progress(state: JobState, subdomain: str) -> None:
         state: JobState with current progress
         subdomain: Subdomain for logging context
     """
-    from clerk.output import log
 
     pct = state.progress_pct()
     processed = state.completed + state.failed + state.skipped
     eta = state.eta_seconds()
     eta_str = f"ETA: {int(eta)}s" if eta else "calculating..."
-
-    log(
+    logger.subdomain = subdomain
+    logger.log(
         f"OCR Progress: [{processed}/{state.total_documents}] "
         f"{pct:.1f}% complete, {state.failed} failed | {eta_str}",
-        subdomain=subdomain,
     )

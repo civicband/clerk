@@ -1,9 +1,10 @@
 """Tests for pipeline state management helpers."""
 
 import pytest
+from sqlalchemy import create_engine
 
 from clerk.db import civic_db_connection
-from clerk.models import sites_table
+from clerk.models import metadata, sites_table
 from clerk.pipeline_state import (
     claim_coordinator_enqueue,
     increment_completed,
@@ -15,8 +16,15 @@ from clerk.pipeline_state import (
 
 @pytest.fixture
 def test_site(tmp_path, monkeypatch):
-    """Create a test site in database."""
-    from clerk.db import civic_db_connection, upsert_site
+    """Create a test site in a temporary database."""
+    from clerk.db import upsert_site
+
+    db_path = tmp_path / "civic.db"
+    engine = create_engine(f"sqlite:///{db_path}")
+    metadata.create_all(engine)
+
+    # Monkeypatch get_civic_db to return our temp engine
+    monkeypatch.setattr("clerk.db.get_civic_db", lambda: engine)
 
     site_data = {
         "subdomain": "test-site",
@@ -31,11 +39,7 @@ def test_site(tmp_path, monkeypatch):
 
     yield "test-site"
 
-    # Cleanup
-    with civic_db_connection() as conn:
-        from sqlalchemy import delete
-
-        conn.execute(delete(sites_table).where(sites_table.c.subdomain == "test-site"))
+    engine.dispose()
 
 
 def test_initialize_stage(test_site):

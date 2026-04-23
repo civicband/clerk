@@ -303,12 +303,12 @@ def test_print_progress_with_no_eta():
     """print_progress should show 'calculating...' when no progress yet."""
     state = JobState(job_id="test", total_documents=100)
 
-    with patch("clerk.output.log") as mock_log:
+    with patch("clerk.ocr_utils.logger") as mock_logger:
         print_progress(state, subdomain="test.civic.band")
 
     # Verify log was called with correct message
-    mock_log.assert_called_once()
-    call_args = mock_log.call_args
+    mock_logger.log.assert_called_once()
+    call_args = mock_logger.log.call_args
     message = call_args[0][0]
 
     assert "OCR Progress:" in message
@@ -316,7 +316,6 @@ def test_print_progress_with_no_eta():
     assert "0.0% complete" in message
     assert "0 failed" in message
     assert "calculating..." in message
-    assert call_args[1]["subdomain"] == "test.civic.band"
 
 
 def test_print_progress_with_progress():
@@ -325,12 +324,12 @@ def test_print_progress_with_progress():
     state.start_time = time.time() - 10  # Started 10 seconds ago
     state.completed = 50
 
-    with patch("clerk.output.log") as mock_log:
+    with patch("clerk.ocr_utils.logger") as mock_logger:
         print_progress(state, subdomain="test.civic.band")
 
     # Verify log was called with correct message
-    mock_log.assert_called_once()
-    call_args = mock_log.call_args
+    mock_logger.log.assert_called_once()
+    call_args = mock_logger.log.call_args
     message = call_args[0][0]
 
     assert "OCR Progress:" in message
@@ -339,7 +338,6 @@ def test_print_progress_with_progress():
     assert "0 failed" in message
     assert "ETA:" in message
     assert "s" in message  # Should show seconds
-    assert call_args[1]["subdomain"] == "test.civic.band"
 
 
 def test_print_progress_with_failures():
@@ -349,15 +347,14 @@ def test_print_progress_with_failures():
     state.completed = 40
     state.failed = 10
 
-    with patch("clerk.output.log") as mock_log:
+    with patch("clerk.ocr_utils.logger") as mock_logger:
         print_progress(state, subdomain="test.civic.band")
 
     # Verify log was called with correct message
-    mock_log.assert_called_once()
-    call_args = mock_log.call_args
+    mock_logger.log.assert_called_once()
+    call_args = mock_logger.log.call_args
     message = call_args[0][0]
 
     assert "[50/100]" in message
     assert "50.0% complete" in message
     assert "10 failed" in message
-    assert call_args[1]["subdomain"] == "test.civic.band"

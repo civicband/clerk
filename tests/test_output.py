@@ -5,43 +5,48 @@ import logging
 
 from clerk import output
 from clerk.cli import JsonFormatter
+from clerk.output import ClerkLogger
 
 
-class TestLog:
-    """Tests for the log() function."""
+class TestClerkLogger:
+    """Tests for the ClerkLogger class."""
 
     def setup_method(self):
         """Reset output module state before each test."""
         output._quiet = False
         output._default_subdomain = None
+        # Reset the module-level logger
+        output.logger.subdomain = None
+        output.logger.run_id = None
+        output.logger.stage = None
+        output.logger.job_id = None
 
     def test_log_message_only(self, caplog):
-        """log() with just a message logs at INFO level."""
+        """logger.log() with just a message logs at INFO level."""
         with caplog.at_level(logging.INFO):
-            output.log("Test message")
+            output.logger.log("Test message")
 
         assert len(caplog.records) == 1
         assert caplog.records[0].message == "Test message"
         assert caplog.records[0].levelname == "INFO"
 
     def test_log_with_subdomain(self, caplog):
-        """log() with subdomain passes it as extra field, not in message."""
+        """logger.log() with subdomain set passes it as extra field."""
+        logger = ClerkLogger(subdomain="alameda.ca")
         with caplog.at_level(logging.INFO):
-            output.log("Test message", subdomain="alameda.ca")
+            logger.log("Test message")
 
         assert len(caplog.records) == 1
         record = caplog.records[0]
-        # Message should NOT contain subdomain
         assert record.message == "Test message"
-        assert "subdomain=" not in record.message
-        # Subdomain should be in extra field
         assert hasattr(record, "subdomain")
         assert record.subdomain == "alameda.ca"
 
     def test_log_with_kwargs(self, caplog):
-        """log() passes additional kwargs as extra fields."""
+        """logger.log() passes additional kwargs as extra fields."""
+        logger = ClerkLogger(subdomain="test.ca")
         with caplog.at_level(logging.INFO):
-            output.log("Fetch complete", subdomain="test.ca", elapsed_time="1.5", pages=10)
+            logger.log("Fetch complete", elapsed_time="1.5", pages=10)
 
         assert len(caplog.records) == 1
         record = caplog.records[0]
@@ -51,12 +56,12 @@ class TestLog:
         assert record.pages == 10
 
     def test_log_levels(self, caplog):
-        """log() respects the level parameter."""
+        """logger.log() respects the level parameter."""
         with caplog.at_level(logging.DEBUG):
-            output.log("Debug message", level="debug")
-            output.log("Info message", level="info")
-            output.log("Warning message", level="warning")
-            output.log("Error message", level="error")
+            output.logger.log("Debug message", level="debug")
+            output.logger.log("Info message", level="info")
+            output.logger.log("Warning message", level="warning")
+            output.logger.log("Error message", level="error")
 
         assert len(caplog.records) == 4
         assert caplog.records[0].levelname == "DEBUG"
@@ -65,26 +70,28 @@ class TestLog:
         assert caplog.records[3].levelname == "ERROR"
 
     def test_log_invalid_level_defaults_to_info(self, caplog):
-        """log() with invalid level defaults to INFO."""
+        """logger.log() with invalid level defaults to INFO."""
         with caplog.at_level(logging.INFO):
-            output.log("Test message", level="invalid_level")
+            output.logger.log("Test message", level="invalid_level")
 
         assert len(caplog.records) == 1
         assert caplog.records[0].levelname == "INFO"
 
     def test_log_includes_run_id_in_extra(self, caplog):
-        """Test that run_id is passed to logger.info as extra field."""
+        """Test that run_id is passed to logger as extra field."""
+        logger = ClerkLogger(subdomain="test", run_id="test_123_abc")
         with caplog.at_level(logging.INFO):
-            output.log("test message", subdomain="test", run_id="test_123_abc")
+            logger.log("test message")
 
         assert len(caplog.records) == 1
         record = caplog.records[0]
         assert record.run_id == "test_123_abc"
 
     def test_log_includes_stage_in_extra(self, caplog):
-        """Test that stage is passed to logger.info as extra field."""
+        """Test that stage is passed to logger as extra field."""
+        logger = ClerkLogger(subdomain="test", stage="fetch")
         with caplog.at_level(logging.INFO):
-            output.log("test message", subdomain="test", stage="fetch")
+            logger.log("test message")
 
         assert len(caplog.records) == 1
         record = caplog.records[0]
@@ -92,8 +99,9 @@ class TestLog:
 
     def test_log_includes_job_ids_in_extra(self, caplog):
         """Test that job_id and parent_job_id are passed as extra fields."""
+        logger = ClerkLogger(subdomain="test", job_id="job-123")
         with caplog.at_level(logging.INFO):
-            output.log("test message", subdomain="test", job_id="job-123", parent_job_id="job-456")
+            logger.log("test message", parent_job_id="job-456")
 
         assert len(caplog.records) == 1
         record = caplog.records[0]
@@ -102,8 +110,9 @@ class TestLog:
 
     def test_log_excludes_none_values(self, caplog):
         """Test that None values are not included in extra dict."""
+        logger = ClerkLogger(subdomain="test")
         with caplog.at_level(logging.INFO):
-            output.log("test message", subdomain="test", run_id=None, stage=None)
+            logger.log("test message")
 
         assert len(caplog.records) == 1
         record = caplog.records[0]
@@ -118,6 +127,7 @@ class TestConfigure:
         """Reset output module state before each test."""
         output._quiet = False
         output._default_subdomain = None
+        output.logger.subdomain = None
 
     def test_configure_quiet(self):
         """configure() sets quiet mode."""
@@ -138,21 +148,22 @@ class TestConfigure:
         assert output._default_subdomain == "test.ca"
 
     def test_log_uses_default_subdomain(self, caplog):
-        """log() uses default subdomain when none specified."""
+        """logger.log() uses default subdomain when none specified."""
         output.configure(subdomain="default.ca")
 
         with caplog.at_level(logging.INFO):
-            output.log("Test message")
+            output.logger.log("Test message")
 
         assert len(caplog.records) == 1
         assert caplog.records[0].subdomain == "default.ca"
 
     def test_log_overrides_default_subdomain(self, caplog):
-        """log() with explicit subdomain overrides default."""
+        """Logger with explicit subdomain overrides default."""
         output.configure(subdomain="default.ca")
+        logger = ClerkLogger(subdomain="override.ca")
 
         with caplog.at_level(logging.INFO):
-            output.log("Test message", subdomain="override.ca")
+            logger.log("Test message")
 
         assert len(caplog.records) == 1
         assert caplog.records[0].subdomain == "override.ca"

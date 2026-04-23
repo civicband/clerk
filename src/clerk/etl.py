@@ -20,9 +20,9 @@ from clerk.workers import db_compilation_job, deploy_job, ocr_document_job, queu
 )
 @click.option(
     "--ocr-backend",
-    type=click.Choice(["tesseract", "vision"], case_sensitive=False),
+    type=click.Choice(["tesseract"], case_sensitive=False),
     default="tesseract",
-    help="OCR backend to use (tesseract or vision). Defaults to tesseract.",
+    help="OCR backend to use (tesseract for now). Defaults to tesseract.",
 )
 @click.option(
     "--fetch-local",

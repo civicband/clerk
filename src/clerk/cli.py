@@ -24,11 +24,9 @@ load_dotenv(find_dotenv())
 
 from . import output
 from .db import db
-from .debug import debug
 from .etl import etl
-from .extract_cli import extract
 from .fetcher import Fetcher
-from .output import log
+from .output import logger
 from .plugin_loader import load_plugins_from_directory, load_plugins_from_entry_points
 from .sentry import init_sentry
 from .sheets import sheets
@@ -36,8 +34,6 @@ from .utils import assert_db_exists, pm
 
 # Initialize Sentry for error tracking (if SENTRY_DSN is configured)
 init_sentry()
-
-logger = logging.getLogger(__name__)
 
 
 class JsonFormatter(logging.Formatter):
@@ -181,7 +177,8 @@ _load_entry_point_plugins()
 def fetch_internal(subdomain: str, fetcher: Fetcher):
     from .db import civic_db_connection, update_site
 
-    logger.info("Starting fetch subdomain=%s", subdomain)
+    logger.subdomain = subdomain
+    logger.log("Starting fetch")
     with civic_db_connection() as conn:
         update_site(
             conn,
@@ -195,9 +192,8 @@ def fetch_internal(subdomain: str, fetcher: Fetcher):
     fetcher.fetch_events()
     et = time.time()
     elapsed_time = et - st
-    log(
+    logger.log(
         f"Fetch time: {elapsed_time:.2f} seconds",
-        subdomain=subdomain,
         elapsed_time=f"{elapsed_time:.2f}",
     )
     status = "needs_ocr"
@@ -213,7 +209,8 @@ def fetch_internal(subdomain: str, fetcher: Fetcher):
 
 
 def rebuild_site_fts_internal(subdomain):
-    log("Rebuilding FTS indexes", subdomain=subdomain)
+    logger.subdomain = subdomain
+    logger.log("Rebuilding FTS indexes")
     site_db = sqlite_utils.Database(f"{STORAGE_DIR}/{subdomain}/meetings.db")
     for table_name in site_db.table_names():
         if table_name.startswith("pages_"):
@@ -221,27 +218,24 @@ def rebuild_site_fts_internal(subdomain):
     try:
         site_db["agendas"].enable_fts(["text"])
     except OperationalError as e:
-        log(str(e), subdomain=subdomain, level="error")
+        logger.log(str(e), level="error")
     try:
         site_db["minutes"].enable_fts(["text"])
     except OperationalError as e:
-        log(str(e), subdomain=subdomain, level="error")
+        logger.log(str(e), level="error")
 
 
 def update_page_count(subdomain):
     from .db import civic_db_connection, update_site
 
+    logger.subdomain = subdomain
     assert_db_exists()
     site_db = sqlite_utils.Database(f"{STORAGE_DIR}/{subdomain}/meetings.db")
     agendas_count = site_db["agendas"].count
     minutes_count = site_db["minutes"].count
     page_count = agendas_count + minutes_count
-    logger.info(
-        "Page count updated subdomain=%s agendas=%d minutes=%d total=%d",
-        subdomain,
-        agendas_count,
-        minutes_count,
-        page_count,
+    logger.log(
+        f"Page count updated agendas={agendas_count} minutes={minutes_count} total={page_count}"
     )
     with civic_db_connection() as conn:
         update_site(
@@ -279,7 +273,7 @@ def worker(worker_type, num_workers, burst):
                 args_str = str(job.args) if job.args else "none"
                 args_preview = args_str[:50] if len(args_str) > 50 else args_str
                 # Use structured logging for Loki/Grafana visibility
-                logger.info(
+                logger.log(
                     "worker_pre_fork",
                     extra={
                         "stage": "pre_fork",
@@ -297,7 +291,7 @@ def worker(worker_type, num_workers, burst):
 
             # Log AFTER fork completes (back in parent process)
             try:
-                logger.info(
+                logger.log(
                     "worker_post_fork",
                     extra={
                         "stage": "post_fork",
@@ -372,8 +366,6 @@ def worker(worker_type, num_workers, burst):
         pool.start(burst=burst)
 
 
-cli.add_command(extract)
 cli.add_command(db)
-cli.add_command(debug)
 cli.add_command(etl)
 cli.add_command(sheets)

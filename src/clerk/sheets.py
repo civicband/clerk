@@ -21,7 +21,6 @@ def consolidate(doc_url, sheet_name):
     import ezsheets
 
     sites_raw: defaultdict[Any, list[Any]] = defaultdict(list)
-    sites: defaultdict[Any, dict[Any, Any]] = defaultdict(dict)
     doc: Spreadsheet = ezsheets.Spreadsheet(doc_url)
 
     with civic_db_connection() as conn:
