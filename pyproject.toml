@@ -6,15 +6,6 @@ readme = "README.md"
 authors = [{ name = "Philip James", email = "phildini@phildini.net" }]
 requires-python = ">=3.12"
 
-[project.urls]
-Homepage = "https://github.com/civicband/clerk"
-Documentation = "https://github.com/civicband/clerk/blob/main/README.md"
-Repository = "https://github.com/civicband/clerk"
-Issues = "https://github.com/civicband/clerk/issues"
-Mastodon = "https://sfba.social/@civicband"
-Bluesky = "https://bsky.app/profile/civic.band"
-Funding = "https://opencollective.com/civicband"
-
 dependencies = [
     "click>=8.1.8",
     "python-dotenv>=1.0.0",
@@ -31,6 +22,15 @@ dependencies = [
     "sentry-sdk>=2.0.0",
     "ezsheets>=2025.11.11",
 ]
+
+[project.urls]
+Homepage = "https://github.com/civicband/clerk"
+Documentation = "https://github.com/civicband/clerk/blob/main/README.md"
+Repository = "https://github.com/civicband/clerk"
+Issues = "https://github.com/civicband/clerk/issues"
+Mastodon = "https://sfba.social/@civicband"
+Bluesky = "https://bsky.app/profile/civic.band"
+Funding = "https://opencollective.com/civicband"
 
 [dependency-groups]
 dev = [
