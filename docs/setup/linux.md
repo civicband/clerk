@@ -41,14 +41,14 @@ sudo dnf install python3.12 python3-pip
 Using pip:
 
 ```bash
-python3.12 -m pip install --user "clerk[pdf,extraction] @ git+https://github.com/civicband/clerk.git"
+python3.12 -m pip install --user "civicband-clerk[pdf,extraction] @ git+https://github.com/civicband/clerk.git"
 ```
 
 Or using uv (faster):
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
-uv pip install "clerk[pdf,extraction] @ git+https://github.com/civicband/clerk.git"
+uv pip install "civicband-clerk[pdf,extraction] @ git+https://github.com/civicband/clerk.git"
 ```
 
 **Extras explained:**

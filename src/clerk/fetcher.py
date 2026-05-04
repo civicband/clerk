@@ -410,7 +410,7 @@ class Fetcher:
     ) -> None:
         if not PDF_SUPPORT:
             raise ImportError(
-                "PDF support requires optional dependencies. Install with: pip install clerk[pdf]"
+                "PDF support requires optional dependencies. Install with: pip install civicband-clerk[pdf]"
             )
         # TODO: Assert minutes and agenda output dir exists
         self.assert_fetch_dirs()
@@ -810,7 +810,7 @@ class Fetcher:
         self.logger.backend = backend
         if not PDF_SUPPORT:
             raise ImportError(
-                "PDF support requires optional dependencies. Install with: pip install clerk[pdf]"
+                "PDF support requires optional dependencies. Install with: pip install civicband-clerk[pdf]"
             )
 
         st = time.time()

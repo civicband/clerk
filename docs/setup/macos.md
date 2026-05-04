@@ -18,13 +18,13 @@ Before starting, complete [Prerequisites](prerequisites.md) to install:
 Using pip:
 
 ```bash
-pip install "clerk[pdf,extraction] @ git+https://github.com/civicband/clerk.git"
+pip install "civicband-clerk[pdf,extraction] @ git+https://github.com/civicband/clerk.git"
 ```
 
 Or using uv (faster):
 
 ```bash
-uv pip install "clerk[pdf,extraction] @ git+https://github.com/civicband/clerk.git"
+uv pip install "civicband-clerk[pdf,extraction] @ git+https://github.com/civicband/clerk.git"
 ```
 
 **Extras explained:**

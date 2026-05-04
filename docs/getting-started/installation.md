@@ -11,10 +11,10 @@ Install clerk using pip or uv:
 
 ```bash
 # Using uv (recommended)
-uv pip install clerk
+uv pip install civicband-clerk
 
 # Using pip
-pip install clerk
+pip install civicband-clerk
 ```
 
 ## Optional Dependencies
@@ -26,7 +26,7 @@ Clerk has optional features that require additional dependencies:
 For PDF generation and processing:
 
 ```bash
-uv pip install clerk[pdf]
+uv pip install civicband-clerk[pdf]
 ```
 
 Includes:
@@ -40,7 +40,7 @@ Includes:
 For entity and vote extraction with spaCy:
 
 ```bash
-uv pip install clerk[extraction]
+uv pip install civicband-clerk[extraction]
 ```
 
 Then download the spaCy language model:
@@ -55,7 +55,7 @@ export ENABLE_EXTRACTION=1
 For faster OCR on Apple Silicon:
 
 ```bash
-uv pip install clerk[vision]
+uv pip install civicband-clerk[vision]
 ```
 
 Requires macOS 10.15+ (M1+ recommended for best performance).
@@ -65,7 +65,7 @@ Requires macOS 10.15+ (M1+ recommended for best performance).
 Install everything:
 
 ```bash
-uv pip install clerk[pdf,extraction,vision]
+uv pip install civicband-clerk[pdf,extraction,vision]
 ```
 
 ## Development Installation

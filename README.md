@@ -19,7 +19,7 @@ A Python library for managing civic data pipelines for civic.band. Clerk handles
 ## Quick Install
 
 ```bash
-pip install "clerk[pdf,extraction] @ git+https://github.com/civicband/clerk.git"
+pip install "civicband-clerk[pdf,extraction] @ git+https://github.com/civicband/clerk.git"
 ```
 
 ## Documentation

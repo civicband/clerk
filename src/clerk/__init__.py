@@ -19,3 +19,5 @@ def __getattr__(name):
 
 
 __all__ = ["Fetcher", "hookimpl", "cli", "main"]
+
+__version__ = "0.1.0"
