@@ -119,17 +119,17 @@ def new(ctx):
 
     subdomain = ctx.obj.get("SUBDOMAIN")
     if not subdomain:
-        subdomain = click.prompt("Subdomain")
+        subdomain = click.prompt("Subdomain for the site (e.g. detroit.mi)")
     with civic_db_connection() as conn:
         exists = get_site_by_subdomain(conn, subdomain)
     if exists:
         click.secho(f"Site {subdomain} already exists", fg="red")
         return
 
-    name = click.prompt("Name", type=str)
-    state = click.prompt("State", type=str)
+    name = click.prompt("Human-readable name for the site", type=str)
+    state = click.prompt("Two-letter state/province abbreviation", type=str)
     country = click.prompt("Country", default="US", type=str)
-    kind = click.prompt("Kind", type=str)
+    kind = click.prompt("Type of governing body (e.g. city, senate, county)", type=str)
     start_year = click.prompt("Start year", type=int)
     all_agendas = click.prompt("Fetch all agendas", type=bool, default=False)
     lat_lng = click.prompt("Lat, Lng")
