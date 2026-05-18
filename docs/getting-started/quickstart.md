@@ -12,7 +12,7 @@ This tutorial walks through creating your first site and running the data pipeli
 Create a new civic site:
 
 ```bash
-clerk new
+clerk etl new
 ```
 
 You'll be prompted for:

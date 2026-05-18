@@ -4,7 +4,7 @@
 
 **Goal:** Add automatic site scheduling via `clerk update --next` that enqueues the least-recently-updated site every minute via cron, while making manual commands (`new`, `update -s`) use high priority.
 
-**Architecture:** Modify `clerk update` command to support both manual high-priority enqueues and auto-scheduler normal-priority enqueues. Add `get_oldest_site()` helper to query for least-recently-updated site. Update `clerk new` to auto-enqueue after creation.
+**Architecture:** Modify `clerk update` command to support both manual high-priority enqueues and auto-scheduler normal-priority enqueues. Add `get_oldest_site()` helper to query for least-recently-updated site. Update `clerk etl new` to auto-enqueue after creation.
 
 **Tech Stack:** SQLAlchemy, Click, pytest, existing RQ queue infrastructure
 
@@ -340,7 +340,7 @@ git commit -m "feat: update clerk update command for auto-scheduling
 
 ---
 
-## Task 3: Update `clerk new` to Auto-Enqueue with High Priority
+## Task 3: Update `clerk etl new` to Auto-Enqueue with High Priority
 
 **Files:**
 - Modify: `src/clerk/cli.py` (update `new` command)
@@ -356,7 +356,7 @@ class TestNewCommand:
     """Tests for the new command."""
 
     def test_new_creates_site_and_enqueues_with_high_priority(self, cli_runner, mocker):
-        """clerk new should create site and enqueue with high priority."""
+        """clerk etl new should create site and enqueue with high priority."""
         # Mock database operations
         mock_conn = mocker.MagicMock()
         mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
@@ -391,7 +391,7 @@ Run: `uv run pytest tests/test_cli.py::TestNewCommand::test_new_creates_site_and
 
 Expected: FAIL - new command doesn't enqueue yet
 
-**Step 3: Update `clerk new` command implementation**
+**Step 3: Update `clerk etl new` command implementation**
 
 Find the `new` command in `src/clerk/cli.py` and update it to add enqueueing after site creation. Look for the function definition and add the enqueue call:
 
@@ -653,7 +653,7 @@ This command:
 ### Manual vs Auto Priority
 
 **High priority** (processed first):
-- New sites: `clerk new <subdomain>`
+- New sites: `clerk etl new <subdomain>`
 - Manual updates: `clerk update -s <subdomain>`
 
 **Normal priority** (processed after high queue empty):
@@ -713,7 +713,7 @@ Manual operations use high priority and jump to the front of the queue:
 
 ```bash
 # New site - high priority
-clerk new new-city.civic.band
+clerk etl new new-city.civic.band
 
 # Manual update - high priority
 clerk update -s important-city.civic.band
@@ -811,7 +811,7 @@ Create a completion summary in `docs/plans/2026-01-14-auto-enqueue-scheduler-com
 ✅ `get_oldest_site()` helper function with tests
 ✅ `clerk update --next` auto-scheduler mode (normal priority)
 ✅ `clerk update -s <subdomain>` manual mode (high priority)
-✅ `clerk new` auto-enqueues with high priority
+✅ `clerk etl new` auto-enqueues with high priority
 ✅ `clerk enqueue` verified to use normal priority default
 ✅ Integration tests for full workflow
 ✅ Documentation updated (basic usage, deployment, README)
@@ -821,7 +821,7 @@ Create a completion summary in `docs/plans/2026-01-14-auto-enqueue-scheduler-com
 - Unit tests: `get_oldest_site()` function (4 tests)
 - Unit tests: `clerk update --next` (2 tests)
 - Unit tests: `clerk update -s` (1 test)
-- Unit tests: `clerk new` enqueue (1 test)
+- Unit tests: `clerk etl new` enqueue (1 test)
 - Unit tests: `clerk enqueue` priority (2 tests)
 - Integration test: Full workflow (1 test)
 

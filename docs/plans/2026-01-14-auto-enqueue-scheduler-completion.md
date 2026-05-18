@@ -8,7 +8,7 @@
 ✅ `get_oldest_site()` helper function with tests
 ✅ `clerk update --next-site` auto-scheduler mode (normal priority)
 ✅ `clerk update -s <subdomain>` manual mode (high priority)
-✅ `clerk new` auto-enqueues with high priority
+✅ `clerk etl new` auto-enqueues with high priority
 ✅ `clerk enqueue` verified to use normal priority default
 ✅ Integration tests for full workflow
 ✅ Documentation updated (basic usage, deployment, README)
@@ -17,7 +17,7 @@
 
 - Unit tests: `get_oldest_site()` function (4 tests)
 - Unit tests: `clerk update --next-site` (4 tests)
-- Unit tests: `clerk new` enqueue (1 test)
+- Unit tests: `clerk etl new` enqueue (1 test)
 - Unit tests: `clerk enqueue` priority (2 tests)
 - Integration test: Full workflow (1 test)
 
