@@ -5,11 +5,11 @@ Complete installation guide for Clerk on macOS.
 ## Prerequisites
 
 Before starting, complete [Prerequisites](prerequisites.md) to install:
-- Redis
-- PostgreSQL
-- Tesseract
-- Poppler
-- Python 3.12+
+- Redis (required)
+- Tesseract (required)
+- Poppler (required)
+- Python 3.12+ (required)
+- SQLite (required)
 
 ## Installation
 
@@ -41,12 +41,12 @@ python -m spacy download en_core_web_md
 
 ### 3. Configure Environment
 
-Create `.env` file:
+Create `.env` file (using SQLite by default):
 
 ```bash
 cat > .env <<'EOF'
 STORAGE_DIR=../sites
-DATABASE_URL=postgresql://localhost/clerk_civic
+DATABASE_URL=sqlite:///civic.db
 REDIS_URL=redis://localhost:6379
 DEFAULT_OCR_BACKEND=tesseract
 ENABLE_EXTRACTION=0
@@ -56,6 +56,11 @@ COMPILATION_WORKERS=2
 EXTRACTION_WORKERS=0
 DEPLOY_WORKERS=1
 EOF
+```
+
+**For PostgreSQL (production)**, use instead:
+```bash
+DATABASE_URL=postgresql://localhost/clerk_civic
 ```
 
 ### 4. Initialize Database
@@ -78,13 +83,18 @@ Check Clerk version:
 clerk --version
 ```
 
-Check database connection:
+Check database connection (SQLite):
 
 ```bash
-psql $DATABASE_URL -c "SELECT COUNT(*) FROM sites;"
+sqlite3 civic.db "SELECT COUNT(*) FROM sites;"
 ```
 
 Expected: `0` (empty table)
+
+**If using PostgreSQL**, check with:
+```bash
+psql $DATABASE_URL -c "SELECT COUNT(*) FROM sites;"
+```
 
 Check Redis connection:
 
@@ -93,20 +103,6 @@ redis-cli ping
 ```
 
 Expected: `PONG`
-
-## Optional: Vision Framework OCR
-
-For faster OCR on Apple Silicon:
-
-```bash
-pip install pyobjc-framework-Vision pyobjc-framework-Quartz
-```
-
-Update `.env`:
-
-```bash
-DEFAULT_OCR_BACKEND=vision
-```
 
 ## Next Steps
 
@@ -131,7 +127,14 @@ export PATH="$HOME/.local/bin:$PATH"
 
 **Database connection failed**
 
-Fix: Ensure PostgreSQL is running:
+If using SQLite (default), ensure the file is writable:
+
+```bash
+touch civic.db
+chmod 644 civic.db
+```
+
+If using PostgreSQL (production), ensure it's running:
 
 ```bash
 brew services start postgresql@15

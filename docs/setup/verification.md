@@ -22,24 +22,36 @@ redis-cli ping
 
 Expected: `PONG`
 
-**PostgreSQL:**
+**SQLite Database:**
+
+```bash
+sqlite3 civic.db "SELECT COUNT(*) FROM sites;"
+```
+
+Expected: `0` (empty table)
+
+**PostgreSQL (if configured):**
 
 ```bash
 psql $DATABASE_URL -c "SELECT COUNT(*) FROM sites;"
 ```
 
-Expected: `0` (empty table)
-
 ### 3. Check Worker Status
 
 ```bash
-clerk status
+# Check if workers are running
+ps aux | grep "rq worker"
+
+# Check queue status in Redis
+redis-cli --raw LLEN rq:queue:fetch
+redis-cli --raw LLEN rq:queue:ocr
+redis-cli --raw LLEN rq:queue:compilation
+redis-cli --raw LLEN rq:queue:deploy
 ```
 
 Expected:
-- All configured queues listed
-- Worker counts match your configuration
-- No errors in output
+- Worker processes listed
+- Queue lengths return 0 or numbers (indicates Redis is responsive)
 
 ## End-to-End Test
 
@@ -61,11 +73,15 @@ When prompted:
 
 ### 2. Verify Site Created
 
+Using SQLite:
+
 ```bash
-psql $DATABASE_URL -c "SELECT subdomain, name FROM sites WHERE subdomain='test-verification.civic.band';"
+sqlite3 civic.db "SELECT subdomain, name FROM sites WHERE subdomain='test-verification.civic.band';"
 ```
 
 Expected: One row showing your test site
+
+(If using PostgreSQL, use `psql` instead of `sqlite3`)
 
 ### 3. Trigger Update
 
@@ -77,16 +93,19 @@ Expected: Job enqueued message
 
 ### 4. Monitor Queue
 
+Monitor the queue status:
+
 ```bash
-watch -n 2 "clerk status -s test-verification.civic.band"
+# Watch the queue depths (update every second)
+watch -n 1 "redis-cli --raw LLEN rq:queue:fetch; redis-cli --raw LLEN rq:queue:ocr; redis-cli --raw LLEN rq:queue:compilation; redis-cli --raw LLEN rq:queue:deploy"
 ```
 
 Watch for:
-1. Job appears in fetch queue
-2. Job moves to OCR queue
-3. Job moves to compilation queue
-4. Job moves to deploy queue
-5. Site status becomes "completed"
+1. Job appears in fetch queue (LLEN > 0)
+2. Queue lengths decrease as jobs process
+3. All queues return to 0 when complete
+
+If workers are running in foreground terminals, watch their stdout output for any errors.
 
 Press Ctrl+C when complete.
 
@@ -156,7 +175,10 @@ Expected: No error messages
 
 ```bash
 # Check queue lengths
-clerk status | grep -E "fetch|ocr|compilation"
+redis-cli --raw LLEN rq:queue:fetch
+redis-cli --raw LLEN rq:queue:ocr
+redis-cli --raw LLEN rq:queue:compilation
+redis-cli --raw LLEN rq:queue:deploy
 
 # Check for failed jobs
 redis-cli LLEN rq:queue:failed
@@ -166,27 +188,29 @@ Expected: All queues at 0 or decreasing, no failed jobs
 
 ## Performance Tests
 
-### Test OCR Speed
+### Test OCR Performance
 
-Time a single PDF:
-
-```bash
-time clerk ocr -s test-verification.civic.band --force
-```
-
-Expected: Completes without errors
-
-Typical speeds:
-- Tesseract: 2-5 seconds per page
-- Vision Framework: 0.5-1 second per page
-
-### Test Database Build Speed
+Monitor OCR queue processing time:
 
 ```bash
-time clerk build-db-from-text -s test-verification.civic.band
+# Time from when you enqueue to when queue returns to 0
+time (
+  clerk etl update -s test-verification.civic.band
+  until [ $(redis-cli LLEN rq:queue:ocr) -eq 0 ]; do sleep 1; done
+)
 ```
 
-Expected: Completes without errors
+Typical speeds with Tesseract: 2-5 seconds per page
+
+### Test Compilation Performance
+
+Monitor compilation time:
+
+```bash
+# After OCR completes, time the compilation
+redis-cli LLEN rq:queue:compilation
+# Wait for compilation queue to process
+```
 
 Typical speeds:
 - Without extraction: 10-30 seconds for 100 pages
@@ -197,7 +221,8 @@ Typical speeds:
 - [ ] `clerk --version` shows version number
 - [ ] `redis-cli ping` returns PONG
 - [ ] `psql $DATABASE_URL` connects successfully
-- [ ] `clerk status` shows configured workers
+- [ ] Worker processes are running (`ps aux | grep "rq worker"`)
+- [ ] Redis queues are accessible
 - [ ] Test site creation succeeds
 - [ ] Test site update completes end-to-end
 - [ ] PDFs downloaded to storage directory

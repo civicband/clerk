@@ -64,58 +64,76 @@ which clerk
 The worker runs from a specific working directory that must contain the `.env` file.
 
 **How to check:**
-Look at the plist file:
 ```bash
-cat ~/Library/LaunchAgents/com.civicband.clerk.worker.fetch.1.plist
-# Check the <key>WorkingDirectory</key> value
+# Verify you're in the correct directory
+pwd
+# Check if .env exists
+ls -la .env
 ```
 
 **How to fix:**
-- Ensure the working directory exists
-- Ensure `.env` file is in that directory
-- Re-run the install script from the correct directory
+- Run clerk from the directory containing your `.env` file
+- Ensure `.env` file is readable: `cat .env`
 
-## Diagnostic Command
+## Diagnostic Steps
 
-Run the diagnostic command to identify the issue:
+To identify worker issues:
+
+1. **Check if workers are running:**
+   ```bash
+   ps aux | grep "clerk worker"
+   ```
+
+2. **Try running a worker manually to see the error:**
+   ```bash
+   cd /path/to/clerk
+   clerk worker fetch
+   ```
+
+3. **Check Redis connection:**
+   ```bash
+   redis-cli ping
+   # Should return: PONG
+   ```
+
+4. **Check database connection:**
+   
+   For SQLite (default):
+   ```bash
+   sqlite3 civic.db "SELECT 1;"
+   ```
+   
+   For PostgreSQL:
+   ```bash
+   psql $DATABASE_URL -c "SELECT 1;"
+   ```
+
+## Checking Worker Output
+
+Workers output JSON-formatted logs to stdout/stderr:
 
 ```bash
-clerk diagnose-workers
-```
+# If running workers in a terminal, view logs there
+# For background processes, redirect to a file when starting:
+clerk worker fetch > /tmp/clerk-worker-fetch.log 2>&1 &
 
-This will check:
-1. `.env` file existence
-2. Clerk executable
-3. Redis connection
-4. Log directory and recent errors
-5. Plist file validity
-6. Manual worker execution
-
-## Checking Worker Logs
-
-Worker logs are stored in `~/.clerk/logs/`:
-
-```bash
-# View error logs
-tail -f ~/.clerk/logs/clerk-worker-fetch-1.error.log
-
-# View stdout logs
-tail -f ~/.clerk/logs/clerk-worker-fetch-1.log
+# Then tail the log:
+tail -f /tmp/clerk-worker-fetch.log
 ```
 
 ## Manual Worker Testing
 
-Test a worker manually to see the actual error:
+Test a worker manually to see any errors:
 
 ```bash
 cd /path/to/clerk
 source .env
 
-# Try running a worker
+# Try running a worker in burst mode (exits when queues empty)
 clerk worker fetch --burst
 ```
 
-This will show you the actual error message that's preventing the worker from starting.
+This will show you any error messages that prevent the worker from starting or processing jobs.
 
 ## Common Error Messages
 
@@ -135,34 +153,34 @@ This will show you the actual error message that's preventing the worker from st
 - **Cause:** Clerk executable doesn't have execute permissions
 - **Fix:** `chmod +x /path/to/clerk`
 
-## Fixing and Reloading
+## Fixing and Restarting
 
 After fixing the issue:
 
 ```bash
-# Uninstall workers
-clerk uninstall-workers
+# Stop the worker
+pkill -f "clerk worker fetch"
 
 # Fix the issue (start Redis, fix .env, etc.)
 
-# Reinstall workers (run from directory with .env)
-clerk install-workers
+# Restart the worker
+clerk worker fetch &
 ```
 
 ## Verifying Success
 
-After installation, verify workers are running:
+After starting workers, verify they are running:
 
 ```bash
 # Check worker status
-launchctl list | grep com.civicband.clerk.worker
+ps aux | grep "clerk worker"
 
-# Should show workers with PIDs (not just "-")
+# Should show running worker processes
 # Example good output:
-# 12345  0  com.civicband.clerk.worker.fetch.1
-# 12346  0  com.civicband.clerk.worker.fetch.2
+# user  12345  0.5  2.3  ... clerk worker fetch
+# user  12346  0.5  2.3  ... clerk worker ocr
 
-# Check for errors in logs
-ls -lh ~/.clerk/logs/*.error.log
-# Error log files should be 0 bytes if no errors
+# Check that jobs are being processed
+redis-cli LLEN rq:queue:fetch
+# Should return 0 or decreasing number
 ```

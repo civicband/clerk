@@ -177,46 +177,43 @@ psql postgresql://user:pass@SERVICE_HOST:5432/clerk_civic -c "SELECT 1;"
 
 Expected: Both commands succeed
 
-### 4. Install and Start Workers
+### 4. Start Workers on Each Machine
 
 **On each machine:**
 
 ```bash
-# Install worker services
-clerk install-workers
+# Start workers in tmux/screen or as background processes
+# Terminal 1: Fetch workers
+clerk worker fetch -n 2
 
-# Start workers (macOS)
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/clerk.worker.*.plist
+# Terminal 2: OCR workers
+clerk worker ocr -n 8
 
-# Start workers (Linux)
-systemctl --user enable clerk-worker-*
-systemctl --user start clerk-worker-*
+# Terminal 3: Compilation workers (core pipeline only)
+clerk worker compilation -n 2
+
+# Terminal 4: Deploy workers
+clerk worker deploy -n 1
+
+# Terminal 5: Extraction workers (if EXTRACTION_WORKERS > 0)
+clerk worker extraction -n 2
 ```
+
+For production, use systemd services or equivalent to manage worker processes.
 
 ### 5. Verify Distributed Setup
 
-**From any machine:**
+**From any machine, check Redis queue depths:**
 
 ```bash
-clerk status
+redis-cli LLEN rq:queue:fetch
+redis-cli LLEN rq:queue:ocr
+redis-cli LLEN rq:queue:compilation
+redis-cli LLEN rq:queue:extraction
+redis-cli LLEN rq:queue:deploy
 ```
 
-Expected output showing workers from all machines:
-```
-Queue Status:
-  fetch: 0 jobs
-  ocr: 0 jobs
-  compilation: 0 jobs
-  extraction: 0 jobs
-  deploy: 0 jobs
-
-Active Workers:
-  fetch: 2 workers
-  ocr: 8 workers
-  compilation: 2 workers
-  extraction: 2 workers
-  deploy: 1 worker
-```
+Expected: All queues return 0 or a count (indicates Redis is responsive)
 
 ## Storage Considerations
 
@@ -297,26 +294,19 @@ See [Operations: Monitoring](../operations/monitoring.md) for detailed log queri
 
 **Option 1: Add workers to existing machine**
 
-Edit `.env` to increase worker counts:
+Stop the current worker process and restart with higher worker count:
 
 ```bash
-OCR_WORKERS=16  # Was 8
-```
-
-Reinstall workers:
-
-```bash
-clerk uninstall-workers
-clerk install-workers
+pkill -f "clerk worker ocr"
+clerk worker ocr -n 16  # Was -n 8
 ```
 
 **Option 2: Add new worker machine**
 
 1. Install Clerk on new machine
 2. Configure `.env` with shared services
-3. Set worker counts (only desired worker types)
-4. Install and start workers
-5. Verify with `clerk status`
+3. Start worker processes with desired counts
+4. Verify with `redis-cli LLEN rq:queue:*` commands
 
 ## Next Steps
 

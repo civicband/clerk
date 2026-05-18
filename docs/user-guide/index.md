@@ -28,11 +28,11 @@ See the [complete task queue documentation](task-queue.md) for installation, con
 
 The [Monitoring Guide](monitoring.md) covers health checking and observability for your clerk pipeline:
 
-- `clerk health` command for system health checks
-- Queue depth monitoring and thresholds
-- Worker status and failed job tracking
-- Integration with monitoring systems (Nagios, Prometheus)
-- Job completion verification and debugging
+- Redis queue depth monitoring
+- Worker process monitoring
+- Database health checks
+- Failed job tracking and debugging
+- Integration with monitoring systems (Prometheus, cron)
 
 See the [monitoring documentation](monitoring.md) for detailed usage and troubleshooting.
 

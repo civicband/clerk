@@ -88,7 +88,25 @@ Should be: `REDIS_URL=redis://localhost:6379`
 sudo ufw allow 6379/tcp
 ```
 
-### PostgreSQL connection failed
+### Database connection failed (SQLite or PostgreSQL)
+
+**If using SQLite (default):**
+
+**Symptom:** `Error: unable to open database file`
+
+**Fix:**
+
+```bash
+# Ensure the database file is writable
+touch civic.db
+chmod 644 civic.db
+
+# Verify it's being used
+grep DATABASE_URL .env
+# Should show: DATABASE_URL=sqlite:///civic.db
+```
+
+**If using PostgreSQL (production):**
 
 **Symptom:** `Error: could not connect to server`
 
@@ -140,52 +158,31 @@ Should be: `DATABASE_URL=postgresql://localhost/clerk_civic`
 
 ### Workers not starting
 
-**Symptom:** `clerk status` shows 0 workers
+**Symptom:** No worker processes running (`ps aux | grep "clerk worker"` shows nothing)
 
-**Diagnosis (macOS):**
-
-```bash
-launchctl list | grep clerk
-cat /tmp/clerk.worker.fetch.1.log
-```
-
-**Diagnosis (Linux):**
+**Diagnosis:**
 
 ```bash
-systemctl --user status clerk-worker-fetch-1
-journalctl --user -u clerk-worker-fetch-1 -n 50
+# Check if worker process is running
+ps aux | grep "clerk worker"
+
+# Try starting a worker and see error
+clerk worker fetch
+
+# Check Redis connectivity
+redis-cli ping
 ```
 
-**Fix (LaunchAgent not loaded - macOS):**
+**Fix (Redis not running):**
 
 ```bash
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/clerk.worker.*.plist
-```
+# macOS
+brew services start redis
+redis-cli ping
 
-**Fix (systemd service not enabled - Linux):**
-
-```bash
-systemctl --user enable clerk-worker-*
-systemctl --user start clerk-worker-*
-```
-
-**Fix (PATH issue in LaunchAgent):**
-
-Edit `~/Library/LaunchAgents/clerk.worker.fetch.1.plist`:
-
-```xml
-<key>EnvironmentVariables</key>
-<dict>
-    <key>PATH</key>
-    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
-</dict>
-```
-
-Reload:
-
-```bash
-launchctl bootout gui/$(id -u)/clerk.worker.fetch.1
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/clerk.worker.fetch.1.plist
+# Linux
+sudo systemctl start redis-server
+sudo systemctl enable redis-server
 ```
 
 **Fix (missing .env file):**
@@ -193,9 +190,24 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/clerk.worker.fetch.1.pli
 ```bash
 # Ensure .env exists in working directory
 ls -la .env
+
+# If missing, create it with required variables
+cat > .env <<EOF
+DATABASE_URL=sqlite:///civic.db
+REDIS_URL=redis://localhost:6379
+STORAGE_DIR=../sites
+EOF
 ```
 
-See [Prerequisites](prerequisites.md) for .env template.
+**Fix (wrong PATH):**
+
+Ensure clerk is in your PATH:
+
+```bash
+which clerk
+# If not found, use full path:
+/usr/local/bin/clerk worker fetch
+```
 
 ### Workers crash immediately
 
@@ -242,8 +254,13 @@ Check Redis is running and .env has correct REDIS_URL.
 **Diagnosis:**
 
 ```bash
-clerk status
+# Check queue depths
+redis-cli LLEN rq:queue:fetch
+redis-cli LLEN rq:queue:ocr
 redis-cli LLEN rq:queue:failed
+
+# Check for failed jobs
+redis-cli LRANGE rq:queue:failed 0 -1
 ```
 
 **Fix (workers not running):**
@@ -252,26 +269,18 @@ See "Workers not starting" above.
 
 **Fix (failed jobs):**
 
-View failed jobs:
+View details of failed jobs:
 
 ```bash
 redis-cli LRANGE rq:queue:failed 0 -1
 ```
 
-Clear failed queue:
+This will show job IDs. Look at worker logs for error messages.
+
+Clear failed queue (only if you understand why they failed):
 
 ```bash
 redis-cli DEL rq:queue:failed
-```
-
-**Fix (deadlock - job depends on failed job):**
-
-```bash
-# Purge all jobs for a site
-clerk purge -s SUBDOMAIN
-
-# Or purge entire queue
-clerk purge-queue fetch
 ```
 
 ### Jobs fail with errors
@@ -320,15 +329,14 @@ sudo apt install poppler-utils
 
 **`MemoryError` during extraction:**
 
-Reduce extraction workers or disable extraction:
+Disable extraction:
 
 ```bash
 # Edit .env
-EXTRACTION_WORKERS=0  # Or reduce to 1
+ENABLE_EXTRACTION=0
 
-# Restart workers
-clerk uninstall-workers
-clerk install-workers
+# Stop extraction workers
+pkill -f "clerk worker extraction"
 ```
 
 ## Performance Issues
@@ -338,32 +346,21 @@ clerk install-workers
 **Diagnosis:**
 
 ```bash
-time clerk ocr -s SUBDOMAIN --force
+time clerk etl ocr
 ```
 
 If > 10 seconds per page, investigate:
 
-**Fix (using Vision Framework on non-Apple Silicon):**
-
-Switch to Tesseract:
-
-```bash
-# Edit .env
-DEFAULT_OCR_BACKEND=tesseract
-
-# Re-run OCR
-clerk ocr -s SUBDOMAIN --force
-```
-
 **Fix (too few OCR workers):**
 
-```bash
-# Edit .env
-OCR_WORKERS=8  # Increase from 4
+Stop existing workers and restart with more:
 
-# Restart workers
-clerk uninstall-workers
-clerk install-workers
+```bash
+# Stop OCR workers
+pkill -f "clerk worker ocr"
+
+# Start with more workers
+clerk worker ocr -n 8 &
 ```
 
 ### High memory usage
@@ -377,62 +374,35 @@ clerk install-workers
 ps aux | grep "clerk worker" | awk '{print $4, $11}'
 ```
 
-**Fix (extraction workers using too much RAM):**
+**Fix (disable extraction):**
 
-Disable or reduce extraction workers:
+Disable extraction entirely:
 
 ```bash
 # Edit .env
-EXTRACTION_WORKERS=0  # Or set to 1
+ENABLE_EXTRACTION=0
 
-# Restart workers
-clerk uninstall-workers
-clerk install-workers
+# Stop extraction workers
+pkill -f "clerk worker extraction"
 ```
 
 Use distributed setup to run extraction on separate machine:
 
 See [Distributed Setup](distributed.md).
 
-**Fix (reduce spaCy parallel processing):**
-
-```bash
-# Edit .env
-SPACY_N_PROCESS=1  # Default is 2
-
-# Restart extraction workers
-systemctl --user restart clerk-worker-extraction-*
-```
-
 ## Diagnostic Tools
 
-### clerk diagnose-workers
-
-Comprehensive worker diagnostics:
+### Check Worker Status
 
 ```bash
-clerk diagnose-workers
+# List all running worker processes
+ps aux | grep "clerk worker"
+
+# Check if workers are listening to queues
+redis-cli KEYS "rq:worker:*"
 ```
 
-Shows:
-- Worker process status
-- LaunchAgent/systemd configuration
-- Recent log output
-- Configuration issues
-
-### clerk status
-
-Queue and job status:
-
-```bash
-# Overall status
-clerk status
-
-# Site-specific status
-clerk status -s SUBDOMAIN
-```
-
-### Manual Redis inspection
+### Queue and Job Inspection
 
 ```bash
 # List all queues
@@ -440,9 +410,15 @@ redis-cli KEYS "rq:queue:*"
 
 # Check queue length
 redis-cli LLEN rq:queue:fetch
+redis-cli LLEN rq:queue:ocr
+redis-cli LLEN rq:queue:compilation
 
-# View jobs in queue
-redis-cli LRANGE rq:queue:fetch 0 -1
+# View jobs in queue (show first 10)
+redis-cli LRANGE rq:queue:fetch 0 10
+
+# Check for failed jobs
+redis-cli LLEN rq:queue:failed
+redis-cli LRANGE rq:queue:failed 0 -1
 ```
 
 ## Getting More Help
@@ -455,7 +431,8 @@ If troubleshooting doesn't resolve your issue:
    - Platform (macOS/Linux)
    - Clerk version (`clerk --version`)
    - Full error messages
-   - Output from `clerk diagnose-workers`
+   - Output from `ps aux | grep "clerk worker"`
+   - Queue status from Redis
    - Relevant log files
 
 ## Next Steps
