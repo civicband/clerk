@@ -819,7 +819,7 @@ Clerk supports two OCR backends:
 - **Cross-platform:** Linux, macOS, Windows
 - **Languages:** 100+ languages supported
 - **Setup:** Requires tesseract binary installed
-- **Usage:** `clerk update example.com` (default) or `clerk update example.com --ocr-backend=tesseract`
+- **Usage:** `clerk etl update example.com` (default) or `clerk etl update example.com --ocr-backend=tesseract`
 
 ### Vision Framework (macOS only)
 
@@ -827,7 +827,7 @@ Clerk supports two OCR backends:
 - **Performance:** 3-5x faster than Tesseract on Apple Silicon
 - **Languages:** Automatic language detection
 - **Setup:** `pip install pyobjc-framework-Vision pyobjc-framework-Quartz`
-- **Usage:** `clerk update example.com --ocr-backend=vision`
+- **Usage:** `clerk etl update example.com --ocr-backend=vision`
 
 ### Automatic Fallback
 
@@ -835,7 +835,7 @@ If Vision Framework is selected but fails (missing dependencies, errors), clerk 
 
 ```bash
 # Try Vision, fall back to Tesseract if needed
-clerk update example.com --ocr-backend=vision
+clerk etl update example.com --ocr-backend=vision
 ```
 ```
 
@@ -855,7 +855,7 @@ git commit -m "Document system dependencies and OCR backend options"
 
 **Step 1: Test Tesseract backend (default)**
 
-Run: `clerk update test.example.com`
+Run: `clerk etl update test.example.com`
 
 Expected:
 - Processes with Tesseract backend
@@ -864,7 +864,7 @@ Expected:
 
 **Step 2: Test Vision backend on macOS**
 
-Run: `clerk update test.example.com --ocr-backend=vision`
+Run: `clerk etl update test.example.com --ocr-backend=vision`
 
 Expected:
 - Processes with Vision backend
@@ -876,7 +876,7 @@ Expected:
 
 Temporarily break Vision (e.g., uninstall pyobjc) and run:
 
-Run: `clerk update test.example.com --ocr-backend=vision`
+Run: `clerk etl update test.example.com --ocr-backend=vision`
 
 Expected:
 - Logs show Vision failure
@@ -889,10 +889,10 @@ Expected:
 Run same document with both backends and compare:
 
 ```bash
-clerk update test.example.com --ocr-backend=tesseract
+clerk etl update test.example.com --ocr-backend=tesseract
 mv ../sites/test.example.com/txt ../sites/test.example.com/txt-tesseract
 
-clerk update test.example.com --ocr-backend=vision
+clerk etl update test.example.com --ocr-backend=vision
 mv ../sites/test.example.com/txt ../sites/test.example.com/txt-vision
 
 diff -r ../sites/test.example.com/txt-tesseract ../sites/test.example.com/txt-vision
@@ -981,10 +981,10 @@ If you want to measure performance improvement:
 
 ```bash
 # Benchmark Tesseract
-time clerk update test.example.com --ocr-backend=tesseract
+time clerk etl update test.example.com --ocr-backend=tesseract
 
 # Benchmark Vision
-time clerk update test.example.com --ocr-backend=vision
+time clerk etl update test.example.com --ocr-backend=vision
 
 # Compare results
 ```

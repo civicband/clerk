@@ -2,9 +2,9 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Add automatic site scheduling via `clerk update --next` that enqueues the least-recently-updated site every minute via cron, while making manual commands (`new`, `update -s`) use high priority.
+**Goal:** Add automatic site scheduling via `clerk etl update --next` that enqueues the least-recently-updated site every minute via cron, while making manual commands (`new`, `update -s`) use high priority.
 
-**Architecture:** Modify `clerk update` command to support both manual high-priority enqueues and auto-scheduler normal-priority enqueues. Add `get_oldest_site()` helper to query for least-recently-updated site. Update `clerk etl new` to auto-enqueue after creation.
+**Architecture:** Modify `clerk etl update` command to support both manual high-priority enqueues and auto-scheduler normal-priority enqueues. Add `get_oldest_site()` helper to query for least-recently-updated site. Update `clerk etl new` to auto-enqueue after creation.
 
 **Tech Stack:** SQLAlchemy, Click, pytest, existing RQ queue infrastructure
 
@@ -162,7 +162,7 @@ lookback window. Returns None if all sites recently updated."
 
 ---
 
-## Task 2: Update `clerk update --next` to Use Auto-Scheduler
+## Task 2: Update `clerk etl update --next` to Use Auto-Scheduler
 
 **Files:**
 - Modify: `src/clerk/cli.py` (update `update` command function)
@@ -178,7 +178,7 @@ class TestAutoEnqueueScheduler:
     """Tests for auto-enqueue scheduler functionality."""
 
     def test_update_next_enqueues_oldest_site(self, cli_runner, mocker):
-        """clerk update --next should enqueue the oldest site with normal priority."""
+        """clerk etl update --next should enqueue the oldest site with normal priority."""
         # Mock get_oldest_site to return a site
         mocker.patch("clerk.cli.get_oldest_site", return_value="old-site.civic.band")
 
@@ -198,7 +198,7 @@ class TestAutoEnqueueScheduler:
         )
 
     def test_update_next_exits_silently_when_no_eligible_sites(self, cli_runner, mocker):
-        """clerk update --next should exit gracefully if all sites recently updated."""
+        """clerk etl update --next should exit gracefully if all sites recently updated."""
         # Mock get_oldest_site to return None
         mocker.patch("clerk.cli.get_oldest_site", return_value=None)
 
@@ -214,7 +214,7 @@ class TestAutoEnqueueScheduler:
         mock_enqueue.assert_not_called()
 
     def test_update_subdomain_enqueues_with_high_priority(self, cli_runner, mocker):
-        """clerk update -s should enqueue specific site with high priority."""
+        """clerk etl update -s should enqueue specific site with high priority."""
         # Mock database check
         mock_conn = mocker.MagicMock()
         mock_conn.__enter__ = mocker.Mock(return_value=mock_conn)
@@ -243,7 +243,7 @@ class TestAutoEnqueueScheduler:
         )
 
     def test_update_requires_subdomain_or_next_flag(self, cli_runner):
-        """clerk update without flags should show usage error."""
+        """clerk etl update without flags should show usage error."""
         result = cli_runner.invoke(cli, ["update"])
 
         assert result.exit_code != 0
@@ -256,7 +256,7 @@ Run: `uv run pytest tests/test_cli.py::TestAutoEnqueueScheduler -v`
 
 Expected: FAIL - tests fail because update command doesn't have new logic yet
 
-**Step 3: Update `clerk update` command implementation**
+**Step 3: Update `clerk etl update` command implementation**
 
 Find the `update` command in `src/clerk/cli.py` (around line 370-395) and replace it with:
 
@@ -330,7 +330,7 @@ Expected: 4 tests PASS
 
 ```bash
 git add tests/test_cli.py src/clerk/cli.py
-git commit -m "feat: update clerk update command for auto-scheduling
+git commit -m "feat: update clerk etl update command for auto-scheduling
 
 - Add --next-site flag for auto-scheduler (normal priority)
 - Change -s/--subdomain to enqueue with high priority
@@ -641,7 +641,7 @@ The auto-scheduler ensures all sites update approximately once per day:
 
 ```bash
 # Run via cron every minute to auto-enqueue oldest site
-clerk update --next
+clerk etl update --next
 ```
 
 This command:
@@ -654,10 +654,10 @@ This command:
 
 **High priority** (processed first):
 - New sites: `clerk etl new <subdomain>`
-- Manual updates: `clerk update -s <subdomain>`
+- Manual updates: `clerk etl update -s <subdomain>`
 
 **Normal priority** (processed after high queue empty):
-- Auto-scheduler: `clerk update --next`
+- Auto-scheduler: `clerk etl update --next`
 - Bulk operations: `clerk enqueue site1 site2 site3`
 ```
 
@@ -675,7 +675,7 @@ To automatically update all sites once per day, set up a cron job:
 crontab -e
 
 # Add this line to run every minute:
-* * * * * cd /path/to/clerk && /path/to/uv run clerk update --next >> /var/log/clerk/auto-enqueue.log 2>&1
+* * * * * cd /path/to/clerk && /path/to/uv run clerk etl update --next >> /var/log/clerk/auto-enqueue.log 2>&1
 ```
 
 **Monitoring:**
@@ -706,7 +706,7 @@ Set up a cron job to automatically update all sites:
 
 ```bash
 # Run every minute to enqueue oldest site
-* * * * * cd /path/to/clerk && uv run clerk update --next
+* * * * * cd /path/to/clerk && uv run clerk etl update --next
 ```
 
 Manual operations use high priority and jump to the front of the queue:
@@ -716,7 +716,7 @@ Manual operations use high priority and jump to the front of the queue:
 clerk etl new new-city.civic.band
 
 # Manual update - high priority
-clerk update -s important-city.civic.band
+clerk etl update -s important-city.civic.band
 
 # Bulk enqueue - normal priority
 clerk enqueue site1 site2 site3
@@ -729,7 +729,7 @@ clerk enqueue site1 site2 site3
 git add docs/getting-started/basic-usage.md docs/deployment.md README.md
 git commit -m "docs: add auto-scheduler setup and usage instructions
 
-Document clerk update --next usage, cron setup, and priority model
+Document clerk etl update --next usage, cron setup, and priority model
 for manual vs automatic operations."
 ```
 
@@ -809,8 +809,8 @@ Create a completion summary in `docs/plans/2026-01-14-auto-enqueue-scheduler-com
 ## What Was Implemented
 
 ✅ `get_oldest_site()` helper function with tests
-✅ `clerk update --next` auto-scheduler mode (normal priority)
-✅ `clerk update -s <subdomain>` manual mode (high priority)
+✅ `clerk etl update --next` auto-scheduler mode (normal priority)
+✅ `clerk etl update -s <subdomain>` manual mode (high priority)
 ✅ `clerk etl new` auto-enqueues with high priority
 ✅ `clerk enqueue` verified to use normal priority default
 ✅ Integration tests for full workflow
@@ -819,8 +819,8 @@ Create a completion summary in `docs/plans/2026-01-14-auto-enqueue-scheduler-com
 ## Test Coverage
 
 - Unit tests: `get_oldest_site()` function (4 tests)
-- Unit tests: `clerk update --next` (2 tests)
-- Unit tests: `clerk update -s` (1 test)
+- Unit tests: `clerk etl update --next` (2 tests)
+- Unit tests: `clerk etl update -s` (1 test)
 - Unit tests: `clerk etl new` enqueue (1 test)
 - Unit tests: `clerk enqueue` priority (2 tests)
 - Integration test: Full workflow (1 test)
@@ -850,7 +850,7 @@ Create a completion summary in `docs/plans/2026-01-14-auto-enqueue-scheduler-com
 
 - [ ] PR approved and merged
 - [ ] Changes deployed to production
-- [ ] Cron job configured: `* * * * * cd /path && uv run clerk update --next`
+- [ ] Cron job configured: `* * * * * cd /path && uv run clerk etl update --next`
 - [ ] Log directory created: `/var/log/clerk/`
 - [ ] Verify cron is running: check logs after 1-2 minutes
 - [ ] Monitor queue status: `clerk status`

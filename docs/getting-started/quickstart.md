@@ -33,7 +33,7 @@ This creates a site entry in the civic.db database and a directory structure at 
 Update the site to fetch data:
 
 ```bash
-clerk update --subdomain berkeleyca.civic.band
+clerk etl update --subdomain berkeleyca.civic.band
 ```
 
 This runs the complete pipeline:
@@ -46,10 +46,10 @@ This runs the complete pipeline:
 
 ```bash
 # Fetch all historical data
-clerk update --subdomain berkeleyca.civic.band --all-years
+clerk etl update --subdomain berkeleyca.civic.band --all-years
 
 # Update next site that needs updating (for cron jobs)
-clerk update --next-site
+clerk etl update --next-site
 ```
 
 ## Step 3: Build Database

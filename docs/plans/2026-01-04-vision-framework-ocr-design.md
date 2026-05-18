@@ -352,7 +352,7 @@ def _ocr_with_vision(self, image_path: Path) -> str:
    - Vision tests skipped gracefully on other platforms
 
 **Manual Testing Checklist:**
-- [ ] Run `clerk update --ocr-backend=vision` on M2 Mac
+- [ ] Run `clerk etl update --ocr-backend=vision` on M2 Mac
 - [ ] Compare output quality vs Tesseract
 - [ ] Verify PNGs uploaded correctly
 - [ ] Test fallback by triggering Vision error
@@ -385,7 +385,7 @@ For existing clerk deployments:
 
 2. **Phase 1 - Testing**
    - Install Vision dependencies: `pip install pyobjc-framework-Vision pyobjc-framework-Quartz`
-   - Test on specific sites: `clerk update example.com --ocr-backend=vision`
+   - Test on specific sites: `clerk etl update example.com --ocr-backend=vision`
    - Compare quality and performance
 
 3. **Phase 2 - Gradual Rollout**
@@ -426,14 +426,14 @@ Clerk supports two OCR backends:
 - Cross-platform (Linux, macOS, Windows)
 - Supports 100+ languages
 - Requires tesseract binary installed
-- Usage: `clerk update` (default) or `clerk update --ocr-backend=tesseract`
+- Usage: `clerk etl update` (default) or `clerk etl update --ocr-backend=tesseract`
 
 ### Vision Framework (macOS only)
 - Requires M1+ Mac (Neural Engine)
 - 3-5x faster than Tesseract on Apple Silicon
 - Automatic language detection
 - Requires: `pip install pyobjc-framework-Vision pyobjc-framework-Quartz`
-- Usage: `clerk update --ocr-backend=vision`
+- Usage: `clerk etl update --ocr-backend=vision`
 
 ### Fallback Behavior
 If Vision is selected but fails (missing dependencies, errors), clerk automatically falls back to Tesseract and logs a warning.
@@ -467,7 +467,7 @@ If Vision is selected but fails (missing dependencies, errors), clerk automatica
 
 ## Success Criteria
 
-- [ ] `clerk update --ocr-backend=vision` works on M2 Mac
+- [ ] `clerk etl update --ocr-backend=vision` works on M2 Mac
 - [ ] Text output quality comparable to Tesseract
 - [ ] 3-5x performance improvement measured
 - [ ] Automatic fallback works when Vision fails

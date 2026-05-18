@@ -6,8 +6,8 @@
 ## What Was Implemented
 
 ✅ `get_oldest_site()` helper function with tests
-✅ `clerk update --next-site` auto-scheduler mode (normal priority)
-✅ `clerk update -s <subdomain>` manual mode (high priority)
+✅ `clerk etl update --next-site` auto-scheduler mode (normal priority)
+✅ `clerk etl update -s <subdomain>` manual mode (high priority)
 ✅ `clerk etl new` auto-enqueues with high priority
 ✅ `clerk enqueue` verified to use normal priority default
 ✅ Integration tests for full workflow
@@ -16,7 +16,7 @@
 ## Test Coverage
 
 - Unit tests: `get_oldest_site()` function (4 tests)
-- Unit tests: `clerk update --next-site` (4 tests)
+- Unit tests: `clerk etl update --next-site` (4 tests)
 - Unit tests: `clerk etl new` enqueue (1 test)
 - Unit tests: `clerk enqueue` priority (2 tests)
 - Integration test: Full workflow (1 test)
@@ -37,7 +37,7 @@
 
 1. `6fffc8e` - Add auto-enqueue scheduler design
 2. `1ffddc9` - feat: add get_oldest_site helper function
-3. `82a98f8` - feat: update clerk update command for auto-scheduling
+3. `82a98f8` - feat: update clerk etl update command for auto-scheduling
 4. `33c2396` - feat: auto-enqueue new sites with high priority
 5. `10ca489` - test: verify enqueue defaults to normal priority
 6. `c36a986` - test: add integration test for auto-enqueue workflow
@@ -60,7 +60,7 @@
 - [ ] PR created and submitted for review
 - [ ] PR approved and merged
 - [ ] Changes deployed to production
-- [ ] Cron job configured: `* * * * * cd /path && uv run clerk update --next-site`
+- [ ] Cron job configured: `* * * * * cd /path && uv run clerk etl update --next-site`
 - [ ] Verify first auto-enqueue works
 - [ ] Monitor logs for 24 hours
 - [ ] Confirm all sites updating on schedule

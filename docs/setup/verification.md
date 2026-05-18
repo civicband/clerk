@@ -70,7 +70,7 @@ Expected: One row showing your test site
 ### 3. Trigger Update
 
 ```bash
-clerk update -s test-verification.civic.band
+clerk etl update -s test-verification.civic.band
 ```
 
 Expected: Job enqueued message

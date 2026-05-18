@@ -349,7 +349,7 @@ This creates a site entry in the civic.db database and a directory structure at 
 Update the site to fetch data:
 
 ```bash
-clerk update --subdomain berkeleyca.civic.band
+clerk etl update --subdomain berkeleyca.civic.band
 ```
 
 This runs the complete pipeline:
@@ -362,10 +362,10 @@ This runs the complete pipeline:
 
 ```bash
 # Fetch all historical data
-clerk update --subdomain berkeleyca.civic.band --all-years
+clerk etl update --subdomain berkeleyca.civic.band --all-years
 
 # Update next site that needs updating (for cron jobs)
-clerk update --next-site
+clerk etl update --next-site
 ```
 
 ## Step 3: Build Database
@@ -438,13 +438,13 @@ Interactive prompt to create a new site.
 
 ```bash
 # Specific site
-clerk update --subdomain example.civic.band
+clerk etl update --subdomain example.civic.band
 
 # Next site needing update
-clerk update --next-site
+clerk etl update --next-site
 
 # All historical data
-clerk update --subdomain example.civic.band --all-years
+clerk etl update --subdomain example.civic.band --all-years
 ```
 
 ## Database Operations
@@ -540,7 +540,7 @@ clerk --plugins-dir=/path/to/plugins update --subdomain example.civic.band
 
 ```bash
 # Every 6 hours: update next site
-0 */6 * * * clerk update --next-site
+0 */6 * * * clerk etl update --next-site
 
 # Every 30 minutes: extract entities
 */30 * * * * clerk extract-entities --next-site
@@ -553,7 +553,7 @@ clerk --plugins-dir=/path/to/plugins update --subdomain example.civic.band
 clerk etl new
 
 # 2. Fetch all data
-clerk update --subdomain example.civic.band --all-years
+clerk etl update --subdomain example.civic.band --all-years
 
 # 3. Build database (fast)
 clerk build-db-from-text --subdomain example.civic.band

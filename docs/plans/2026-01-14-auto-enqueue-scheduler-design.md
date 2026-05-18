@@ -17,7 +17,7 @@ This design adds automatic site scheduling to the RQ-based task queue system. A 
 
 ## Motivation
 
-The new RQ worker architecture enables parallel processing but requires a scheduling mechanism to automatically feed sites into the queue. Previously, `clerk update -n` was called via launchd every 15 minutes to process one site synchronously. Now we need to enqueue sites at a regular cadence for workers to process.
+The new RQ worker architecture enables parallel processing but requires a scheduling mechanism to automatically feed sites into the queue. Previously, `clerk etl update -n` was called via launchd every 15 minutes to process one site synchronously. Now we need to enqueue sites at a regular cadence for workers to process.
 
 **Requirements:**
 1. All sites update approximately once per day
@@ -35,12 +35,12 @@ The new RQ worker architecture enables parallel processing but requires a schedu
 - Enqueues site with **high priority**
 - New sites process immediately
 
-**2. `clerk update -s <subdomain>` - Manual update**
+**2. `clerk etl update -s <subdomain>` - Manual update**
 - Enqueues specific site with **high priority**
 - Replaces old synchronous processing with async enqueue
 - Jumps to front of queue
 
-**3. `clerk update --next` - Auto-scheduler**
+**3. `clerk etl update --next` - Auto-scheduler**
 - Finds site with oldest `last_updated` timestamp
 - Skips sites updated within last 23 hours
 - Enqueues with **normal priority**
@@ -97,7 +97,7 @@ def get_oldest_site(lookback_hours=23):
 
 ### Implementation Changes
 
-**`clerk update` command**:
+**`clerk etl update` command**:
 ```python
 @cli.command()
 @click.option('-s', '--subdomain', help='Specific site subdomain')
@@ -172,7 +172,7 @@ if not subdomain:
 **Cron Configuration**:
 ```bash
 # Add to crontab: crontab -e
-* * * * * cd /path/to/project && /path/to/uv run clerk update --next >> /var/log/clerk/auto-enqueue.log 2>&1
+* * * * * cd /path/to/project && /path/to/uv run clerk etl update --next >> /var/log/clerk/auto-enqueue.log 2>&1
 ```
 
 **Monitoring**:
@@ -194,7 +194,7 @@ if not subdomain:
 
 **Manual override**:
 ```bash
-10:30 - User runs: clerk update -s important-city
+10:30 - User runs: clerk etl update -s important-city
         → important-city added to high-priority queue
         → Workers process high-priority queue first
         → important-city completes, last_updated set to 10:35
@@ -247,9 +247,9 @@ All of these can be added later without changing the core design.
 ## Implementation Checklist
 
 - [ ] Add `get_oldest_site()` helper function
-- [ ] Update `clerk update` command to handle `--next-site` flag
+- [ ] Update `clerk etl update` command to handle `--next-site` flag
 - [ ] Update `clerk etl new` command to auto-enqueue with high priority
-- [ ] Update `clerk update -s` to enqueue with high priority instead of processing synchronously
+- [ ] Update `clerk etl update -s` to enqueue with high priority instead of processing synchronously
 - [ ] Add logging for auto-enqueue operations
 - [ ] Update documentation with new command behavior
 - [ ] Add cron setup instructions to deployment docs
