@@ -56,7 +56,7 @@ pip install "civicband-clerk[pdf,extraction] @ git+https://github.com/civicband/
 
 ```bash
 # Create a new site
-clerk new
+clerk etl new
 
 # Update a site (enqueues fetch → OCR → compilation → deploy)
 clerk update --subdomain example.civic.band

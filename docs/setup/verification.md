@@ -46,7 +46,7 @@ Expected:
 ### 1. Create Test Site
 
 ```bash
-clerk new test-verification.civic.band
+clerk etl new test-verification.civic.band
 ```
 
 When prompted:

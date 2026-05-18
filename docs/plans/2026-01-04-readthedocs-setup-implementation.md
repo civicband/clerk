@@ -328,7 +328,7 @@ This tutorial walks through creating your first site and running the data pipeli
 Create a new civic site:
 
 ```bash
-clerk new
+clerk etl new
 ```
 
 You'll be prompted for:
@@ -429,7 +429,7 @@ Shows all sites in civic.db with their status.
 ### Create New Site
 
 ```bash
-clerk new
+clerk etl new
 ```
 
 Interactive prompt to create a new site.
@@ -550,7 +550,7 @@ clerk --plugins-dir=/path/to/plugins update --subdomain example.civic.band
 
 ```bash
 # 1. Create site
-clerk new
+clerk etl new
 
 # 2. Fetch all data
 clerk update --subdomain example.civic.band --all-years

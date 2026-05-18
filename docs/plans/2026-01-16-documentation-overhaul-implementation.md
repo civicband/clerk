@@ -895,7 +895,7 @@ Active Workers:
 ### 1. Create a test site
 
 ```bash
-clerk new test-city.civic.band
+clerk etl new test-city.civic.band
 ```
 
 Follow prompts to configure site.
@@ -1454,7 +1454,7 @@ Expected:
 ### 1. Create Test Site
 
 ```bash
-clerk new test-verification.civic.band
+clerk etl new test-verification.civic.band
 ```
 
 When prompted:
@@ -2186,7 +2186,7 @@ pip install "clerk[pdf,extraction] @ git+https://github.com/civicband/clerk.git"
 
 ```bash
 # Create a new site
-clerk new
+clerk etl new
 
 # Update a site (enqueues fetch → OCR → compilation → deploy)
 clerk update --subdomain example.civic.band

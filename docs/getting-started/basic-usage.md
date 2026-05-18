@@ -7,7 +7,7 @@ Common workflows and CLI commands for working with clerk.
 ### Create New Site
 
 ```bash
-clerk new
+clerk etl new
 ```
 
 Interactive prompt to create a new site.
@@ -43,7 +43,7 @@ This command:
 ### Manual vs Auto Priority
 
 **High priority** (processed first):
-- New sites: `clerk new <subdomain>`
+- New sites: `clerk etl new <subdomain>`
 - Manual updates: `clerk update -s <subdomain>`
 
 **Normal priority** (processed after high queue empty):
@@ -151,7 +151,7 @@ clerk --plugins-dir=/path/to/plugins update --subdomain example.civic.band
 
 ```bash
 # 1. Create site
-clerk new
+clerk etl new
 
 # 2. Fetch all data
 clerk update --subdomain example.civic.band --all-years

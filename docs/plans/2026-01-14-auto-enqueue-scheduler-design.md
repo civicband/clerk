@@ -30,7 +30,7 @@ The new RQ worker architecture enables parallel processing but requires a schedu
 
 ### Command Behavior
 
-**1. `clerk new <subdomain>` - Create new site**
+**1. `clerk etl new <subdomain>` - Create new site**
 - Creates site record in database (existing behavior)
 - Enqueues site with **high priority**
 - New sites process immediately
@@ -125,7 +125,7 @@ def update(subdomain, next_site, all_years, ...):
     raise click.UsageError("Must specify --subdomain or --next-site")
 ```
 
-**`clerk new` command**:
+**`clerk etl new` command**:
 ```python
 @cli.command()
 @click.argument('subdomain')
@@ -203,7 +203,7 @@ if not subdomain:
 
 **New site**:
 ```bash
-14:00 - User runs: clerk new brand-new-city
+14:00 - User runs: clerk etl new brand-new-city
         → Site created in database (last_updated = NULL)
         → Enqueued with high priority
         → Processes immediately
@@ -248,7 +248,7 @@ All of these can be added later without changing the core design.
 
 - [ ] Add `get_oldest_site()` helper function
 - [ ] Update `clerk update` command to handle `--next-site` flag
-- [ ] Update `clerk new` command to auto-enqueue with high priority
+- [ ] Update `clerk etl new` command to auto-enqueue with high priority
 - [ ] Update `clerk update -s` to enqueue with high priority instead of processing synchronously
 - [ ] Add logging for auto-enqueue operations
 - [ ] Update documentation with new command behavior

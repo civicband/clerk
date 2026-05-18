@@ -28,11 +28,11 @@ The system automatically detects which database to use based on the `DATABASE_UR
 Example:
 ```bash
 # Development mode (SQLite)
-clerk new my-city --name "My City"
+clerk etl new my-city --name "My City"
 
 # Production mode (PostgreSQL)
 export DATABASE_URL="postgresql://user:pass@host:5432/civicband"
-clerk new my-city --name "My City"
+clerk etl new my-city --name "My City"
 ```
 
 ## Installation

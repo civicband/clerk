@@ -159,7 +159,7 @@ Active Workers:
 ### 1. Create a test site
 
 ```bash
-clerk new test-city.civic.band
+clerk etl new test-city.civic.band
 ```
 
 Follow prompts to configure site.
