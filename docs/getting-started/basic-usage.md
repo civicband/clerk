@@ -16,13 +16,13 @@ Interactive prompt to create a new site.
 
 ```bash
 # Specific site
-clerk update --subdomain example.civic.band
+clerk etl update --subdomain example.civic.band
 
 # Next site needing update
-clerk update --next-site
+clerk etl update --next-site
 
 # All historical data
-clerk update --subdomain example.civic.band --all-years
+clerk etl update --subdomain example.civic.band --all-years
 ```
 
 ### Auto-Scheduling Sites
@@ -31,7 +31,7 @@ The auto-scheduler ensures all sites update approximately once per day:
 
 ```bash
 # Run via cron every minute to auto-enqueue oldest site
-clerk update --next-site
+clerk etl update --next-site
 ```
 
 This command:
@@ -44,10 +44,10 @@ This command:
 
 **High priority** (processed first):
 - New sites: `clerk etl new <subdomain>`
-- Manual updates: `clerk update -s <subdomain>`
+- Manual updates: `clerk etl update -s <subdomain>`
 
 **Normal priority** (processed after high queue empty):
-- Auto-scheduler: `clerk update --next-site`
+- Auto-scheduler: `clerk etl update --next-site`
 - Bulk operations: `clerk enqueue site1 site2 site3`
 
 ## Database Operations
@@ -90,13 +90,13 @@ OCR is handled automatically as part of the `update` command. You can choose the
 ### Update with Tesseract (default)
 
 ```bash
-clerk update --subdomain example.civic.band
+clerk etl update --subdomain example.civic.band
 ```
 
 ### Update with Vision Framework (macOS)
 
 ```bash
-clerk update --subdomain example.civic.band --ocr-backend vision
+clerk etl update --subdomain example.civic.band --ocr-backend vision
 ```
 
 Vision Framework is 3-5x faster on Apple Silicon and automatically falls back to Tesseract if it fails.
@@ -141,7 +141,7 @@ clerk --plugins-dir=/path/to/plugins update --subdomain example.civic.band
 
 ```bash
 # Every 6 hours: update next site
-0 */6 * * * clerk update --next-site
+0 */6 * * * clerk etl update --next-site
 
 # Every 30 minutes: extract entities
 */30 * * * * clerk extract-entities --next-site
@@ -154,7 +154,7 @@ clerk --plugins-dir=/path/to/plugins update --subdomain example.civic.band
 clerk etl new
 
 # 2. Fetch all data
-clerk update --subdomain example.civic.band --all-years
+clerk etl update --subdomain example.civic.band --all-years
 
 # 3. Build database (fast)
 clerk build-db-from-text --subdomain example.civic.band

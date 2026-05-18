@@ -59,10 +59,10 @@ cd "$WORK_DIR" || {
 }
 
 # Run the update with timeout
-log "Starting clerk update"
+log "Starting clerk etl update"
 START_TIME=$(date +%s)
 
-if {{GTIMEOUT_PATH}} "$TIMEOUT" {{UV_PATH}} run clerk update -n; then
+if {{GTIMEOUT_PATH}} "$TIMEOUT" {{UV_PATH}} run clerk etl update -n; then
     EXIT_CODE=$?
     END_TIME=$(date +%s)
     DURATION=$((END_TIME - START_TIME))

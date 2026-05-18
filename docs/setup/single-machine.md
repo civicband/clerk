@@ -167,7 +167,7 @@ Follow prompts to configure site.
 ### 2. Trigger an update
 
 ```bash
-clerk update -s test-city.civic.band
+clerk etl update -s test-city.civic.band
 ```
 
 ### 3. Monitor progress

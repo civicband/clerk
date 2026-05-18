@@ -25,7 +25,7 @@ if __name__ == "__main__":
 Users run `clerk` directly, and plugins are discovered automatically:
 
 ```bash
-clerk update -s foo.civic.band
+clerk etl update -s foo.civic.band
 ```
 
 ## Design
@@ -45,7 +45,7 @@ clerk update -s foo.civic.band
 
 ```bash
 # Uses ./plugins/ by default
-clerk update -s foo.civic.band
+clerk etl update -s foo.civic.band
 
 # Override plugins directory
 clerk --plugins-dir ./my-plugins update -s foo.civic.band

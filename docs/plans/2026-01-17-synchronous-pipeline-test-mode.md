@@ -382,13 +382,13 @@ Developer would immediately know something was wrong!
 
 ## Related Work
 
-- Old `clerk update` command (synchronous, but couldn't test queue workers)
+- Old `clerk etl update` command (synchronous, but couldn't test queue workers)
 - Queue worker pipeline (distributed, hard to test locally)
 - This bridges both: test queue workers synchronously
 
 ## Questions to Answer
 
-1. Should this replace `clerk update` entirely?
+1. Should this replace `clerk etl update` entirely?
 2. How to handle hooks that need external services (SSH, etc)?
 3. Should we mock external dependencies for testing?
 4. Integration with pytest for automated testing?

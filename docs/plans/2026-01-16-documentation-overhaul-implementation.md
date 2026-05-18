@@ -903,7 +903,7 @@ Follow prompts to configure site.
 ### 2. Trigger an update
 
 ```bash
-clerk update -s test-city.civic.band
+clerk etl update -s test-city.civic.band
 ```
 
 ### 3. Monitor progress
@@ -1478,7 +1478,7 @@ Expected: One row showing your test site
 ### 3. Trigger Update
 
 ```bash
-clerk update -s test-verification.civic.band
+clerk etl update -s test-verification.civic.band
 ```
 
 Expected: Job enqueued message
@@ -2189,7 +2189,7 @@ pip install "clerk[pdf,extraction] @ git+https://github.com/civicband/clerk.git"
 clerk etl new
 
 # Update a site (enqueues fetch → OCR → compilation → deploy)
-clerk update --subdomain example.civic.band
+clerk etl update --subdomain example.civic.band
 
 # Check status
 clerk status

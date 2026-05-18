@@ -22,7 +22,7 @@ This design introduces a distributed task queue system to replace the current si
 
 The existing launchd-based system has significant bottlenecks:
 
-1. **Serialization**: Lock file allows only one `clerk update -n` process at a time
+1. **Serialization**: Lock file allows only one `clerk etl update -n` process at a time
 2. **Single-site processing**: Each invocation processes one site sequentially through all stages
 3. **Resource underutilization**: On an 8-core machine, only ~1-2 cores are used during fetch/deploy
 4. **No parallelism**: OCR processing happens sequentially even though pages are independent
@@ -705,7 +705,7 @@ DEFAULT_OCR_BACKEND=tesseract
 ### For Existing Users
 
 **Old system** (launchd + lock file):
-- Single `clerk update -n` every 60 seconds
+- Single `clerk etl update -n` every 60 seconds
 - Lock file prevents concurrent execution
 - Processes 1 site at a time
 - ~24 sites per day

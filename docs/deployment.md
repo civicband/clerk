@@ -6,7 +6,7 @@ Guide for deploying clerk in production with automated updates.
 
 Clerk provides built-in support for automated updates using macOS's launchd system. The `clerk install-launchd` command sets up scheduled jobs that:
 
-- Run `clerk update -n` every 60 seconds
+- Run `clerk etl update -n` every 60 seconds
 - Monitor for failures and send alerts
 - Prevent overlapping runs with lock files
 - Log all activity for debugging
@@ -191,7 +191,7 @@ If updates stop running and you see "Lock file stuck" messages:
 
 ```bash
 # Check if process is actually running
-ps aux | grep "clerk update"
+ps aux | grep "clerk etl update"
 
 # If no process, remove stuck lock
 rm /tmp/civicband-update-$(whoami).lock
@@ -207,7 +207,7 @@ If multiple processes pile up:
 
 ```bash
 # Kill all hung clerk processes
-pkill -f "clerk update -n"
+pkill -f "clerk etl update -n"
 
 # Check for issues in logs
 tail -100 logs/update.error.log
@@ -271,12 +271,12 @@ If you're migrating from cron:
 1. **Disable old cron job:**
    ```bash
    crontab -e
-   # Comment out or remove the clerk update line
+   # Comment out or remove the clerk etl update line
    ```
 
 2. **Kill any hung cron processes:**
    ```bash
-   pkill -f "clerk update"
+   pkill -f "clerk etl update"
    ```
 
 3. **Install launchd:**
@@ -303,7 +303,7 @@ To automatically update all sites once per day, set up a cron job:
 crontab -e
 
 # Add this line to run every minute:
-* * * * * cd /path/to/clerk && /path/to/uv run clerk update --next-site >> /var/log/clerk/auto-enqueue.log 2>&1
+* * * * * cd /path/to/clerk && /path/to/uv run clerk etl update --next-site >> /var/log/clerk/auto-enqueue.log 2>&1
 ```
 
 **Monitoring:**
