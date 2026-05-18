@@ -29,7 +29,7 @@ System requirements for running Clerk.
 
 ### Redis
 
-Task queue backend.
+Task queue backend for job processing.
 
 **macOS:**
 ```bash
@@ -51,9 +51,11 @@ redis-cli ping
 
 Expected: `PONG`
 
-### PostgreSQL
+## Optional Services
 
-Central database for site metadata and job tracking.
+### PostgreSQL (Production Only)
+
+For production deployments with multiple servers, you can use PostgreSQL instead of SQLite for the central database. SQLite is the default and recommended for single-machine setups.
 
 **macOS:**
 ```bash
@@ -135,7 +137,7 @@ brew install pango cairo glib gobject-introspection
 sudo apt install libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libffi-dev
 ```
 
-**Note:** On macOS, the `clerk install-workers` command automatically configures the library path for these dependencies. If running clerk manually, you may need to set:
+**Note:** On macOS, you may need to set the library path for these dependencies:
 
 ```bash
 export DYLD_LIBRARY_PATH="/opt/homebrew/lib:$DYLD_LIBRARY_PATH"  # Apple Silicon
@@ -159,8 +161,12 @@ Create `.env` file in your working directory:
 # Storage directory for site data
 STORAGE_DIR=../sites
 
-# Database connection
-DATABASE_URL=postgresql://localhost/clerk_civic
+# Database connection (SQLite is default, PostgreSQL is optional)
+# SQLite (development/single-machine - no setup required):
+DATABASE_URL=sqlite:///civic.db
+
+# PostgreSQL (production/distributed - optional):
+# DATABASE_URL=postgresql://localhost/clerk_civic
 
 # Redis connection
 REDIS_URL=redis://localhost:6379

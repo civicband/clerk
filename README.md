@@ -32,25 +32,13 @@ pip install "civicband-clerk[pdf,extraction] @ git+https://github.com/civicband/
 - **[Distributed Workers](docs/setup/distributed.md)** - Scale across multiple machines
 - **[Verification](docs/setup/verification.md)** - Test your setup
 
-### Operations
+### Getting Started
 
-- **[Daily Tasks](docs/operations/daily-tasks.md)** - Common operational tasks
-- **[Monitoring](docs/operations/monitoring.md)** - Health checks and metrics
-- **[Troubleshooting](docs/operations/troubleshooting.md)** - Fix common issues
-- **[Scaling](docs/operations/scaling.md)** - Add workers and scale horizontally
-
-### Reference
-
-- **[CLI Reference](docs/reference/cli/index.md)** - Complete command-line reference
-- **[Python API](docs/reference/python-api/index.md)** - Python library reference
-- **[Plugin API](docs/reference/plugin-api/index.md)** - Plugin development guide
-
-### Guides
-
-- **[Your First Site](docs/guides/first-site.md)** - Complete beginner tutorial
-- **[Worker Architecture](docs/guides/worker-architecture.md)** - Understanding task queues
-- **[Custom Fetcher](docs/guides/custom-fetcher.md)** - Build a fetcher plugin
-- **[Production Checklist](docs/guides/production-checklist.md)** - Pre-launch validation
+- **[Installation](docs/setup/prerequisites.md)** - System requirements and setup
+- **[macOS Setup](docs/setup/macos.md)** - Installation on macOS
+- **[Linux Setup](docs/setup/linux.md)** - Installation on Linux
+- **[Distributed Setup](docs/setup/distributed.md)** - Multi-machine worker configuration
+- **[Verification](docs/setup/verification.md)** - Verify your installation
 
 ## Quick Start
 
@@ -61,11 +49,12 @@ clerk etl new
 # Update a site (enqueues fetch → OCR → compilation → deploy)
 clerk etl update --subdomain example.civic.band
 
-# Check status
-clerk status
+# Start workers to process the pipeline (in another terminal)
+clerk worker fetch &
+clerk worker ocr &
+clerk worker compilation &
+clerk worker deploy &
 ```
-
-See [Your First Site Tutorial](docs/guides/first-site.md) for a complete walkthrough.
 
 ## Architecture
 
@@ -77,9 +66,7 @@ Clerk uses a distributed task queue (RQ) with specialized worker types:
 - **extraction** - Entity and vote extraction (optional, memory-intensive)
 - **deploy** - Upload to storage/CDN
 
-Workers can run on a single machine or distributed across multiple machines for better performance.
-
-See [Worker Architecture Guide](docs/guides/worker-architecture.md) for details.
+Workers can run on a single machine or distributed across multiple machines for better performance. See [Distributed Setup](docs/setup/distributed.md) for details.
 
 ## Contributing
 

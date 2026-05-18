@@ -53,61 +53,36 @@ EXTRACTION_WORKERS=0  # Set to 0 if not using extraction
 - Each extraction worker: ~5 GB (with spaCy)
 - Recommended: 8 GB RAM for full pipeline
 
-### 2. Install Worker Services
+### 2. Start Workers Manually
 
-**macOS (LaunchAgents):**
-
-```bash
-clerk install-workers
-```
-
-This creates LaunchAgent plist files in `~/Library/LaunchAgents/` for each worker type.
-
-**Verify installation:**
+Start each worker type in separate terminal windows:
 
 ```bash
-ls ~/Library/LaunchAgents/ | grep clerk
+# Terminal 1: Fetch worker
+clerk worker fetch
+
+# Terminal 2: OCR workers
+clerk worker ocr -n 4
+
+# Terminal 3: Compilation worker
+clerk worker compilation
+
+# Terminal 4: Deploy worker  
+clerk worker deploy
 ```
 
-Expected: Multiple `clerk.worker.*.plist` files
-
-**Linux (systemd):**
+Or run all in the background:
 
 ```bash
-clerk install-workers
+clerk worker fetch &
+clerk worker ocr -n 4 &
+clerk worker compilation &
+clerk worker deploy &
 ```
 
-This creates systemd service files in `~/.config/systemd/user/` for each worker.
+For production deployments, use your system's process manager (systemd, launchd, supervisor, etc.) to manage worker processes.
 
-**Verify installation:**
-
-```bash
-systemctl --user list-unit-files | grep clerk
-```
-
-Expected: Multiple `clerk-worker-*.service` files
-
-### 3. Start Workers
-
-**macOS:**
-
-```bash
-# Start all workers
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/clerk.worker.*.plist
-
-# Or restart if already loaded
-launchctl kickstart gui/$(id -u)/clerk.worker.fetch.1
-```
-
-**Linux:**
-
-```bash
-# Enable and start all workers
-systemctl --user enable clerk-worker-*
-systemctl --user start clerk-worker-*
-```
-
-### 4. Verify Workers Running
+### 3. Verify Workers Running
 
 **Check worker processes:**
 
@@ -115,44 +90,18 @@ systemctl --user start clerk-worker-*
 ps aux | grep "clerk worker"
 ```
 
-Expected: One process per configured worker
+Expected: One process per worker (fetch, ocr, compilation, deploy)
 
-**Check worker status:**
-
-**macOS:**
+**Check Redis queues:**
 
 ```bash
-launchctl print gui/$(id -u)/clerk.worker.fetch.1
+redis-cli LLEN rq:queue:fetch
+redis-cli LLEN rq:queue:ocr
+redis-cli LLEN rq:queue:compilation
+redis-cli LLEN rq:queue:deploy
 ```
 
-**Linux:**
-
-```bash
-systemctl --user status clerk-worker-fetch-1
-```
-
-**Use clerk status command:**
-
-```bash
-clerk status
-```
-
-Expected output:
-```
-Queue Status:
-  fetch: 0 jobs
-  ocr: 0 jobs
-  compilation: 0 jobs
-  extraction: 0 jobs
-  deploy: 0 jobs
-
-Active Workers:
-  fetch: 2 workers
-  ocr: 4 workers
-  compilation: 2 workers
-  extraction: 0 workers
-  deploy: 1 worker
-```
+Expected: All return 0 or a number (indicates Redis is working)
 
 ## Testing the Pipeline
 
@@ -174,22 +123,21 @@ clerk etl update -s test-city.civic.band
 
 ```bash
 # Watch queue depths
-watch -n 2 clerk status
+watch -n 2 "redis-cli LLEN rq:queue:fetch; redis-cli LLEN rq:queue:ocr; redis-cli LLEN rq:queue:compilation"
 
-# Or follow logs (macOS)
-tail -f /tmp/clerk.worker.fetch.1.log
-
-# Or follow logs (Linux)
-journalctl --user -u clerk-worker-fetch-1 -f
+# Or follow worker output (if running in foreground)
+# Just watch the terminal where you started the workers
 ```
 
 ### 4. Verify completion
 
+Check the storage directory for output:
+
 ```bash
-clerk status -s test-city.civic.band
+ls ../sites/test-city.civic.band/
 ```
 
-Expected: Site shows "completed" status
+Expected: Contains `pdfs/`, `txt/`, and `meetings.db`
 
 ## Next Steps
 
@@ -203,40 +151,27 @@ See [Setup Troubleshooting](troubleshooting.md) for common issues.
 
 ### Workers not starting
 
-**macOS:**
-
-Check LaunchAgent logs:
-
-```bash
-cat /tmp/clerk.worker.fetch.1.log
-```
-
-**Linux:**
-
-Check systemd logs:
-
-```bash
-journalctl --user -u clerk-worker-fetch-1 -n 50
-```
+Check the terminal where you started the workers for error messages.
 
 Common fixes:
 - Ensure Redis is running: `redis-cli ping`
 - Ensure PostgreSQL is running: `psql $DATABASE_URL -c "SELECT 1;"`
-- Check PATH in LaunchAgent/systemd files
 - Verify `.env` file exists and is readable
+- Check that the `STORAGE_DIR` exists and is writable
 
 ### Jobs stuck in queue
 
-Check worker logs for errors:
+Check if workers are running and check for errors in their output:
 
 ```bash
-clerk diagnose-workers
+# List all worker processes
+ps aux | grep "clerk worker"
+
+# Check Redis for stuck jobs
+redis-cli LRANGE rq:queue:fetch 0 -1
 ```
 
-This command shows:
-- Worker process status
-- Recent log output
-- Configuration issues
+Look at the worker output/logs for error messages about why jobs aren't completing.
 
 ### High memory usage
 

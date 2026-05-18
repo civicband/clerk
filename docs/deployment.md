@@ -1,10 +1,10 @@
 # Deployment Guide
 
-Guide for deploying clerk in production with automated updates.
+**⚠️ Note:** The automated deployment features (`clerk install-launchd`, `clerk install-workers`) described in this guide are not yet implemented. For production deployments, use your system's standard process manager (systemd, launchd, supervisor, etc.) to manage clerk worker processes. See [Single-Machine Setup](docs/setup/single-machine.md) for manual worker management.
 
 ## Overview
 
-Clerk provides built-in support for automated updates using macOS's launchd system. The `clerk install-launchd` command sets up scheduled jobs that:
+This guide describes the planned automated deployment workflow. For current production deployments:
 
 - Run `clerk etl update -n` every 60 seconds
 - Monitor for failures and send alerts
@@ -312,8 +312,8 @@ crontab -e
 # View auto-enqueue log
 tail -f /var/log/clerk/auto-enqueue.log
 
-# Check queue status
-clerk status
+# Check Redis queue status (if available)
+redis-cli INFO stats
 ```
 
 The auto-scheduler:
