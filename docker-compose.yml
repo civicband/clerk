@@ -1,0 +1,38 @@
+x-common-settings: &common-settings
+  build: .
+  env_file: .env
+  restart: on-failure
+  environment:
+    - STORAGE_DIR=/clerk_sites
+  volumes:
+    - ${STORAGE_DIR}:/clerk_sites/
+    - .:/app
+  networks:
+    - clerk
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - 6379:6379
+    networks:
+      - clerk
+
+  fetch_worker:
+    <<: *common-settings
+    command: clerk worker fetch -n ${FETCH_WORKERS}
+
+  ocr_worker:
+    <<: *common-settings
+    command: clerk worker ocr -n ${OCR_WORKERS}
+
+  compilation_worker:
+    <<: *common-settings
+    command: clerk worker compilation -n ${COMPILATION_WORKERS}
+
+  deploy_worker:
+    <<: *common-settings
+    command: clerk worker deploy -n ${DEPLOY_WORKERS}
+
+networks:
+  clerk:
