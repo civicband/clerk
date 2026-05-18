@@ -1191,11 +1191,11 @@ def _ocr_with_paddleocr(image_path: Path) -> str:
     """
     try:
         from paddleocr import PaddleOCR  # pyright: ignore[reportMissingImports]
-    except ImportError:
+    except ImportError as err:
         raise ImportError(
             "PaddleOCR backend requires the 'paddleocr' package. "
             "Install with: pip install paddleocr"
-        )
+        ) from err
 
     # Initialize PaddleOCR with CPU-friendly settings
     # use_angle_cls: Enable text orientation classification
