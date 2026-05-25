@@ -288,6 +288,12 @@ logfire auth
 
 One of the maintainers will review your PR at our earliest convenience. We might have follow-up questions, which we'll post either as a comment on the PR (for overall/general feedback) or using the GitHub reviews workflow (for line-specific feedback). If we don't get a response to questions about your PR within a month, we'll close the PR to avoid stale PR buildup. You should feel free to reopen it when you come back, though! 
 
+- Be respectful and inclusive
+- Focus on constructive feedback
+- Help others learn and grow
+
+Thank you for contributing to Clerk! 🎉
+
 ## Getting Help
 
 - **Issues**: https://github.com/civicband/clerk/issues
@@ -296,8 +302,5 @@ One of the maintainers will review your PR at our earliest convenience. We might
 
 ## Code of Conduct
 
-- Be respectful and inclusive
-- Focus on constructive feedback
-- Help others learn and grow
+We use Civic Band's organization-level [Code of Conduct](https://github.com/civicband/.github/blob/main/CODE_OF_CONDUCT.md).
 
-Thank you for contributing to Clerk! 🎉
