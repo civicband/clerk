@@ -284,6 +284,10 @@ logfire auth
 - Run `just format` and `just lint-fix` manually
 - Commit the formatted code
 
+### After Submitting PRs
+
+One of the maintainers will review your PR at our earliest convenience. We might have follow-up questions, which we'll post either as a comment on the PR (for overall/general feedback) or using the GitHub reviews workflow (for line-specific feedback). If we don't get a response to questions about your PR within a month, we'll close the PR to avoid stale PR buildup. You should feel free to reopen it when you come back, though! 
+
 ## Getting Help
 
 - **Issues**: https://github.com/civicband/clerk/issues
