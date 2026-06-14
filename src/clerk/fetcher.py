@@ -232,6 +232,120 @@ def _safe_pdf_to_images(
         result_queue.join_thread()
 
 
+def _pdf_link_extract_worker(pdf_path, total_pages, result_queue):
+    """Worker function to extract hyperlinks from PDF in subprocess."""
+    try:
+        links = _extract_pdf_links_internal(pdf_path, total_pages)
+        result_queue.put(("success", links))
+    except Exception as e:
+        result_queue.put(("error", type(e).__name__, str(e)))
+
+
+def _safe_pdf_extract_links(pdf_path, total_pages, timeout=PDF_READ_TIMEOUT):
+    """Extract links from PDF in isolated subprocess to protect against segfaults.
+
+    Returns:
+        tuple: (success: bool, links: list | None, error_msg: str | None)
+    """
+    import multiprocessing
+
+    result_queue = multiprocessing.Queue()
+    process = multiprocessing.Process(
+        target=_pdf_link_extract_worker,
+        args=(pdf_path, total_pages, result_queue),
+    )
+
+    try:
+        process.start()
+        process.join(timeout=timeout)
+
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=5)
+            if process.is_alive():
+                process.kill()
+                process.join()
+            return (False, None, f"Link extraction timed out after {timeout}s")
+
+        if process.exitcode is None:
+            return (False, None, "Link extraction process failed to start")
+
+        if process.exitcode != 0:
+            if process.exitcode == -11:
+                signal_name = "SIGSEGV"
+            elif process.exitcode < 0:
+                signal_name = f"signal {abs(process.exitcode)}"
+            else:
+                signal_name = f"exit code {process.exitcode}"
+            return (False, None, f"Link extraction crashed with {signal_name}")
+
+        try:
+            result = result_queue.get(timeout=1)
+            if result[0] == "success":
+                return (True, result[1], None)
+            else:
+                return (False, None, f"{result[1]}: {result[2]}")
+        except Exception:
+            return (False, None, "Link extraction failed with unknown error")
+
+    finally:
+        result_queue.close()
+        result_queue.join_thread()
+
+
+def _extract_pdf_links_internal(pdf_path: str, total_pages: int) -> list[dict]:
+    """Extract all hyperlinks from a PDF file using pypdf.
+
+    Iterates each page looking for /Link annotations with /URI actions
+    and classifies each link by type (pdf, web, other).
+
+    Returns:
+        List of dicts: [{"page": N, "url": "...", "link_type": "..."}, ...]
+    """
+    from pypdf import PdfReader
+
+    links = []
+    reader = PdfReader(pdf_path)
+    for page_num in range(total_pages):
+        page = reader.pages[page_num]
+        if "/Annots" not in page:
+            continue
+        for annot_ref in page["/Annots"]:
+            try:
+                annot = annot_ref.get_object()
+                if annot.get("/Subtype") != "/Link":
+                    continue
+                action = annot.get("/A")
+                if not action:
+                    continue
+                url = None
+                if "/URI" in action:
+                    url = action["/URI"]
+                elif "/Launch" in action:
+                    launch = action["/Launch"]
+                    if "/F" in launch:
+                        f_spec = launch["/F"]
+                        url = f_spec.get("/UF") or f_spec.get("/F")
+                if not url:
+                    continue
+                if url.lower().rstrip("/").endswith(".pdf"):
+                    link_type = "pdf"
+                elif url.startswith("http"):
+                    link_type = "web"
+                else:
+                    link_type = "other"
+                links.append(
+                    {
+                        "page": page_num + 1,
+                        "url": url,
+                        "link_type": link_type,
+                    }
+                )
+            except Exception:
+                continue
+    return links
+
+
 class Fetcher:
     def __init__(
         self, site: dict[str, Any], start_year: int | None = None, all_agendas: bool = False
@@ -1085,6 +1199,44 @@ class Fetcher:
                 page_count=total_pages,
                 duration_ms=int((time.time() - ocr_st) * 1000),
             )
+
+            # Link extraction
+            links_st = time.time()
+            if USE_PDF_SUBPROCESS_ISOLATION:
+                success, links, error_msg = _safe_pdf_extract_links(
+                    doc_path, total_pages, timeout=PDF_READ_TIMEOUT
+                )
+                if not success:
+                    self.logger.log(
+                        f"Link extraction failed: {error_msg}",
+                        level="warning",
+                        operation="link_extraction",
+                        error_type="link_extraction_failed",
+                        doc_path=doc_path,
+                    )
+                    links = []
+            else:
+                try:
+                    links = _extract_pdf_links_internal(doc_path, total_pages)
+                except Exception as e:
+                    self.logger.log(
+                        f"Link extraction failed: {e}",
+                        level="warning",
+                        operation="link_extraction",
+                        error_type="link_extraction_failed",
+                    )
+                    links = []
+
+            if links:
+                links_path = f"{doc_txt_dir_path}/_links.json"
+                with open(links_path, "w") as f:
+                    json.dump(links, f, indent=2)
+                self.logger.log(
+                    f"Extracted {len(links)} links from PDF",
+                    operation="link_extraction",
+                    link_count=len(links),
+                    duration_ms=int((time.time() - links_st) * 1000),
+                )
 
             # Cleanup
             processed_path = f"{self.dir_prefix}{prefix}/processed/{meeting}/{date}.txt"
