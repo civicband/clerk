@@ -336,7 +336,8 @@ def build_table_from_text(
                 f"{base_txt_dir}/{pf.meeting}/{pf.date}/{pf.page_num:04d}.txt.extracted.json"
             )
             content_hash = hash_text_content(pf.text)
-            cached = load_extraction_cache(cache_file, content_hash)
+            # cached = load_extraction_cache(cache_file, content_hash)
+            cached = False
 
             if cached:
                 cache_hits += 1
