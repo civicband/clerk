@@ -16,7 +16,7 @@ from .output import logger
 
 
 # Set to 4 or 6 after running verify_ids.py. Do not guess.
-LEGACY_VARIANT = 6
+LEGACY_VARIANT = 4
 
 
 def page_id(kind: str, meeting: str, date: str, page_num: int, subdomain: str) -> str:
