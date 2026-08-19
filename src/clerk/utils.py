@@ -15,6 +15,59 @@ from .hookspecs import ClerkSpec
 from .output import logger
 
 
+# Set to 4 or 6 after running verify_ids.py. Do not guess.
+LEGACY_VARIANT = 6
+
+
+def page_id(kind: str, meeting: str, date: str, page_num: int, subdomain: str) -> str:
+    """Stable page ID, independent of text content.
+
+    Args:
+        kind: "minutes" or "agenda" (SINGULAR — matches the old key_hash)
+        meeting: meeting body name, e.g. "CityCouncil"
+        date: ISO date string
+        page_num: 1-based page number as int
+        subdomain: e.g. "alameda.ca"
+    """
+    key = {
+        "kind": kind,
+        "meeting": meeting,
+        "date": date,
+        "page": page_num,
+        "subdomain": subdomain,
+    }
+    return sha256(json.dumps(key, sort_keys=True).encode("utf-8")).hexdigest()[:20]
+
+
+def legacy_page_id(
+    kind: str,
+    meeting: str,
+    date: str,
+    page_num: int,
+    text: str,
+    subdomain: str | None = None,
+    municipality: str | None = None,
+    variant: int = LEGACY_VARIANT,
+) -> str:
+    """Reproduce the OLD id so redirects can be built.
+
+    Only computable while the CURRENT text is on disk. If anything re-OCRs
+    before Stage 3 runs, old IDs become unrecoverable and redirects are lost.
+
+    Delete this function once redirects have been live for ~6 months.
+    """
+    key = {
+        "kind": kind,
+        "meeting": meeting,
+        "date": date,
+        "page": page_num,
+        "text": text,
+    }
+    if variant == 6:
+        key.update({"subdomain": subdomain, "municipality": municipality})
+    return sha256(json.dumps(key, sort_keys=True).encode("utf-8")).hexdigest()[:12]
+
+
 @dataclass
 class PageFile:
     """Represents a single page file with its metadata."""
@@ -102,6 +155,8 @@ def create_meetings_schema(db):
     """
     schema = {
         "id": str,
+        "legacy_id": str,  # NEW: for redirect mapping
+        "content_hash": str,  # NEW: full sha256, replaces text-in-id change detection
         "meeting": str,
         "date": str,
         "page": int,
@@ -112,6 +167,9 @@ def create_meetings_schema(db):
     }
     db["minutes"].create(schema, pk=("id"))
     db["agendas"].create(schema, pk=("id"))
+    # Redirect lookups in corkboard hit legacy_id directly.
+    db["minutes"].create_index(["legacy_id"])
+    db["agendas"].create_index(["legacy_id"])
 
 
 def collect_page_files(txt_dir: str) -> list[PageFile]:
@@ -347,21 +405,23 @@ def build_table_from_text(
                 entities_json = json.dumps({"persons": [], "orgs": [], "locations": []})
                 votes_json = json.dumps({"votes": []})
 
-            # Build database entry
-            key_hash = {
-                "kind": "minutes" if table_name != "agendas" else "agenda",
-                "meeting": pf.meeting,
-                "date": pf.date,
-                "page": pf.page_num,
-                "text": pf.text,
-            }
-            if municipality:
-                key_hash.update({"subdomain": subdomain, "municipality": municipality})
+            kind = "minutes" if table_name != "agendas" else "agenda"
 
-            key = sha256(json.dumps(key_hash, sort_keys=True).encode("utf-8")).hexdigest()[:12]
+            key = page_id(kind, pf.meeting, pf.date, pf.page_num, subdomain)
+            legacy_key = legacy_page_id(
+                kind,
+                pf.meeting,
+                pf.date,
+                pf.page_num,
+                pf.text,
+                subdomain=subdomain,
+                municipality=municipality,
+            )
 
             entry = {
                 "id": key,
+                "legacy_id": legacy_key,
+                "content_hash": content_hash,
                 "meeting": pf.meeting,
                 "date": pf.date,
                 "page": pf.page_num,
@@ -385,7 +445,7 @@ def build_table_from_text(
     )
 
     # Phase 3: Insert to database
-    db[table_name].insert_all(entries)
+    db[table_name].upsert_all(entries, pk="id", alter=True)
 
     # Log performance summary
     et = time.time()
