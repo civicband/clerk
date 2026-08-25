@@ -244,51 +244,6 @@ def hash_text_content(text: str) -> str:
     return sha256(text.encode("utf-8")).hexdigest()
 
 
-def load_extraction_cache(cache_file: str, expected_hash: str) -> dict | None:
-    """Load extraction cache if valid.
-
-    Args:
-        cache_file: Path to .extracted.json cache file
-        expected_hash: Expected content hash
-
-    Returns:
-        Cache data dict if valid, None otherwise
-    """
-    try:
-        with open(cache_file) as f:
-            data: dict = json.load(f)
-
-        # Validate structure
-        required_keys = {"content_hash", "entities", "votes"}
-        if not required_keys.issubset(data.keys()):
-            logger.log(f"Cache invalid: missing keys in {cache_file}")
-            return None
-
-        # Validate hash match
-        if data["content_hash"] != expected_hash:
-            logger.log(f"Cache invalid: hash mismatch in {cache_file}")
-            return None
-
-        return data
-    except (json.JSONDecodeError, FileNotFoundError, KeyError) as e:
-        logger.log(f"Cache invalid: {e} in {cache_file}")
-        return None
-
-
-def save_extraction_cache(cache_file: str, data: dict) -> None:
-    """Save extraction results to cache file.
-
-    Args:
-        cache_file: Path to .extracted.json cache file
-        data: Cache data to save (must include content_hash, entities, votes)
-    """
-    try:
-        with open(cache_file, "w") as f:
-            json.dump(data, f, indent=2)
-    except Exception as e:
-        logger.log(f"Failed to save cache {cache_file}: {e}", level="warning")
-
-
 def assert_db_exists():
     """Ensure civic.db schema exists using SQLAlchemy abstraction.
 
@@ -388,21 +343,10 @@ def build_table_from_text(
         for idx in meeting_date_group.page_indices:
             pf = page_files[idx]
 
-            # Check cache file for pre-computed extraction results
-            cache_file = (
-                f"{base_txt_dir}/{pf.meeting}/{pf.date}/{pf.page_num:04d}.txt.extracted.json"
-            )
             content_hash = hash_text_content(pf.text)
-            cached = load_extraction_cache(cache_file, content_hash)
 
-            if cached:
-                cache_hits += 1
-                entities_json = json.dumps(cached["entities"])
-                votes_json = json.dumps(cached["votes"])
-            else:
-                cache_misses += 1
-                entities_json = json.dumps({"persons": [], "orgs": [], "locations": []})
-                votes_json = json.dumps({"votes": []})
+            entities_json = json.dumps({"persons": [], "orgs": [], "locations": []})
+            votes_json = json.dumps({"votes": []})
 
             kind = "minutes" if table_name != "agendas" else "agenda"
 
