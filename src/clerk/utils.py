@@ -98,6 +98,17 @@ class PageData:
     cached_extraction: dict | None  # {"entities": ..., "votes": ...}
 
 
+@dataclass
+class PageLink:
+    """A hyperlink extracted from a PDF page."""
+
+    source_page_id: str
+    source_table: str
+    page: int
+    link_url: str
+    link_type: str
+
+
 pm = pluggy.PluginManager("civicband.clerk")
 pm.add_hookspecs(ClerkSpec)
 
@@ -170,6 +181,17 @@ def create_meetings_schema(db):
     db["minutes"].create_index(["legacy_id"])
     db["agendas"].create_index(["legacy_id"])
 
+    link_schema = {
+        "id": int,
+        "source_page_id": str,
+        "source_table": str,
+        "page": int,
+        "link_url": str,
+        "link_type": str,
+    }
+    db["document_links"].create(link_schema, pk=("id"))
+    db["document_links"].create_index(["source_page_id"])
+
 
 def collect_page_files(txt_dir: str) -> list[PageFile]:
     """Collect all page files from nested directory structure.
@@ -230,6 +252,58 @@ def collect_page_files(txt_dir: str) -> list[PageFile]:
                 )
 
     return page_files
+
+
+def collect_page_links(txt_dir: str) -> dict[tuple[str, str, int], list[dict]]:
+    """Collect all link data from _links.json sidecar files.
+
+    Returns a dict keyed by (meeting, date, page_num) mapping to
+    a list of link dicts: [{"url": "...", "link_type": "..."}, ...]
+    """
+    links_by_page: dict[tuple[str, str, int], list[dict]] = {}
+
+    if not os.path.exists(txt_dir):
+        return links_by_page
+
+    meetings = sorted(
+        d
+        for d in os.listdir(txt_dir)
+        if d != ".DS_Store" and os.path.isdir(os.path.join(txt_dir, d))
+    )
+
+    for meeting in meetings:
+        meeting_path = os.path.join(txt_dir, meeting)
+        dates = sorted(
+            d
+            for d in os.listdir(meeting_path)
+            if d != ".DS_Store" and os.path.isdir(os.path.join(meeting_path, d))
+        )
+
+        for date in dates:
+            date_path = os.path.join(meeting_path, date)
+            links_file = os.path.join(date_path, "_links.json")
+            if not os.path.exists(links_file):
+                continue
+
+            try:
+                with open(links_file) as f:
+                    all_links: list[dict] = json.load(f)
+            except (json.JSONDecodeError, FileNotFoundError):
+                continue
+
+            for link in all_links:
+                page_num = link["page"]
+                key = (meeting, date, page_num)
+                if key not in links_by_page:
+                    links_by_page[key] = []
+                links_by_page[key].append(
+                    {
+                        "url": link["url"],
+                        "link_type": link.get("link_type", "other"),
+                    }
+                )
+
+    return links_by_page
 
 
 def hash_text_content(text: str) -> str:
@@ -402,6 +476,46 @@ def build_table_from_text(
     )
 
 
+def build_links_table(subdomain, txt_dir, db, table_name):
+    """Populate the document_links table from _links.json sidecar files.
+
+    Reads _links.json files written during OCR and maps each link
+    to its source page ID in the minutes or agendas table.
+
+    Args:
+        subdomain: Site subdomain
+        txt_dir: Directory containing text files
+        db: sqlite_utils Database object
+        table_name: "minutes" or "agendas"
+    """
+    links_by_page = collect_page_links(txt_dir)
+    if not links_by_page:
+        return
+
+    entries = []
+
+    for (_meeting, _date, page_num), links in links_by_page.items():
+        for link in links:
+            entries.append(
+                {
+                    "source_page_id": None,
+                    "source_table": table_name,
+                    "page": page_num,
+                    "link_url": link["url"],
+                    "link_type": link["link_type"],
+                }
+            )
+
+    if entries:
+        db["document_links"].insert_all(entries)
+
+    logger.log(
+        f"Built {len(entries)} document links for {table_name}",
+        subdomain=subdomain,
+        link_count=len(entries),
+    )
+
+
 def build_db_from_text_internal(subdomain):
     """Build meetings database from text files.
 
@@ -429,6 +543,7 @@ def build_db_from_text_internal(subdomain):
             db,
             "minutes",
         )
+        build_links_table(subdomain, minutes_txt_dir, db, "minutes")
     if os.path.exists(agendas_txt_dir):
         build_table_from_text(
             subdomain,
@@ -436,6 +551,7 @@ def build_db_from_text_internal(subdomain):
             db,
             "agendas",
         )
+        build_links_table(subdomain, agendas_txt_dir, db, "agendas")
 
     # Explicitly close database to ensure all writes are flushed
     db.close()
