@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import shutil
@@ -332,12 +333,12 @@ def build_table_from_text(
     for meeting_date_group in group_pages_by_meeting_date(page_files):
         # Log progress per meeting
         if meeting_date_group.meeting != getattr(build_table_from_text, "_last_meeting", None):
-            click.echo(
+            logger.log(
                 click.style(subdomain, fg="cyan")
                 + ": "
                 + f"Processing {meeting_date_group.meeting}"
             )
-            build_table_from_text._last_meeting = meeting_date_group.meeting
+            build_table_from_text._last_meeting = meeting_date_group.meeting  # pyright: ignore[reportFunctionMemberAccess]
 
         # Process pages for this meeting date
         for idx in meeting_date_group.page_indices:
@@ -444,3 +445,26 @@ def build_db_from_text_internal(subdomain):
     elapsed_time = et - st
     logger.subdomain = subdomain
     logger.log(f"Database build completed elapsed_time={elapsed_time:.2f}")
+
+
+def update_page_count(subdomain):
+    from .db import civic_db_connection, update_site
+
+    logger.subdomain = subdomain
+    assert_db_exists()
+    site_db = sqlite_utils.Database(f"{STORAGE_DIR}/{subdomain}/meetings.db")
+    agendas_count = site_db["agendas"].count
+    minutes_count = site_db["minutes"].count
+    page_count = agendas_count + minutes_count
+    logger.log(
+        f"Page count updated agendas={agendas_count} minutes={minutes_count} total={page_count}"
+    )
+    with civic_db_connection() as conn:
+        update_site(
+            conn,
+            subdomain,
+            {
+                "pages": page_count,
+                "last_updated": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            },
+        )

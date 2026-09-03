@@ -10,6 +10,8 @@ from clerk.queue import enqueue_job, generate_run_id
 from clerk.utils import assert_db_exists, pm
 from clerk.workers import db_compilation_job, deploy_job, ocr_document_job, queue_ocr
 
+from .output import logger
+
 
 @click.group()
 @click.option("--subdomain", "-s", help="Subdomain to process")
@@ -86,8 +88,8 @@ def update(ctx, next_site, all_years, skip_fetch, all_agendas):
             if not site:
                 click.secho(f"Error: Site '{subdomain}' not found", fg="red")
                 raise click.Abort()
-
-        click.echo(f"Enqueueing {subdomain} with high priority")
+        logger.subdomain = subdomain
+        logger.log(message=f"Enqueueing {subdomain} with high priority")
 
         # Build kwargs for job
         job_kwargs: dict[str, Any] = {}

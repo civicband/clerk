@@ -6,11 +6,13 @@ import traceback
 from datetime import UTC, datetime
 from pathlib import Path
 
+import sqlite_utils
 from rq.utils import parse_timeout
 from sqlalchemy import select, update
+from sqlite_utils.utils import OperationalError
 
 from .db import civic_db_connection, get_site_by_subdomain, update_site
-from .fetcher import Fetcher, get_fetcher
+from .fetcher import Fetcher, fetch_internal, get_fetcher
 from .models import sites_table
 from .output import ClerkLogger
 from .pipeline_state import (
@@ -27,7 +29,8 @@ from .queue_db import (
     track_jobs_bulk,
     update_site_progress,
 )
-from .settings import get_env
+from .settings import get_env, settings
+from .utils import update_page_count
 
 
 def fetch_site_job(
@@ -48,7 +51,6 @@ def fetch_site_job(
         all_agendas: Fetch all agendas (default: False)
         ocr_backend: OCR backend to use (tesseract or vision). Defaults to DEFAULT_OCR_BACKEND env var.
     """
-    from .cli import fetch_internal
 
     stage = "fetch"
     start_time = time.time()
@@ -446,7 +448,7 @@ def ocr_complete_coordinator(subdomain, run_id):
 
     try:
         # Verify OCR completed by checking for txt files
-        storage_dir = get_env("STORAGE_DIR", "../sites")
+        storage_dir = settings.STORAGE_DIR
         minutes_txt_dir = Path(f"{storage_dir}/{subdomain}/txt")
         agendas_txt_dir = Path(f"{storage_dir}/{subdomain}/_agendas/txt")
 
@@ -577,7 +579,7 @@ def db_compilation_job(subdomain, run_id=None):
 
     try:
         # Count text files to process
-        storage_dir = get_env("STORAGE_DIR", "../sites")
+        storage_dir = settings.STORAGE_DIR
         txt_dir = Path(f"{storage_dir}/{subdomain}/txt")
 
         if txt_dir.exists():
@@ -601,9 +603,7 @@ def db_compilation_job(subdomain, run_id=None):
         # Verify meetings.db was created
         import sqlite_utils
 
-        from .utils import STORAGE_DIR
-
-        meetings_db_path = f"{STORAGE_DIR}/{subdomain}/meetings.db"
+        meetings_db_path = f"{settings.STORAGE_DIR}/{subdomain}/meetings.db"
         if not os.path.exists(meetings_db_path):
             raise FileNotFoundError(
                 f"meetings.db not found at {meetings_db_path} after compilation"
@@ -622,7 +622,6 @@ def db_compilation_job(subdomain, run_id=None):
         )
 
         # Update page count in civic.db from meetings.db
-        from .cli import rebuild_site_fts_internal, update_page_count
 
         logger.log("Updating page count")
         update_page_count(subdomain)
@@ -641,7 +640,7 @@ def db_compilation_job(subdomain, run_id=None):
 
         # Rebuild full-text search indexes
         logger.log("Rebuilding FTS indexes")
-        rebuild_site_fts_internal(subdomain)
+        rebuild_site_fts_internal(subdomain, logger=logger)
 
         # Both paths spawn deploy (may deploy twice - once for fast path, once for entities path)
         # Update progress: moving to deploy stage
@@ -693,6 +692,23 @@ def db_compilation_job(subdomain, run_id=None):
             traceback=traceback.format_exc(),
         )
         raise
+
+
+def rebuild_site_fts_internal(subdomain, logger):
+    logger.subdomain = subdomain
+    logger.log("Rebuilding FTS indexes")
+    site_db = sqlite_utils.Database(f"{settings.STORAGE_DIR}/{subdomain}/meetings.db")
+    for table_name in site_db.table_names():
+        if table_name.startswith("pages_"):
+            site_db[table_name].drop(ignore=True)
+    try:
+        site_db["agendas"].enable_fts(["text"])
+    except OperationalError as e:
+        logger.log(str(e), level="error")
+    try:
+        site_db["minutes"].enable_fts(["text"])
+    except OperationalError as e:
+        logger.log(str(e), level="error")
 
 
 def coordinator_job(subdomain, run_id=None):

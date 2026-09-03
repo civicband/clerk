@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import atexit
 import logging
 import sys
 
@@ -14,8 +15,85 @@ _quiet = False
 _default_subdomain = None
 
 
+class JsonFormatter(logging.Formatter):
+    """JSON log formatter for structured logging."""
+
+    # Standard LogRecord attributes to exclude from extra fields
+    RESERVED_ATTRS = {
+        "name",
+        "msg",
+        "args",
+        "created",
+        "filename",
+        "funcName",
+        "levelname",
+        "levelno",
+        "lineno",
+        "module",
+        "msecs",
+        "pathname",
+        "process",
+        "processName",
+        "relativeCreated",
+        "stack_info",
+        "exc_info",
+        "exc_text",
+        "thread",
+        "threadName",
+        "taskName",
+        "message",
+    }
+
+    def format(self, record):
+        import json
+
+        log_record = {
+            "timestamp": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+
+        # Include extra fields passed via extra={}
+        for key, value in record.__dict__.items():
+            if key not in self.RESERVED_ATTRS and not key.startswith("_"):
+                log_record[key] = value
+
+        if record.exc_info:
+            log_record["exception"] = self.formatException(record.exc_info)
+        return json.dumps(log_record)
+
+
+def configure_logging():
+    """Configure logging to push to Loki (if configured) and console."""
+    handlers = []
+
+    # Always add console handler for local visibility
+    console = logging.StreamHandler()
+    console.setFormatter(JsonFormatter())
+    handlers.append(console)
+    logging.basicConfig(
+        level=logging.INFO,
+        handlers=handlers,
+    )
+
+    # Suppress noisy httpx logs (we log requests ourselves)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+    # Register atexit handler to flush logs on exit
+    def flush_logs_on_exit():
+        """Flush all log handlers on exit."""
+        sys.stderr.flush()
+        sys.stdout.flush()
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+
+    atexit.register(flush_logs_on_exit)
+
+
 class ClerkLogger:
-    quiet = False
+    quiet: bool = False
     subdomain: str | None = None
     meeting: str | None = None
     job_id: str | None = None
@@ -43,7 +121,7 @@ class ClerkLogger:
         message: str,
         level: str = "info",
         parent_job_id: str | None = None,
-        **kwargs,
+        **kwargs,  # pyright: ignore[reportMissingParameterType, reportUnknownParameterType]
     ):
         """Unified logging + click output.
 
@@ -63,7 +141,7 @@ class ClerkLogger:
         sub = self.subdomain or _default_subdomain
 
         # Build extra dict for structured logging fields
-        extra: dict = {}
+        extra: dict = {}  # pyright: ignore[reportMissingTypeArgument, reportUnknownVariableType]
         if sub:
             extra["subdomain"] = sub
 
@@ -84,14 +162,14 @@ class ClerkLogger:
             extra["meeting_date"] = self.date
 
         if kwargs:
-            extra.update(kwargs)
+            extra.update(kwargs)  # pyright: ignore[reportUnknownMemberType]
 
         # Log to Python logging with extra fields
         log_func = getattr(pylogger, level, pylogger.info)
-        log_func(message, extra=extra)
+        _ = log_func(message, extra=extra)  # pyright: ignore[reportUnknownArgumentType]
         # Force flush to ensure logs reach disk before potential crash
-        sys.stderr.flush()
-        sys.stdout.flush()
+        _ = sys.stderr.flush()
+        _ = sys.stdout.flush()
 
         # Click output (unless quiet)
         if not _quiet:

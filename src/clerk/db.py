@@ -11,7 +11,8 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.pool import QueuePool
 from sqlalchemy.sql import text
 
-from .settings import get_env
+from .output import logger
+from .settings import settings
 
 
 def get_civic_db():
@@ -23,7 +24,7 @@ def get_civic_db():
 
     Fails fast if PostgreSQL connection cannot be established.
     """
-    database_url = get_env("DATABASE_URL")
+    database_url = settings.DATABASE_URL
 
     if database_url:
         # Normalize postgres:// to postgresql:// for SQLAlchemy 1.4+
@@ -285,9 +286,9 @@ def _run_alembic_command(*args):
         click.secho(f"Error running alembic {args[0]}: {result.stderr}", fg="red")
         raise click.Abort()
 
-    click.echo(result.stdout)
+    logger.log(result.stdout)
     if result.stderr:
-        click.echo(result.stderr, err=True)
+        logger.log(result.stderr, err=True)
 
 
 @click.group()

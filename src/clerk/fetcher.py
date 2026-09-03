@@ -37,10 +37,10 @@ from clerk.utils import STORAGE_DIR, build_db_from_text_internal, pm
 
 # Optional PDF dependencies
 try:
-    import pdfkit
-    from pdf2image import convert_from_path
-    from pypdf import PdfReader
-    from pypdf.errors import PdfReadError
+    import pdfkit  # pyright: ignore[reportMissingImports]
+    from pdf2image import convert_from_path  # pyright: ignore[reportMissingImports]
+    from pypdf import PdfReader  # pyright: ignore[reportMissingImports]
+    from pypdf.errors import PdfReadError  # pyright: ignore[reportMissingImports]
 
     PDF_SUPPORT = True
 except ImportError:
@@ -74,7 +74,7 @@ USE_PDF_SUBPROCESS_ISOLATION = not _is_test_environment()
 def _pdf_read_worker(doc_path, result_queue):
     """Worker function to read PDF in subprocess (can segfault safely)."""
     try:
-        from pypdf import PdfReader
+        from pypdf import PdfReader  # pyright: ignore[reportMissingImports]
 
         reader = PdfReader(doc_path)
         total_pages = len(reader.pages)
@@ -145,7 +145,7 @@ def _pdf_convert_worker(doc_path, doc_image_dir_path, chunk_start, chunk_end, pr
     import tempfile
 
     try:
-        from pdf2image import convert_from_path
+        from pdf2image import convert_from_path  # pyright: ignore[reportMissingImports]
 
         with tempfile.TemporaryDirectory() as temp_path:
             pages = convert_from_path(
@@ -230,6 +230,40 @@ def _safe_pdf_to_images(
         # Clean up resources
         result_queue.close()
         result_queue.join_thread()
+
+
+def fetch_internal(subdomain: str, fetcher: Fetcher):
+    from .db import civic_db_connection, update_site
+
+    logger.subdomain = subdomain
+    logger.log("Starting fetch")
+    with civic_db_connection() as conn:
+        update_site(
+            conn,
+            subdomain,
+            {
+                "status": "fetching",
+                "last_updated": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            },
+        )
+    st = time.time()
+    fetcher.fetch_events()
+    et = time.time()
+    elapsed_time = et - st
+    logger.log(
+        f"Fetch time: {elapsed_time:.2f} seconds",
+        elapsed_time=f"{elapsed_time:.2f}",
+    )
+    status = "needs_ocr"
+    with civic_db_connection() as conn:
+        update_site(
+            conn,
+            subdomain,
+            {
+                "status": status,
+                "last_updated": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            },
+        )
 
 
 class Fetcher:
@@ -376,12 +410,16 @@ class Fetcher:
         return None
 
     def check_if_exists(self, meeting: str, date: str, kind: str) -> bool:
+        output_dir = None
+        processed_dir = None
         if kind == "minutes":
             output_dir = self.minutes_output_dir
             processed_dir = self.minutes_processed_dir
         if kind == "agenda":
             output_dir = self.agendas_output_dir
             processed_dir = self.agendas_processed_dir
+        if not output_dir or not processed_dir:
+            raise RuntimeError(f"Output or processed directory not found for kind: {kind}")
         output_path = os.path.join(output_dir, meeting, f"{date}.pdf")
         processed_path_pdf = os.path.join(processed_dir, meeting, f"{date}.pdf")
         processed_path_txt = os.path.join(processed_dir, meeting, f"{date}.txt")
@@ -415,10 +453,13 @@ class Fetcher:
         # TODO: Assert minutes and agenda output dir exists
         self.assert_fetch_dirs()
         self.logger.meeting = meeting
+        output_dir = None
         if kind == "minutes":
             output_dir = self.minutes_output_dir
         if kind == "agenda":
             output_dir = self.agendas_output_dir
+        if not output_dir:
+            raise RuntimeError(f"Output directory not found for kind: {kind}")
         output_path = os.path.join(output_dir, meeting, f"{date}.pdf")
         try:
             doc_response = self.request("GET", url, headers)

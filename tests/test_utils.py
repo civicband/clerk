@@ -1,6 +1,5 @@
 """Unit tests for clerk.utils module."""
 
-import json
 import os
 from pathlib import Path
 
