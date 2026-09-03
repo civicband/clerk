@@ -694,7 +694,9 @@ def db_compilation_job(subdomain, run_id=None):
         raise
 
 
-def rebuild_site_fts_internal(subdomain, logger):
+def rebuild_site_fts_internal(subdomain, logger=None):
+    if logger is None:
+        logger = ClerkLogger(subdomain=subdomain)
     logger.subdomain = subdomain
     logger.log("Rebuilding FTS indexes")
     site_db = sqlite_utils.Database(f"{settings.STORAGE_DIR}/{subdomain}/meetings.db")

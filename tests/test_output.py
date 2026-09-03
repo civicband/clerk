@@ -4,8 +4,7 @@ import json
 import logging
 
 from clerk import output
-from clerk.cli import JsonFormatter
-from clerk.output import ClerkLogger
+from clerk.output import ClerkLogger, JsonFormatter
 
 
 class TestClerkLogger:

@@ -19,12 +19,9 @@ from .db import db
 from .etl import etl
 from .output import configure_logging, logger
 from .plugin_loader import load_plugins_from_directory, load_plugins_from_entry_points
-from .sentry import init_sentry
 from .sheets import sheets
 from .utils import pm
 
-# Initialize Sentry for error tracking (if SENTRY_DSN is configured)
-init_sentry()
 
 STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
 

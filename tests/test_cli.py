@@ -5,17 +5,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 import sqlite_utils
 
-from clerk.cli import (
-    cli,
-    fetch_internal,
-    rebuild_site_fts_internal,
-    update_page_count,
-)
-from clerk.fetcher import get_fetcher
+from clerk.cli import cli
+from clerk.fetcher import fetch_internal, get_fetcher
 from clerk.utils import (
     build_db_from_text_internal,
     build_table_from_text,
+    update_page_count,
 )
+from clerk.workers import rebuild_site_fts_internal
 
 
 @pytest.mark.unit

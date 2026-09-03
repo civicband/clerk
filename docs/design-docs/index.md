@@ -32,18 +32,6 @@ Designs for specific features like OCR processing, entity extraction, and cachin
 
 Detailed step-by-step plans for implementing features.
 
-## All Design Documents
-
-The following documents are available in the [plans directory](https://github.com/civicband/clerk/tree/main/docs/plans):
-
-```{toctree}
-:maxdepth: 1
-:glob:
-
-../plans/*
-../superpowers/specs/*
-```
-
 ## Using These Documents
 
 When working on clerk:
