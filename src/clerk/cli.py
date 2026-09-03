@@ -22,7 +22,6 @@ from .plugin_loader import load_plugins_from_directory, load_plugins_from_entry_
 from .sheets import sheets
 from .utils import pm
 
-
 STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
 
 

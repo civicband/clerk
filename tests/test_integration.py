@@ -37,7 +37,7 @@ class TestDatabaseOperations:
         build_db_from_text_internal(subdomain)
 
         # Enable FTS
-        from clerk.cli import rebuild_site_fts_internal
+        from clerk.workers import rebuild_site_fts_internal
 
         rebuild_site_fts_internal(subdomain)
 
@@ -129,7 +129,7 @@ class TestErrorHandling:
         sqlite_utils.Database(db_path)  # Creates the file
 
         # Try to rebuild FTS on non-existent tables
-        from clerk.cli import rebuild_site_fts_internal
+        from clerk.workers import rebuild_site_fts_internal
 
         # Should not raise an exception
         rebuild_site_fts_internal(subdomain)

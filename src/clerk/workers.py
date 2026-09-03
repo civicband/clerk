@@ -29,7 +29,7 @@ from .queue_db import (
     track_jobs_bulk,
     update_site_progress,
 )
-from .settings import get_env, settings
+from .settings import get_env
 from .utils import update_page_count
 
 
@@ -448,7 +448,7 @@ def ocr_complete_coordinator(subdomain, run_id):
 
     try:
         # Verify OCR completed by checking for txt files
-        storage_dir = settings.STORAGE_DIR
+        storage_dir = get_env("STORAGE_DIR", "../sites")
         minutes_txt_dir = Path(f"{storage_dir}/{subdomain}/txt")
         agendas_txt_dir = Path(f"{storage_dir}/{subdomain}/_agendas/txt")
 
@@ -579,7 +579,7 @@ def db_compilation_job(subdomain, run_id=None):
 
     try:
         # Count text files to process
-        storage_dir = settings.STORAGE_DIR
+        storage_dir = get_env("STORAGE_DIR", "../sites")
         txt_dir = Path(f"{storage_dir}/{subdomain}/txt")
 
         if txt_dir.exists():
@@ -603,7 +603,7 @@ def db_compilation_job(subdomain, run_id=None):
         # Verify meetings.db was created
         import sqlite_utils
 
-        meetings_db_path = f"{settings.STORAGE_DIR}/{subdomain}/meetings.db"
+        meetings_db_path = f"{get_env('STORAGE_DIR', '../sites')}/{subdomain}/meetings.db"
         if not os.path.exists(meetings_db_path):
             raise FileNotFoundError(
                 f"meetings.db not found at {meetings_db_path} after compilation"
@@ -699,7 +699,7 @@ def rebuild_site_fts_internal(subdomain, logger=None):
         logger = ClerkLogger(subdomain=subdomain)
     logger.subdomain = subdomain
     logger.log("Rebuilding FTS indexes")
-    site_db = sqlite_utils.Database(f"{settings.STORAGE_DIR}/{subdomain}/meetings.db")
+    site_db = sqlite_utils.Database(f"{get_env('STORAGE_DIR', '../sites')}/{subdomain}/meetings.db")
     for table_name in site_db.table_names():
         if table_name.startswith("pages_"):
             site_db[table_name].drop(ignore=True)

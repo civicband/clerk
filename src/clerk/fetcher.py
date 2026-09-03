@@ -45,11 +45,11 @@ try:
     PDF_SUPPORT = True
 except ImportError:
     PDF_SUPPORT = False
-    PdfReader = None
-    PdfReadError = Exception
+    PdfReader = None  # type: ignore[assignment, misc]
+    PdfReadError = Exception  # type: ignore[assignment, misc]
     HTML = None
     pdfkit = None
-    convert_from_path = None
+    convert_from_path = None  # type: ignore[assignment, misc]
 
 NUM_WORKERS = int(os.environ.get("NUM_WORKERS", 10))
 # Process PDFs in chunks to avoid "too many open files" error
