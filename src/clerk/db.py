@@ -12,7 +12,7 @@ from sqlalchemy.pool import QueuePool
 from sqlalchemy.sql import text
 
 from .output import logger
-from .settings import settings
+from .settings import get_env
 
 
 def get_civic_db():
@@ -24,7 +24,7 @@ def get_civic_db():
 
     Fails fast if PostgreSQL connection cannot be established.
     """
-    database_url = settings.DATABASE_URL
+    database_url = get_env("DATABASE_URL")
 
     if database_url:
         # Normalize postgres:// to postgresql:// for SQLAlchemy 1.4+

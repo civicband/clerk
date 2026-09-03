@@ -452,7 +452,8 @@ def update_page_count(subdomain):
 
     logger.subdomain = subdomain
     assert_db_exists()
-    site_db = sqlite_utils.Database(f"{STORAGE_DIR}/{subdomain}/meetings.db")
+    storage_dir = os.environ.get("STORAGE_DIR", "../sites")
+    site_db = sqlite_utils.Database(f"{storage_dir}/{subdomain}/meetings.db")
     agendas_count = site_db["agendas"].count
     minutes_count = site_db["minutes"].count
     page_count = agendas_count + minutes_count
