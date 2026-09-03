@@ -8,7 +8,12 @@ from clerk.db import civic_db_connection, get_oldest_site, get_site_by_subdomain
 from clerk.fetcher import Fetcher, get_fetcher
 from clerk.queue import enqueue_job, generate_run_id
 from clerk.utils import assert_db_exists, pm
-from clerk.workers import db_compilation_job, deploy_job, ocr_document_job, queue_ocr
+from clerk.workers import (
+    db_compilation_job_with_trace,
+    deploy_job,
+    ocr_document_job,
+    queue_ocr,
+)
 
 from .output import logger
 
@@ -219,7 +224,7 @@ def ocr(ctx, pdf_path):
 @click.pass_context
 def compile(ctx) -> None:
     subdomain = ctx.obj.get("SUBDOMAIN")
-    db_compilation_job(subdomain)
+    db_compilation_job_with_trace(subdomain)
 
 
 @etl.command()

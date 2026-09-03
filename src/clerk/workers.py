@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import sqlite_utils
+from opentelemetry import trace
 from rq.utils import parse_timeout
 from sqlalchemy import select, update
 from sqlite_utils.utils import OperationalError
@@ -22,6 +23,7 @@ from .pipeline_state import (
     initialize_stage,
     should_trigger_coordinator,
 )
+from .queue import get_deploy_queue
 from .queue_db import (
     create_site_progress,
     increment_stage_progress,
@@ -30,7 +32,9 @@ from .queue_db import (
     update_site_progress,
 )
 from .settings import get_env
-from .utils import update_page_count
+from .utils import build_db_from_text_internal, update_page_count
+
+tracer = trace.get_tracer("clerk")
 
 
 def fetch_site_job(
@@ -559,6 +563,12 @@ def ocr_complete_coordinator(subdomain, run_id):
         raise
 
 
+def db_compilation_job_with_trace(subdomain, run_id=None):
+    with tracer.start_as_current_span("db_compilation_job") as span:
+        span.set_attribute("clerk.subdomain", subdomain)
+        return db_compilation_job(subdomain, run_id=run_id)
+
+
 def db_compilation_job(subdomain, run_id=None):
     """RQ job: Compile database from text files.
 
@@ -566,8 +576,6 @@ def db_compilation_job(subdomain, run_id=None):
         subdomain: Site subdomain
         run_id: Pipeline run identifier (optional for backward compatibility)
     """
-    from .queue import get_deploy_queue
-    from .utils import build_db_from_text_internal
 
     stage = "compilation"
     start_time = time.time()
