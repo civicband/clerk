@@ -29,10 +29,10 @@ def test_db_compilation_job_accepts_run_id(mocker):
     from clerk.workers import db_compilation_job
 
     mocker.patch("clerk.workers.civic_db_connection")
-    mocker.patch("clerk.utils.build_db_from_text_internal")
-    mocker.patch("clerk.queue_db.update_site_progress")
-    mocker.patch("clerk.queue.get_deploy_queue")
-    mocker.patch("clerk.queue_db.track_job")
+    mocker.patch("clerk.workers.build_db_from_text_internal")
+    mocker.patch("clerk.workers.update_site_progress")
+    mocker.patch("clerk.workers.get_deploy_queue")
+    mocker.patch("clerk.workers.track_job")
     mocker.patch("clerk.workers.update_page_count")
     mocker.patch("clerk.workers.rebuild_site_fts_internal")
     mocker.patch("os.path.exists", return_value=True)
@@ -57,9 +57,9 @@ def test_db_compilation_job_passes_run_id_to_deploy(mocker):
     from clerk.workers import db_compilation_job
 
     mocker.patch("clerk.workers.civic_db_connection")
-    mocker.patch("clerk.utils.build_db_from_text_internal")
-    mocker.patch("clerk.queue_db.update_site_progress")
-    mocker.patch("clerk.queue_db.track_job")
+    mocker.patch("clerk.workers.build_db_from_text_internal")
+    mocker.patch("clerk.workers.update_site_progress")
+    mocker.patch("clerk.workers.track_job")
     mocker.patch("clerk.workers.update_page_count")
     mocker.patch("clerk.workers.rebuild_site_fts_internal")
     mocker.patch("os.path.exists", return_value=True)
@@ -76,7 +76,7 @@ def test_db_compilation_job_passes_run_id_to_deploy(mocker):
     mock_deploy_queue = mocker.MagicMock()
     mock_deploy_job = mocker.MagicMock(id="deploy-job-123")
     mock_deploy_queue.enqueue.return_value = mock_deploy_job
-    mocker.patch("clerk.queue.get_deploy_queue", return_value=mock_deploy_queue)
+    mocker.patch("clerk.workers.get_deploy_queue", return_value=mock_deploy_queue)
 
     db_compilation_job("test.civic.band", run_id="test_123_abc")
 
