@@ -5,14 +5,35 @@ from __future__ import annotations
 import atexit
 import logging
 import sys
+from datetime import UTC, datetime
 
 import click
+from opentelemetry import trace
 
 pylogger = logging.getLogger(__name__)
 
 # Global state set by CLI
 _quiet = False
 _default_subdomain = None
+
+
+def _inject_trace_context(record):
+    """Set trace_id/span_id on a record from the active OTel span context."""
+    span_context = trace.get_current_span().get_span_context()
+    if span_context.is_valid:
+        record.trace_id = format(span_context.trace_id, "032x")
+        record.span_id = format(span_context.span_id, "016x")
+    else:
+        record.trace_id = "0" * 32
+        record.span_id = "0" * 16
+
+
+class TraceContextFilter(logging.Filter):
+    """Inject the active OTel span context into every record as trace_id/span_id."""
+
+    def filter(self, record):
+        _inject_trace_context(record)
+        return True
 
 
 class JsonFormatter(logging.Formatter):
@@ -47,8 +68,11 @@ class JsonFormatter(logging.Formatter):
     def format(self, record):
         import json
 
+        if not hasattr(record, "trace_id"):
+            _inject_trace_context(record)
+
         log_record = {
-            "timestamp": self.formatTime(record, self.datefmt),
+            "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -71,6 +95,7 @@ def configure_logging():
     # Always add console handler for local visibility
     console = logging.StreamHandler()
     console.setFormatter(JsonFormatter())
+    console.addFilter(TraceContextFilter())
     handlers.append(console)
     logging.basicConfig(
         level=logging.INFO,
