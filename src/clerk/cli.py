@@ -212,7 +212,7 @@ def metrics_exporter(port):
             try:
                 sweep_dead_pid_files(mp_dir)
             except Exception:
-                pass
+                logging.getLogger(__name__).debug("Metrics sweep failed", exc_info=True)
 
     threading.Thread(target=sweep_loop, daemon=True).start()
     threading.Event().wait()  # block forever
