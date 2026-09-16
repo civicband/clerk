@@ -39,6 +39,7 @@ dependencies = [
     "opentelemetry-instrumentation-sqlalchemy==0.65b0",
     "opentelemetry-instrumentation-urllib3==0.65b0",
     "opentelemetry-instrumentation-rq>=0.1.4",
+    "opentelemetry-processor-baggage>=0.65b0",
 ]
 
 [project.urls]

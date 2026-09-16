@@ -8,7 +8,6 @@ import os
 
 import click
 from dotenv import find_dotenv, load_dotenv
-from opentelemetry import context, trace
 
 # Load .env file BEFORE local imports so extraction.py can read env vars
 # Use find_dotenv() to search parent directories for .env file
@@ -28,6 +27,13 @@ STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
 from opentelemetry_instrumentation_rq import RQInstrumentor
 
 RQInstrumentor().instrument()
+
+from opentelemetry import trace
+from opentelemetry.processor.baggage import BaggageSpanProcessor, ALLOW_ALL_BAGGAGE_KEYS
+
+_provider = trace.get_tracer_provider()
+if hasattr(_provider, "add_span_processor"):
+    _provider.add_span_processor(BaggageSpanProcessor(ALLOW_ALL_BAGGAGE_KEYS))
 
 
 @click.group()

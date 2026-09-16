@@ -3,10 +3,12 @@
 import os
 import time
 import traceback
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
 import sqlite_utils
+from opentelemetry import context as otel_context
 from opentelemetry import trace
 from rq.utils import parse_timeout
 from sqlalchemy import select, update
@@ -37,6 +39,32 @@ from .utils import build_db_from_text_internal, update_page_count
 tracer = trace.get_tracer("clerk")
 
 
+@contextmanager
+def detached_trace():
+    """Enqueue downstream jobs as their own traces, not children of this one."""
+    token = otel_context.attach(otel_context.Context())
+    try:
+        yield
+    finally:
+        otel_context.detach(token)
+
+
+from opentelemetry import baggage, context as otel_context
+
+
+@contextmanager
+def job_baggage(subdomain, run_id, stage):
+    ctx = baggage.set_baggage("clerk.subdomain", subdomain)
+    if run_id:
+        ctx = baggage.set_baggage("clerk.run_id", run_id, context=ctx)
+    ctx = baggage.set_baggage("clerk.stage", stage, context=ctx)
+    token = otel_context.attach(ctx)
+    try:
+        yield
+    finally:
+        otel_context.detach(token)
+
+
 def fetch_job_with_trace(
     subdomain,
     run_id,
@@ -46,9 +74,7 @@ def fetch_job_with_trace(
     proceed=True,
     skip_fetch=False,
 ):
-    with tracer.start_as_current_span("fetch_job") as span:
-        span.set_attribute("subdomain", subdomain)
-        span.set_attribute("run_id", run_id)
+    with job_baggage(subdomain, run_id, "fetch"), tracer.start_as_current_span("job.fetch"):
         return fetch_site_job(
             subdomain,
             run_id,
@@ -239,7 +265,8 @@ def queue_ocr(fetcher, run_id, stage, ocr_backend, proceed=True) -> int:
 
     # Phase 2: Batch enqueue all jobs to RQ in a single Redis pipeline
     # This is much faster than individual enqueue() calls for large batches
-    ocr_jobs = ocr_queue.enqueue_many(job_datas) if job_datas else []
+    with detached_trace():
+        ocr_jobs = ocr_queue.enqueue_many(job_datas) if job_datas else []
 
     logger.log("Batch enqueued OCR jobs to RQ", job_count=len(ocr_jobs))
 
@@ -300,13 +327,14 @@ def _attempt_coordinator_enqueue(subdomain, stage, run_id):
             from .queue import get_compilation_queue
 
             compilation_queue = get_compilation_queue()
-            coord_job = compilation_queue.enqueue(
-                ocr_complete_coordinator,
-                subdomain=subdomain,
-                run_id=run_id,
-                job_timeout="5m",
-                description=f"OCR coordinator: {subdomain}",
-            )
+            with detached_trace():
+                coord_job = compilation_queue.enqueue(
+                    ocr_complete_coordinator,
+                    subdomain=subdomain,
+                    run_id=run_id,
+                    job_timeout="5m",
+                    description=f"OCR coordinator: {subdomain}",
+                )
 
             # Track coordinator job
             with civic_db_connection() as conn:
@@ -320,10 +348,7 @@ def _attempt_coordinator_enqueue(subdomain, stage, run_id):
 def ocr_document_job_with_trace(
     subdomain, pdf_path, backend="tesseract", run_id=None, proceed=True
 ):
-    with tracer.start_as_current_span("ocr_document_job") as span:
-        span.set_attribute("subdomain", subdomain)
-        if run_id is not None:
-            span.set_attribute("run_id", run_id)
+    with job_baggage(subdomain, run_id, "ocr"), tracer.start_as_current_span("ocr_document_job"):
         return ocr_document_job(
             subdomain, pdf_path, backend=backend, run_id=run_id, proceed=proceed
         )
@@ -567,13 +592,14 @@ def ocr_complete_coordinator(subdomain, run_id):
 
         compilation_queue = get_compilation_queue()
 
-        db_job = compilation_queue.enqueue(
-            db_compilation_job,
-            subdomain=subdomain,
-            run_id=run_id,
-            job_timeout="30m",
-            description=f"DB compilation: {subdomain}",
-        )
+        with detached_trace():
+            db_job = compilation_queue.enqueue(
+                db_compilation_job,
+                subdomain=subdomain,
+                run_id=run_id,
+                job_timeout="30m",
+                description=f"DB compilation: {subdomain}",
+            )
 
         logger.stage = "compilation"
 
@@ -599,10 +625,10 @@ def ocr_complete_coordinator(subdomain, run_id):
 
 
 def db_compilation_job_with_trace(subdomain, run_id=None):
-    with tracer.start_as_current_span("db_compilation_job") as span:
-        span.set_attribute("clerk.subdomain", subdomain)
-        if run_id is not None:
-            span.set_attribute("clerk.run_id", run_id)
+    with (
+        job_baggage(subdomain, run_id, stage="compilation"),
+        tracer.start_as_current_span("db_compilation_job"),
+    ):
         return db_compilation_job(subdomain, run_id=run_id)
 
 
@@ -705,13 +731,14 @@ def db_compilation_job(subdomain, run_id=None):
 
         # Spawn deploy job
         deploy_queue = get_deploy_queue()
-        job = deploy_queue.enqueue(
-            deploy_job,
-            subdomain=subdomain,
-            run_id=run_id,
-            job_timeout="10m",
-            description=f"Deploy: {subdomain}",
-        )
+        with detached_trace():
+            job = deploy_queue.enqueue(
+                deploy_job,
+                subdomain=subdomain,
+                run_id=run_id,
+                job_timeout="10m",
+                description=f"Deploy: {subdomain}",
+            )
 
         # Track in PostgreSQL
         with civic_db_connection() as conn:
@@ -759,10 +786,10 @@ def rebuild_site_fts_internal(subdomain, logger=None):
 
 
 def coordinator_job_with_trace(subdomain, run_id=None):
-    with tracer.start_as_current_span("coordinator_job") as span:
-        span.set_attribute("subdomain", subdomain)
-        if run_id is not None:
-            span.set_attribute("run_id", run_id)
+    with (
+        job_baggage(subdomain, run_id, "coordinator"),
+        tracer.start_as_current_span("coordinator_job"),
+    ):
         return coordinator_job(subdomain, run_id=run_id)
 
 
@@ -785,10 +812,10 @@ def coordinator_job(subdomain, run_id=None):
 
 
 def deploy_job_with_trace(subdomain, run_id=None):
-    with tracer.start_as_current_span("deploy_job") as span:
-        span.set_attribute("subdomain", subdomain)
-        if run_id is not None:
-            span.set_attribute("run_id", run_id)
+    with (
+        job_baggage(subdomain, run_id, "deploy"),
+        tracer.start_as_current_span("deploy_job"),
+    ):
         return deploy_job(subdomain, run_id=run_id)
 
 
