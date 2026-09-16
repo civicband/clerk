@@ -25,7 +25,7 @@ source = '''
 [sinks.vlogs]
 type = "elasticsearch"
 inputs = ["clerk_logs"]
-endpoints = ["${VICTORIALOGS_URL-default}/insert/elasticsearch/"]
+endpoints = ["${VICTORIALOGS_URL-http://localhost:9428}/insert/elasticsearch/"]
 api_version = "v8"
 compression = "gzip"
 healthcheck.enabled = false
