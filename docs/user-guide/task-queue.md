@@ -165,9 +165,8 @@ clerk db current
 clerk db history
 ```
 
-The migrations create two tables:
+The migrations create one table:
 
-- **job_tracking**: Links RQ job IDs to sites for observability
 - **site_progress**: Tracks per-site progress through pipeline stages
 
 ## Running Workers

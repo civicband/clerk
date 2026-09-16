@@ -32,7 +32,6 @@ def test_db_compilation_job_accepts_run_id(mocker):
     mocker.patch("clerk.workers.build_db_from_text_internal")
     mocker.patch("clerk.workers.update_site_progress")
     mocker.patch("clerk.workers.get_deploy_queue")
-    mocker.patch("clerk.workers.track_job")
     mocker.patch("clerk.workers.update_page_count")
     mocker.patch("clerk.workers.rebuild_site_fts_internal")
     mocker.patch("os.path.exists", return_value=True)
@@ -59,7 +58,6 @@ def test_db_compilation_job_passes_run_id_to_deploy(mocker):
     mocker.patch("clerk.workers.civic_db_connection")
     mocker.patch("clerk.workers.build_db_from_text_internal")
     mocker.patch("clerk.workers.update_site_progress")
-    mocker.patch("clerk.workers.track_job")
     mocker.patch("clerk.workers.update_page_count")
     mocker.patch("clerk.workers.rebuild_site_fts_internal")
     mocker.patch("os.path.exists", return_value=True)
@@ -147,7 +145,6 @@ def test_fetch_site_job_logs_fetch_completed_with_metrics(mocker):
     mocker.patch("clerk.workers.get_fetcher")
     mocker.patch("clerk.workers.fetch_internal")
     mocker.patch("clerk.workers.update_site_progress")
-    mocker.patch("clerk.workers.track_job")
     mocker.patch("clerk.workers.queue_ocr", return_value=0)
 
     # Mock Path to return no PDFs (simplest case)
@@ -186,7 +183,6 @@ def test_fetch_site_job_passes_run_id_to_ocr_jobs(mocker):
     )
     mocker.patch("clerk.workers.create_site_progress")
     mocker.patch("clerk.workers.update_site_progress")
-    mocker.patch("clerk.workers.track_job")
     mocker.patch("clerk.workers.get_fetcher")
     mocker.patch("clerk.workers.fetch_internal")
     mocker.patch("clerk.workers.ClerkLogger")
@@ -208,9 +204,6 @@ def test_fetch_site_job_passes_run_id_to_ocr_jobs(mocker):
     mock_ocr_queue.prepare_data.return_value = mock_job_data
     mock_ocr_queue.enqueue_many.return_value = [mock_job]
     mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_ocr_queue)
-
-    # Mock track_jobs_bulk instead of track_job
-    mocker.patch("clerk.workers.track_jobs_bulk")
 
     # Mock compilation queue for coordinator
     mock_compilation_queue = mocker.MagicMock()
@@ -279,7 +272,6 @@ def test_ocr_complete_coordinator_accepts_run_id(mocker):
 
     mocker.patch("clerk.workers.civic_db_connection")
     mocker.patch("clerk.workers.update_site_progress")
-    mocker.patch("clerk.workers.track_job")
 
     # Mock txt directory verification
     mock_txt_dir = mocker.MagicMock()
@@ -461,9 +453,6 @@ def test_coordinator_resets_enqueued_flag(mock_site, tmp_path, monkeypatch, mock
     mock_deploy_queue = mocker.MagicMock()
     mock_deploy_queue.enqueue.return_value = mocker.MagicMock(id="deploy-job")
     mocker.patch("clerk.queue.get_deploy_queue", return_value=mock_deploy_queue)
-
-    # Mock job tracking to avoid database conflicts
-    mocker.patch("clerk.workers.track_job")
 
     # Run coordinator
     ocr_complete_coordinator(subdomain, run_id="test_run")

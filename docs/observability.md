@@ -1,6 +1,6 @@
 # Observability (VictoriaTraces / VictoriaLogs / VictoriaMetrics)
 
-Clerk jobs emit OpenTelemetry traces (OTLP/HTTP → VictoriaTraces), JSON logs on stdout (shipped by an external Vector container → VictoriaLogs, config at `deployment/vector/vector.toml`), and Prometheus metrics at per-worker-type `/metrics` endpoints (scraped by VictoriaMetrics). Each pipeline run is identified by a `run_id` that threads through traces (baggage), logs (structured field), and the `job_tracking` DB table — letting you string a complete run together in Grafana three different ways.
+Clerk jobs emit OpenTelemetry traces (OTLP/HTTP → VictoriaTraces), JSON logs on stdout (shipped by an external Vector container → VictoriaLogs, config at `deployment/vector/vector.toml`), and Prometheus metrics at per-worker-type `/metrics` endpoints (scraped by VictoriaMetrics). Each pipeline run is identified by a `run_id` that threads through traces (baggage) and logs (structured field) — letting you string a complete run together in Grafana two different ways.
 
 ## Stack endpoints
 
@@ -83,7 +83,7 @@ Field mapping (configured in the sink's `query` params):
 
 ## Stringing a run together by run_id
 
-`run_id` format: `{subdomain}_{unix_timestamp}_{6-char-random}` (generated in `src/clerk/queue.py::generate_run_id`). Three correlation paths:
+`run_id` format: `{subdomain}_{unix_timestamp}_{6-char-random}` (generated in `src/clerk/queue.py::generate_run_id`). Two correlation paths:
 
 1. **Traces**: every span in every job of a run carries `clerk.run_id` (OTel baggage, stamped by `BaggageSpanProcessor`). In Explore with the Jaeger/VictoriaTraces datasource, search spans by tag `clerk.run_id=<run_id>`. Each job is its own trace (fetch is the root; the OCR fan-out intentionally breaks into separate traces via `detached_trace()`), so a "run" = a set of traces sharing the baggage attribute.
 2. **Logs**: LogsQL in VictoriaLogs Explore:
@@ -91,14 +91,6 @@ Field mapping (configured in the sink's `query` params):
    ```
    {run_id="<run_id>"} | sort by (_time)
    ```
-
-3. **Database**: the `job_tracking` table (PostgreSQL) has an indexed `run_id` column:
-
-   ```sql
-   SELECT * FROM job_tracking WHERE run_id = '<run_id>' ORDER BY created_at;
-   ```
-
-   Usable directly in a Grafana Postgres table panel.
 
 ## Useful MetricsQL
 

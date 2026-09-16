@@ -1,66 +1,10 @@
-"""Database helpers for queue job tracking and progress."""
+"""Database helpers for site progress tracking."""
 
 from datetime import UTC, datetime
 
-from sqlalchemy import delete, insert, select, update
+from sqlalchemy import delete, update
 
-from .models import job_tracking_table, site_progress_table
-
-
-def track_job(conn, rq_job_id, subdomain, job_type, stage, run_id=None):
-    """Track an RQ job in PostgreSQL for observability.
-
-    Args:
-        conn: SQLAlchemy connection
-        rq_job_id: RQ's job ID
-        subdomain: Site subdomain
-        job_type: Job type (fetch-site, ocr-page, etc.)
-        stage: Processing stage (fetch, ocr, extraction, deploy)
-        run_id: Pipeline run identifier (optional)
-    """
-    stmt = insert(job_tracking_table).values(
-        rq_job_id=rq_job_id,
-        subdomain=subdomain,
-        job_type=job_type,
-        stage=stage,
-        run_id=run_id,
-        created_at=datetime.now(UTC),
-    )
-    conn.execute(stmt)
-
-
-def track_jobs_bulk(conn, jobs, subdomain, job_type, stage, run_id=None):
-    """Track multiple RQ jobs in PostgreSQL in a single bulk insert.
-
-    This is much more efficient than calling track_job() in a loop,
-    especially for large numbers of jobs (e.g., 500+ OCR jobs).
-
-    Args:
-        conn: SQLAlchemy connection
-        jobs: List of RQ Job objects (with .id attribute)
-        subdomain: Site subdomain
-        job_type: Job type (fetch-site, ocr-page, etc.)
-        stage: Processing stage (fetch, ocr, extraction, deploy)
-        run_id: Pipeline run identifier (optional)
-    """
-    if not jobs:
-        return
-
-    now = datetime.now(UTC)
-    job_records = [
-        {
-            "rq_job_id": job.id,
-            "subdomain": subdomain,
-            "job_type": job_type,
-            "stage": stage,
-            "run_id": run_id,
-            "created_at": now,
-        }
-        for job in jobs
-    ]
-
-    stmt = insert(job_tracking_table)
-    conn.execute(stmt, job_records)
+from .models import site_progress_table
 
 
 def create_site_progress(conn, subdomain, stage):
@@ -132,32 +76,6 @@ def increment_stage_progress(conn, subdomain):
             stage_completed=site_progress_table.c.stage_completed + 1, updated_at=datetime.now(UTC)
         )
     )
-    conn.execute(stmt)
-
-
-def get_jobs_for_site(conn, subdomain):
-    """Get all job tracking records for a site.
-
-    Args:
-        conn: SQLAlchemy connection
-        subdomain: Site subdomain
-
-    Returns:
-        List of job tracking records as dictionaries
-    """
-    stmt = select(job_tracking_table).where(job_tracking_table.c.subdomain == subdomain)
-    results = conn.execute(stmt).fetchall()
-    return [dict(row._mapping) for row in results]
-
-
-def delete_jobs_for_site(conn, subdomain):
-    """Delete all job tracking records for a site.
-
-    Args:
-        conn: SQLAlchemy connection
-        subdomain: Site subdomain
-    """
-    stmt = delete(job_tracking_table).where(job_tracking_table.c.subdomain == subdomain)
     conn.execute(stmt)
 
 

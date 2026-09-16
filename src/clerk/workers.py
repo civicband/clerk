@@ -29,8 +29,6 @@ from .queue import get_deploy_queue
 from .queue_db import (
     create_site_progress,
     increment_stage_progress,
-    track_job,
-    track_jobs_bulk,
     update_site_progress,
 )
 from .settings import get_env
@@ -273,9 +271,6 @@ def queue_ocr(fetcher, run_id, stage, ocr_backend, proceed=True) -> int:
         # Update site progress
         update_site_progress(conn, fetcher.subdomain, stage="ocr", stage_total=len(ocr_jobs))
 
-        # Bulk insert all job tracking rows
-        track_jobs_bulk(conn, ocr_jobs, fetcher.subdomain, "ocr-page", "ocr", run_id=run_id)
-
         # Initialize atomic counters for OCR stage (even if 0 jobs)
         # This ensures the coordinator can trigger immediately for empty stages
         initialize_stage(fetcher.subdomain, stage="ocr", total_jobs=len(ocr_jobs))
@@ -332,10 +327,6 @@ def _attempt_coordinator_enqueue(subdomain, stage, run_id):
                     job_timeout="5m",
                     description=f"OCR coordinator: {subdomain}",
                 )
-
-            # Track coordinator job
-            with civic_db_connection() as conn:
-                track_job(conn, coord_job.id, subdomain, "ocr-coordinator", "ocr", run_id=run_id)
 
             logger.log("Enqueued OCR coordinator job", coordinator_job_id=coord_job.id)
         else:
@@ -590,7 +581,7 @@ def ocr_complete_coordinator(subdomain, run_id):
         compilation_queue = get_compilation_queue()
 
         with detached_trace():
-            db_job = compilation_queue.enqueue(
+            compilation_queue.enqueue(
                 db_compilation_job,
                 subdomain=subdomain,
                 run_id=run_id,
@@ -600,9 +591,6 @@ def ocr_complete_coordinator(subdomain, run_id):
 
         logger.stage = "compilation"
 
-        # Track in PostgreSQL
-        with civic_db_connection() as conn:
-            track_job(conn, db_job.id, subdomain, "db-compilation", "compilation", run_id=run_id)
         logger.log("Enqueued DB compilation job")
 
         duration = time.time() - start_time
@@ -737,9 +725,6 @@ def db_compilation_job(subdomain, run_id=None):
                 description=f"Deploy: {subdomain}",
             )
 
-        # Track in PostgreSQL
-        with civic_db_connection() as conn:
-            track_job(conn, job.id, subdomain, "deploy-site", "deploy", run_id=run_id)
         logger.log("Enqueued deploy job", job_id=job.id)
 
         # Milestone: completed
