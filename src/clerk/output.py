@@ -65,7 +65,7 @@ class JsonFormatter(logging.Formatter):
 
 
 def configure_logging():
-    """Configure logging to push to Loki (if configured) and console."""
+    """Configure logging to emit JSON logs on stdout (shipped by Vector)."""
     handlers = []
 
     # Always add console handler for local visibility
@@ -125,7 +125,7 @@ class ClerkLogger:
     ):
         """Unified logging + click output.
 
-        - Always logs to Python logging (-> Loki if configured)
+        - Always logs to Python logging (JSON on stdout, shipped via Vector)
         - click.echo with colored output unless --quiet flag is set
 
         Args:
@@ -181,7 +181,7 @@ def configure(quiet: bool | None = None, subdomain: str | None = None):
     """Configure global output options.
 
     Args:
-        quiet: If True, suppress click.echo output (logs still go to Loki)
+        quiet: If True, suppress click.echo output (logging is unaffected)
         subdomain: Default subdomain prefix for log messages
     """
     global _quiet, _default_subdomain

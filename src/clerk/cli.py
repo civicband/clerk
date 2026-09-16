@@ -48,7 +48,7 @@ if hasattr(_provider, "add_span_processor"):
     "--quiet",
     "-q",
     is_flag=True,
-    help="Suppress console output (logs still go to Loki)",
+    help="Suppress console output (logging is unaffected)",
 )
 @click.pass_context
 def cli(_, plugins_dir: str, quiet: bool):

@@ -165,9 +165,6 @@ class Settings:
         self.EXTRACTION_WORKERS: int = get_env_int("EXTRACTION_WORKERS", 0) or 0
         self.DEPLOY_WORKERS: int = get_env_int("DEPLOY_WORKERS", 1) or 1
 
-        # Logging Configuration
-        self.LOKI_URL: str | None = get_env("LOKI_URL")
-
         # Sentry Configuration
         self.SENTRY_DSN: str | None = get_env("SENTRY_DSN")
         self.SENTRY_ENVIRONMENT: str = get_env("SENTRY_ENVIRONMENT", "production")
