@@ -2,6 +2,7 @@
 
 import logging
 import os
+from typing import Any
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -33,7 +34,14 @@ def build_span_exporter(endpoint: str | None = None) -> OTLPSpanExporter:
     return OTLPSpanExporter(endpoint=url, timeout=5)
 
 
-def setup_telemetry(endpoint: str | None = None, service_name: str | None = None):
+def build_provider(endpoint: str | None = None, service_name: str | None = None) -> TracerProvider:
+    provider = TracerProvider(resource=build_resource(service_name))
+    provider.add_span_processor(BaggageSpanProcessor(ALLOW_ALL_BAGGAGE_KEYS))
+    provider.add_span_processor(BatchSpanProcessor(build_span_exporter(endpoint)))
+    return provider
+
+
+def setup_telemetry(endpoint: str | None = None, service_name: str | None = None) -> Any:
     """Configure the global TracerProvider + instrumentations. Idempotent.
 
     Non-fatal on failure: workers must run even if VictoriaTraces is unreachable
@@ -43,10 +51,7 @@ def setup_telemetry(endpoint: str | None = None, service_name: str | None = None
     if _configured:
         return trace.get_tracer_provider()
     try:
-        provider = TracerProvider(resource=build_resource(service_name))
-        provider.add_span_processor(BaggageSpanProcessor(ALLOW_ALL_BAGGAGE_KEYS))
-        provider.add_span_processor(BatchSpanProcessor(build_span_exporter(endpoint)))
-        trace.set_tracer_provider(provider)
+        trace.set_tracer_provider(build_provider(endpoint, service_name))
     except Exception:
         logger.exception("Telemetry provider setup failed; continuing without tracing")
         return trace.get_tracer_provider()
