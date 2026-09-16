@@ -1,7 +1,7 @@
 # AGENTS.md — clerk / civicband-clerk
 
 ## Package identity
-- **PyPI name:** `civicband-clerk`  
+- **PyPI name:** `civicband-clerk`
 - **Import name:** `clerk` (from `src/clerk/`) — these differ on purpose
 - **CLI entry point:** `clerk` (set in `[project.scripts]` → `clerk = "clerk:main"`)
 - **Version source:** single source of truth at `src/clerk/__init__.py:23` (hatch reads it via `[tool.hatch.version] path`)
