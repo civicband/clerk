@@ -6,6 +6,7 @@ Uses prometheus_client multiprocess mode so that RQ WorkerPool children
 
 import logging
 import os
+import socket
 import tempfile
 
 from prometheus_client import CollectorRegistry, Counter, Histogram
@@ -13,6 +14,10 @@ from prometheus_client.core import GaugeMetricFamily
 from prometheus_client.multiprocess import MultiProcessCollector
 
 logger = logging.getLogger(__name__)
+
+# Identifies which worker container wrote a metric sample. In Docker,
+# socket.gethostname() is the container's hostname (short id).
+CONTAINER_ID = socket.gethostname()
 
 METRICS_PORTS = {
     "fetch": 9801,
@@ -40,10 +45,19 @@ def configure_multiprocess_dir() -> str:
 
 configure_multiprocess_dir()
 
-JOBS_TOTAL = Counter("clerk_jobs_total", "RQ jobs processed", ["stage", "job_type", "status"])
-JOB_DURATION = Histogram(
-    "clerk_job_duration_seconds", "RQ job duration in seconds", ["stage", "job_type"]
+JOBS_TOTAL = Counter(
+    "clerk_jobs_total", "RQ jobs processed", ["container", "stage", "job_type", "status"]
 )
+JOB_DURATION = Histogram(
+    "clerk_job_duration_seconds", "RQ job duration in seconds", ["container", "stage", "job_type"]
+)
+
+
+def record_job_metrics(stage: str, job_type: str, status: str, duration_seconds: float) -> None:
+    """Record a completed job's metrics with container attribution."""
+    labels = {"container": CONTAINER_ID, "stage": stage, "job_type": job_type}
+    JOB_DURATION.labels(**labels).observe(duration_seconds)
+    JOBS_TOTAL.labels(**labels, status=status).inc()
 
 
 class QueueDepthCollector:
@@ -76,12 +90,56 @@ class QueueDepthCollector:
         yield gauge
 
 
+def sweep_dead_pid_files(directory: str | None = None) -> int:
+    """Remove multiproc metric files whose writer pid is no longer alive.
+
+    Only correct when writers run with pid: host (compose does). Best-effort:
+    unreadable names are skipped; pid-reuse can theoretically unlink a live
+    file, which only resets that counter (rate() handles counter resets).
+    Returns the number of files removed.
+    """
+    if directory is None:
+        directory = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
+    if not directory or not os.path.isdir(directory):
+        return 0
+
+    removed = 0
+    for name in os.listdir(directory):
+        stem, ext = os.path.splitext(name)
+        if ext != ".db" or "_" not in stem:
+            continue
+        pid_str = stem.rsplit("_", 1)[1]
+        if not pid_str.isdigit():
+            continue
+        pid = int(pid_str)
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            try:
+                os.unlink(os.path.join(directory, name))
+                removed += 1
+            except OSError:
+                logger.debug("Failed to unlink dead-pid metrics file %s", name, exc_info=True)
+        except PermissionError:
+            # Not our pid (or not permitted to signal): still alive, keep the file.
+            continue
+        except Exception:
+            # Never fatal: skip files we cannot reason about.
+            logger.debug("Skipping metrics file %s during sweep", name, exc_info=True)
+    return removed
+
+
+def build_aggregated_registry(directory: str | None = None) -> CollectorRegistry:
+    """Registry combining shared-dir multiprocess metrics + live queue depth."""
+    registry = CollectorRegistry()
+    MultiProcessCollector(registry, directory)
+    registry.register(QueueDepthCollector())
+    return registry
+
+
 def start_metrics_server(port: int):
     """Start /metrics on `port`, aggregating multiprocess files + queue depth."""
     from prometheus_client import start_http_server
 
-    registry = CollectorRegistry()
-    MultiProcessCollector(registry)
-    registry.register(QueueDepthCollector())
-    server, thread = start_http_server(port, registry=registry)
+    server, thread = start_http_server(port, registry=build_aggregated_registry())
     return server

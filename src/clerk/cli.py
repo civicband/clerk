@@ -91,7 +91,7 @@ def worker(worker_type, num_workers, burst):
             """Override to record job metrics, then delegate to RQ."""
             import time
 
-            from .metrics import JOB_DURATION, JOBS_TOTAL
+            from .metrics import record_job_metrics
 
             stage = queue.name
             job_type = job.func_name
@@ -103,10 +103,7 @@ def worker(worker_type, num_workers, burst):
                 return result
             finally:
                 try:
-                    JOB_DURATION.labels(stage=stage, job_type=job_type).observe(
-                        time.monotonic() - start
-                    )
-                    JOBS_TOTAL.labels(stage=stage, job_type=job_type, status=status).inc()
+                    record_job_metrics(stage, job_type, status, time.monotonic() - start)
                 except Exception:
                     logging.getLogger(__name__).debug("Failed to record job metrics", exc_info=True)
 
@@ -152,10 +149,13 @@ def worker(worker_type, num_workers, burst):
     from .metrics import METRICS_PORTS, start_metrics_server
 
     metrics_port = int(os.environ.get("METRICS_PORT", METRICS_PORTS[worker_type]))
-    try:
-        start_metrics_server(metrics_port)
-    except OSError:
-        click.secho(f"Warning: metrics port {metrics_port} unavailable, continuing", fg="yellow")
+    if metrics_port > 0:
+        try:
+            start_metrics_server(metrics_port)
+        except OSError:
+            click.secho(
+                f"Warning: metrics port {metrics_port} unavailable, continuing", fg="yellow"
+            )
 
     if num_workers == 0:
         logger.log(message=f"Not starting workers for {worker_type}")
@@ -178,6 +178,44 @@ def worker(worker_type, num_workers, burst):
             worker_class=DiagnosticWorker,
         )
         pool.start(burst=burst)
+
+
+@cli.command("metrics-exporter")
+@click.option(
+    "--port", "-p", type=int, default=None, help="Metrics port (default: $METRICS_PORT or 9800)"
+)
+def metrics_exporter(port):
+    """Serve one aggregated /metrics endpoint for all workers on this host.
+
+    Reads the shared PROMETHEUS_MULTIPROC_DIR written by worker processes.
+    Run one of these per machine instead of scraping per-worker endpoints.
+    """
+    import threading
+
+    from prometheus_client import start_http_server
+
+    from .metrics import build_aggregated_registry, sweep_dead_pid_files
+
+    mp_dir = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
+    if not mp_dir:
+        raise click.ClickException("PROMETHEUS_MULTIPROC_DIR must be set for the metrics exporter")
+    os.makedirs(mp_dir, exist_ok=True)
+    port = port or int(os.environ.get("METRICS_PORT", "9800"))
+    server, _ = start_http_server(port, registry=build_aggregated_registry(mp_dir))
+    click.echo(f"metrics exporter serving {mp_dir} on :{port}")
+
+    def sweep_loop():
+        import time
+
+        while True:
+            time.sleep(60)
+            try:
+                sweep_dead_pid_files(mp_dir)
+            except Exception:
+                pass
+
+    threading.Thread(target=sweep_loop, daemon=True).start()
+    threading.Event().wait()  # block forever
 
 
 cli.add_command(db)

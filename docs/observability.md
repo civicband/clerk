@@ -1,6 +1,6 @@
 # Observability (VictoriaTraces / VictoriaLogs / VictoriaMetrics)
 
-Clerk jobs emit OpenTelemetry traces (OTLP/HTTP → VictoriaTraces), JSON logs on stdout (shipped by an external Vector container → VictoriaLogs, config at `deployment/vector/vector.toml`), and Prometheus metrics at per-worker-type `/metrics` endpoints (scraped by VictoriaMetrics). Each pipeline run is identified by a `run_id` that threads through traces (baggage) and logs (structured field) — letting you string a complete run together in Grafana two different ways.
+Clerk jobs emit OpenTelemetry traces (OTLP/HTTP → VictoriaTraces), JSON logs on stdout (shipped by an external Vector container → VictoriaLogs, config at `deployment/vector/vector.toml`), and Prometheus metrics on one aggregated per-machine `/metrics` endpoint (scraped by VictoriaMetrics). Each pipeline run is identified by a `run_id` that threads through traces (baggage) and logs (structured field) — letting you string a complete run together in Grafana two different ways.
 
 ## Stack endpoints
 
@@ -21,9 +21,14 @@ Tracing is configured in `src/clerk/telemetry.py`. `setup_telemetry()` runs at C
 
 ### Metrics
 
-Each `clerk worker <type>` process serves `/metrics` on a per-worker-type port:
+**Topology: one aggregated endpoint per machine.** Worker processes (and RQ WorkerPool children) only *write* metric files to a shared `PROMETHEUS_MULTIPROC_DIR` (a named Docker volume in compose). A single `clerk metrics-exporter` process per host reads that directory and serves the aggregated `/metrics` on port 9800 — VictoriaMetrics needs exactly one scrape target per machine, not one per worker type.
 
-| Worker type | Default port |
+How it fits together:
+
+- Workers run with `pid: "host"` in docker-compose, so prometheus_client multiprocess filenames (which are pid-keyed, e.g. `counter_1234.db`) never collide across containers sharing the volume.
+- `METRICS_PORT=0` disables the per-worker metrics server (compose sets this). When `METRICS_PORT` is unset, each `clerk worker <type>` still serves its own `/metrics` on a per-type default port — the bare-metal fallback:
+
+| Worker type | Fallback port |
 |---|---|
 | fetch | 9801 |
 | ocr | 9802 |
@@ -31,12 +36,13 @@ Each `clerk worker <type>` process serves `/metrics` on a per-worker-type port:
 | extraction | 9804 |
 | deploy | 9805 |
 
-Override the port with `METRICS_PORT`. The metrics server starts even with `-n 0` workers, so an idle deployment still reports queue depth. Multiple workers per type (`-n N`) aggregate via prometheus_client multiprocess mode (`PROMETHEUS_MULTIPROC_DIR`, a tmpfs mount in compose).
+- The exporter sweeps stale multiproc files whose writer pid is dead (best-effort, never fatal). This sweep is only correct because of `pid: "host"` — the exporter must see the same pids the writers used.
+- Samples carry a `container` label (`socket.gethostname()` = the container's hostname/short id in Docker), separating events per worker container in the aggregated output.
 
 Metrics exported:
 
-- `clerk_jobs_total{stage, job_type, status}` — counter of processed RQ jobs
-- `clerk_job_duration_seconds{stage, job_type}` — histogram of job durations
+- `clerk_jobs_total{container, stage, job_type, status}` — counter of processed RQ jobs
+- `clerk_job_duration_seconds{container, stage, job_type}` — histogram of job durations
 - `clerk_queue_depth{queue}` — gauge of pending jobs, read live from Redis at scrape time, for all 7 RQ queues (`high`, `fetch`, `ocr`, `compilation`, `extraction`, `deploy`, `finance`)
 
 ## Grafana datasources
@@ -47,16 +53,28 @@ Metrics exported:
 
 ## VictoriaMetrics scrape config
 
+One target per machine — the aggregated exporter:
+
 ```yaml
 scrape_configs:
   - job_name: clerk-workers
     static_configs:
       - targets:
-          - "clerk-host:9801"  # fetch
-          - "clerk-host:9802"  # ocr
-          - "clerk-host:9803"  # compilation
-          - "clerk-host:9804"  # extraction
-          - "clerk-host:9805"  # deploy
+          - "clerk-host:9800"  # clerk metrics-exporter (one per machine)
+```
+
+Bare-metal fallback (per-worker servers, used only when `METRICS_PORT` is unset):
+
+```yaml
+# scrape_configs:
+#   - job_name: clerk-workers
+#     static_configs:
+#       - targets:
+#           - "clerk-host:9801"  # fetch
+#           - "clerk-host:9802"  # ocr
+#           - "clerk-host:9803"  # compilation
+#           - "clerk-host:9804"  # extraction
+#           - "clerk-host:9805"  # deploy
 ```
 
 ## Log shipping (Vector)
