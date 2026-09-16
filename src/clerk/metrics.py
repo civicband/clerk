@@ -84,7 +84,9 @@ class QueueDepthCollector:
 
                     value = Queue(name, connection=get_redis()).count
                 gauge.add_metric([name], float(value))
-            except Exception:
+            except (Exception, SystemExit):
+                # SystemExit: get_redis() calls sys.exit(1) when Redis is
+                # unreachable — a Redis outage must not break serving job metrics.
                 logger.debug("Queue depth lookup failed for %s", name, exc_info=True)
                 continue
         yield gauge

@@ -197,3 +197,17 @@ def test_queue_depth_collector_swallows_redis_errors():
     families = list(collector.collect())
     assert families[0].name == "clerk_queue_depth"
     assert families[0].samples == []
+
+
+@pytest.mark.unit
+def test_queue_depth_collector_survives_redis_outage(monkeypatch):
+    import sys
+
+    from clerk.metrics import QueueDepthCollector
+
+    def redis_outage(name):
+        sys.exit(1)  # get_redis() exits on connection failure
+
+    collector = QueueDepthCollector(queue_names=["fetch"], count_fn=redis_outage)
+    families = list(collector.collect())  # must not raise SystemExit
+    assert families[0].samples == []
