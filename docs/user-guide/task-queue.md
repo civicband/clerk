@@ -148,9 +148,6 @@ FETCH_WORKERS=2
 OCR_WORKERS=4
 EXTRACTION_WORKERS=2
 DEPLOY_WORKERS=1
-
-# Optional: Centralized Logging
-# LOKI_URL=http://localhost:3100/loki/api/v1/push
 ```
 
 ### Database Setup

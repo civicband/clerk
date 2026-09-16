@@ -10,7 +10,7 @@ A Python library for managing civic data pipelines for civic.band. Clerk handles
 - **Plugin System**: Extensible architecture using pluggy for custom fetchers and deployers
 - **Full-Text Search**: Automatic FTS index generation for searchable meeting data
 - **Database Management**: SQLite-based storage with per-site and aggregate databases
-- **Observability**: Built-in tracing and monitoring with Pydantic Logfire
+- **Observability**: Structured JSON logs shipped to VictoriaLogs via Vector, OTel traces to VictoriaTraces, Prometheus metrics per worker (see [Observability](observability.md))
 
 ## Documentation Sections
 

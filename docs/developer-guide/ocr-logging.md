@@ -70,7 +70,7 @@ Example entry:
 uv run clerk ocr --subdomain=example.ca.civic.band
 ```
 
-Progress will be printed to stderr, structured logs to stdout (and Loki if configured).
+Progress will be printed to stderr, structured JSON logs to stdout (shipped by Vector to VictoriaLogs; see [docs/observability.md](../observability.md)).
 
 ### Viewing Failed Documents
 
@@ -85,26 +85,28 @@ cat ../sites/example.ca.civic.band/ocr_failures_*.jsonl | jq -r .error_class | s
 cat ../sites/example.ca.civic.band/ocr_failures_*.jsonl | jq -r .document_path
 ```
 
-### Querying Logs in Loki
+### Querying Logs in VictoriaLogs
+
+Logs ship to VictoriaLogs via the Vector sidecar (see [Observability](../observability.md)). Query in Grafana Explore or via the LogsQL API:
 
 **All OCR jobs:**
 ```
-{job="clerk", command="ocr"}
+{container_name=~"clerk.*", stage="ocr"}
 ```
 
 **Failed documents:**
 ```
-{job="clerk"} |= "Document failed"
+{container_name=~"clerk.*"} "Document failed"
 ```
 
 **Slow operations (>30s):**
 ```
-{job="clerk"} | json | duration_ms > 30000
+{container_name=~"clerk.*"} | json | duration_ms:>30000
 ```
 
 **Specific meeting failures:**
 ```
-{job="clerk"} | json | meeting="CityCouncil" | level="error"
+{container_name=~"clerk.*"} | json | meeting="CityCouncil" | level="error"
 ```
 
 ## Implementation Details
