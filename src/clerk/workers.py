@@ -37,6 +37,29 @@ from .utils import build_db_from_text_internal, update_page_count
 tracer = trace.get_tracer("clerk")
 
 
+def fetch_job_with_trace(
+    subdomain,
+    run_id,
+    all_years=False,
+    all_agendas=False,
+    ocr_backend=None,
+    proceed=True,
+    skip_fetch=False,
+):
+    with tracer.start_as_current_span("fetch_job") as span:
+        span.set_attribute("subdomain", subdomain)
+        span.set_attribute("run_id", run_id)
+        return fetch_site_job(
+            subdomain,
+            run_id,
+            all_years=all_years,
+            all_agendas=all_agendas,
+            ocr_backend=ocr_backend,
+            proceed=proceed,
+            skip_fetch=skip_fetch,
+        )
+
+
 def fetch_site_job(
     subdomain,
     run_id,
@@ -292,6 +315,18 @@ def _attempt_coordinator_enqueue(subdomain, stage, run_id):
             logger.log("Enqueued OCR coordinator job", coordinator_job_id=coord_job.id)
         else:
             logger.log("Coordinator already enqueued by another job")
+
+
+def ocr_document_job_with_trace(
+    subdomain, pdf_path, backend="tesseract", run_id=None, proceed=True
+):
+    with tracer.start_as_current_span("ocr_document_job") as span:
+        span.set_attribute("subdomain", subdomain)
+        if run_id is not None:
+            span.set_attribute("run_id", run_id)
+        return ocr_document_job(
+            subdomain, pdf_path, backend=backend, run_id=run_id, proceed=proceed
+        )
 
 
 def ocr_document_job(subdomain, pdf_path, backend="tesseract", run_id=None, proceed=True):
@@ -721,6 +756,14 @@ def rebuild_site_fts_internal(subdomain, logger=None):
         site_db["minutes"].enable_fts(["text"])
     except OperationalError as e:
         logger.log(str(e), level="error")
+
+
+def coordinator_job_with_trace(subdomain, run_id=None):
+    with tracer.start_as_current_span("coordinator_job") as span:
+        span.set_attribute("subdomain", subdomain)
+        if run_id is not None:
+            span.set_attribute("run_id", run_id)
+        return coordinator_job(subdomain, run_id=run_id)
 
 
 def coordinator_job(subdomain, run_id=None):

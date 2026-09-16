@@ -103,11 +103,11 @@ def get_job_function_map():
 
     # Base job function map
     job_function_map = {
-        "fetch-site": workers.fetch_site_job,
-        "ocr-page": workers.ocr_document_job,
-        "deploy-site": workers.deploy_job,
-        "db-compilation": workers.db_compilation_job,
-        "coordinator": workers.coordinator_job,
+        "fetch-site": workers.fetch_job_with_trace,
+        "ocr-page": workers.ocr_document_job_with_trace,
+        "deploy-site": workers.deploy_job_with_trace,
+        "db-compilation": workers.db_compilation_job_with_trace,
+        "coordinator": workers.coordinator_job_with_trace,
         # Backwards compatibility: support old function name
         "ocr-page-old": workers.ocr_page_job,
     }
