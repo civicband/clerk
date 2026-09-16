@@ -18,8 +18,35 @@ def test_configure_multiprocess_dir_sets_env(monkeypatch):
 def test_job_counters_have_expected_labels():
     from clerk.metrics import JOB_DURATION, JOBS_TOTAL
 
+    assert JOBS_TOTAL._labelnames == ("stage", "job_type", "status")
+    assert JOB_DURATION._labelnames == ("stage", "job_type")
     JOBS_TOTAL.labels(stage="ocr", job_type="ocr_document_job", status="success").inc()
     JOB_DURATION.labels(stage="ocr", job_type="ocr_document_job").observe(0.5)
+
+
+@pytest.mark.unit
+def test_multiprocess_registry_exposes_job_counters():
+    from prometheus_client import CollectorRegistry
+    from prometheus_client.multiprocess import MultiProcessCollector
+
+    import clerk.metrics as metrics
+
+    metrics.configure_multiprocess_dir()
+    JOBS_TOTAL = metrics.JOBS_TOTAL
+    JOBS_TOTAL.labels(stage="deploy", job_type="test_job", status="success").inc()
+
+    registry = CollectorRegistry()
+    MultiProcessCollector(registry)
+    samples = [
+        (s.labels, s.value)
+        for f in registry.collect()
+        if f.name == "clerk_jobs"
+        for s in f.samples
+        if s.labels.get("stage") == "deploy"
+        and s.labels.get("job_type") == "test_job"
+        and s.labels.get("status") == "success"
+    ]
+    assert samples == [({"stage": "deploy", "job_type": "test_job", "status": "success"}, 1.0)]
 
 
 @pytest.mark.unit

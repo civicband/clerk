@@ -4,12 +4,15 @@ Uses prometheus_client multiprocess mode so that RQ WorkerPool children
 (`clerk worker ocr -n 4`) all contribute to one /metrics endpoint per container.
 """
 
+import logging
 import os
 import tempfile
 
 from prometheus_client import CollectorRegistry, Counter, Histogram
 from prometheus_client.core import GaugeMetricFamily
 from prometheus_client.multiprocess import MultiProcessCollector
+
+logger = logging.getLogger(__name__)
 
 METRICS_PORTS = {
     "fetch": 9801,
@@ -29,6 +32,9 @@ def configure_multiprocess_dir() -> str:
         mp_dir = tempfile.mkdtemp(prefix="clerk-prom-")
         os.environ["PROMETHEUS_MULTIPROC_DIR"] = mp_dir
     os.makedirs(mp_dir, exist_ok=True)
+    from prometheus_client import values as prometheus_values
+
+    prometheus_values.ValueClass = prometheus_values.get_value_class()
     return mp_dir
 
 
@@ -65,7 +71,8 @@ class QueueDepthCollector:
                     value = Queue(name, connection=get_redis()).count
                 gauge.add_metric([name], float(value))
             except Exception:
-                continue  # Redis down / queue missing: emit nothing for it
+                logger.debug("Queue depth lookup failed for %s", name, exc_info=True)
+                continue
         yield gauge
 
 
