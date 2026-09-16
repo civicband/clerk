@@ -1,5 +1,6 @@
 """Unit tests for clerk.cli module."""
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -630,3 +631,175 @@ class TestWorkerCommand:
 
             # Reset mocks
             mocker.resetall()
+
+
+@pytest.mark.unit
+class TestWorkerMetrics:
+    """Tests for metrics integration in the worker command."""
+
+    def _invoke_worker(self, cli_runner, mocker, args):
+        """Invoke the worker command with Redis, queues, and Worker mocked.
+
+        Returns (result, worker_instance) — worker_instance is the captured
+        DiagnosticWorker when the single-worker path runs, else None.
+        """
+        mocker.patch("clerk.queue.get_redis", return_value=mocker.MagicMock())
+        mocker.patch("clerk.queue.get_high_queue", return_value=mocker.MagicMock())
+        mocker.patch("clerk.queue.get_fetch_queue", return_value=mocker.MagicMock())
+        mocker.patch("clerk.queue.get_ocr_queue", return_value=mocker.MagicMock())
+        mocker.patch("rq.Worker.__init__", return_value=None)
+
+        captured = {}
+
+        def fake_work(self, **kwargs):
+            captured["worker"] = self
+
+        mocker.patch("rq.Worker.work", fake_work)
+        result = cli_runner.invoke(cli, args)
+        return result, captured.get("worker")
+
+    def _install_fake_metrics(self, monkeypatch):
+        """Replace clerk.metrics job metrics with fakes that record calls."""
+        import clerk.metrics as metrics
+
+        duration_calls = []
+        total_calls = []
+
+        class FakeLabels:
+            def __init__(self, calls, kwargs):
+                self._calls = calls
+                self._kwargs = kwargs
+
+            def inc(self):
+                self._calls.append(dict(self._kwargs))
+
+            def observe(self, value):
+                self._calls.append((dict(self._kwargs), value))
+
+        class FakeMetric:
+            def __init__(self, calls):
+                self._calls = calls
+
+            def labels(self, **kwargs):
+                return FakeLabels(self._calls, kwargs)
+
+        monkeypatch.setattr(metrics, "JOB_DURATION", FakeMetric(duration_calls))
+        monkeypatch.setattr(metrics, "JOBS_TOTAL", FakeMetric(total_calls))
+        return duration_calls, total_calls
+
+    def test_worker_command_starts_metrics_server(self, cli_runner, mocker, monkeypatch):
+        """Test that the worker command starts a metrics server on the type's port."""
+        calls = {}
+        monkeypatch.setattr(
+            "clerk.metrics.start_metrics_server", lambda port: calls.setdefault("port", port)
+        )
+        monkeypatch.delenv("METRICS_PORT", raising=False)
+
+        result, _ = self._invoke_worker(cli_runner, mocker, ["worker", "ocr", "--burst"])
+
+        assert result.exit_code == 0
+        assert calls["port"] == 9802
+
+    def test_worker_command_starts_metrics_server_with_zero_workers(
+        self, cli_runner, mocker, monkeypatch
+    ):
+        """Test that a zero-worker process still serves metrics."""
+        calls = {}
+        monkeypatch.setattr(
+            "clerk.metrics.start_metrics_server", lambda port: calls.setdefault("port", port)
+        )
+        monkeypatch.delenv("METRICS_PORT", raising=False)
+
+        result, _ = self._invoke_worker(cli_runner, mocker, ["worker", "ocr", "-n", "0"])
+
+        assert result.exit_code == 0
+        assert calls["port"] == 9802
+
+    def test_worker_command_metrics_port_override(self, cli_runner, mocker, monkeypatch):
+        """Test that METRICS_PORT env var overrides the per-type default."""
+        calls = {}
+        monkeypatch.setattr(
+            "clerk.metrics.start_metrics_server", lambda port: calls.setdefault("port", port)
+        )
+        monkeypatch.setenv("METRICS_PORT", "9999")
+
+        result, _ = self._invoke_worker(cli_runner, mocker, ["worker", "fetch", "--burst"])
+
+        assert result.exit_code == 0
+        assert calls["port"] == 9999
+
+    def test_worker_command_warns_when_metrics_port_unavailable(
+        self, cli_runner, mocker, monkeypatch
+    ):
+        """Test that an unavailable metrics port logs a warning and continues."""
+
+        def boom(port):
+            raise OSError("address in use")
+
+        monkeypatch.setattr("clerk.metrics.start_metrics_server", boom)
+
+        result, _ = self._invoke_worker(cli_runner, mocker, ["worker", "fetch", "--burst"])
+
+        assert result.exit_code == 0
+        assert "metrics port" in result.output
+
+    def test_perform_job_records_success_metrics(self, cli_runner, mocker, monkeypatch):
+        """Test that perform_job observes duration and increments the success counter."""
+        result, worker = self._invoke_worker(cli_runner, mocker, ["worker", "fetch", "--burst"])
+        assert result.exit_code == 0
+        assert worker is not None
+
+        mocker.patch("rq.Worker.perform_job", return_value=True)
+        duration_calls, total_calls = self._install_fake_metrics(monkeypatch)
+
+        job = SimpleNamespace(func_name="clerk.workers.fetch_job_with_trace")
+        queue = SimpleNamespace(name="fetch")
+
+        assert worker.perform_job(job, queue) is True
+        expected = {"stage": "fetch", "job_type": "clerk.workers.fetch_job_with_trace"}
+        assert duration_calls == [(expected, mocker.ANY)]
+        assert isinstance(duration_calls[0][1], float)
+        assert total_calls == [
+            {
+                "stage": "fetch",
+                "job_type": "clerk.workers.fetch_job_with_trace",
+                "status": "success",
+            }
+        ]
+
+    def test_perform_job_records_failed_metrics(self, cli_runner, mocker, monkeypatch):
+        """Test that a False return from RQ records a failed job counter."""
+        result, worker = self._invoke_worker(cli_runner, mocker, ["worker", "fetch", "--burst"])
+        assert result.exit_code == 0
+        assert worker is not None
+
+        mocker.patch("rq.Worker.perform_job", return_value=False)
+        duration_calls, total_calls = self._install_fake_metrics(monkeypatch)
+
+        job = SimpleNamespace(func_name="clerk.workers.fetch_job_with_trace")
+        queue = SimpleNamespace(name="fetch")
+
+        assert worker.perform_job(job, queue) is False
+        assert total_calls == [
+            {"stage": "fetch", "job_type": "clerk.workers.fetch_job_with_trace", "status": "failed"}
+        ]
+        assert len(duration_calls) == 1
+
+    def test_perform_job_records_failed_metrics_on_exception(self, cli_runner, mocker, monkeypatch):
+        """Test that a raising job still records failure metrics and propagates."""
+        result, worker = self._invoke_worker(cli_runner, mocker, ["worker", "fetch", "--burst"])
+        assert result.exit_code == 0
+        assert worker is not None
+
+        mocker.patch("rq.Worker.perform_job", side_effect=RuntimeError("boom"))
+        duration_calls, total_calls = self._install_fake_metrics(monkeypatch)
+
+        job = SimpleNamespace(func_name="clerk.workers.fetch_job_with_trace")
+        queue = SimpleNamespace(name="fetch")
+
+        with pytest.raises(RuntimeError, match="boom"):
+            worker.perform_job(job, queue)
+        assert total_calls == [
+            {"stage": "fetch", "job_type": "clerk.workers.fetch_job_with_trace", "status": "failed"}
+        ]
+        assert len(duration_calls) == 1

@@ -4,6 +4,7 @@ This module provides the main CLI commands for managing civic data pipelines,
 including site creation, data fetching, OCR processing, and database operations.
 """
 
+import logging
 import os
 
 import click
@@ -87,10 +88,27 @@ def worker(worker_type, num_workers, burst):
         """Custom RQ Worker with pre-fork diagnostic logging."""
 
         def perform_job(self, job, queue) -> bool:
-            """Override to add logging before and after fork happens."""
-            # Call parent implementation (this will fork and execute job)
-            result = super().perform_job(job, queue)
-            return result
+            """Override to record job metrics, then delegate to RQ."""
+            import time
+
+            from .metrics import JOB_DURATION, JOBS_TOTAL
+
+            stage = queue.name
+            job_type = job.func_name
+            status = "failed"
+            start = time.monotonic()
+            try:
+                result = super().perform_job(job, queue)
+                status = "success" if result else "failed"
+                return result
+            finally:
+                try:
+                    JOB_DURATION.labels(stage=stage, job_type=job_type).observe(
+                        time.monotonic() - start
+                    )
+                    JOBS_TOTAL.labels(stage=stage, job_type=job_type, status=status).inc()
+                except Exception:
+                    logging.getLogger(__name__).debug("Failed to record job metrics", exc_info=True)
 
     from .queue import (
         get_compilation_queue,
@@ -130,6 +148,14 @@ def worker(worker_type, num_workers, burst):
 
     queues = queue_map[worker_type]
     default_timeout = timeout_map[worker_type]
+
+    from .metrics import METRICS_PORTS, start_metrics_server
+
+    metrics_port = int(os.environ.get("METRICS_PORT", METRICS_PORTS[worker_type]))
+    try:
+        start_metrics_server(metrics_port)
+    except OSError:
+        click.secho(f"Warning: metrics port {metrics_port} unavailable, continuing", fg="yellow")
 
     if num_workers == 0:
         logger.log(message=f"Not starting workers for {worker_type}")
