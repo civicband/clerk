@@ -18,10 +18,10 @@
 - Modify: `src/clerk/settings.py` (~line 169, remove `LOKI_URL`)
 - Modify: `src/clerk/output.py` (Loki mentions at ~lines 68, 128, 184) and `src/clerk/cli.py:51` (fix "Loki" docstrings/help text → "logs are shipped via Vector to VictoriaLogs")
 
-- [ ] Grep for `loki|LOKI` across `src/`, `.env.example`, `pyproject.toml`; remove the dependency line, env var, setting, and rewrite the three docstrings/help strings.
-- [ ] Run: `uv lock && uv sync && just test` — expected: all tests pass (nothing imports `python_logging_loki`).
-- [ ] Run: `just lint && just typecheck`
-- [ ] Commit: `chore: remove dead Loki log-shipping path`
+- [x] Grep for `loki|LOKI` across `src/`, `.env.example`, `pyproject.toml`; remove the dependency line, env var, setting, and rewrite the three docstrings/help strings.
+- [x] Run: `uv lock && uv sync && just test` — expected: all tests pass (nothing imports `python_logging_loki`).
+- [x] Run: `just lint && just typecheck`
+- [x] Commit: `chore: remove dead Loki log-shipping path`
 
 ## Task 2: Inject trace context + ISO timestamps into JSON logs
 
@@ -29,7 +29,7 @@
 - Modify: `src/clerk/output.py`
 - Test: `tests/test_output.py`
 
-- [ ] **Write failing tests** in `tests/test_output.py`:
+- [x] **Write failing tests** in `tests/test_output.py`:
 
 ```python
 def test_json_formatter_includes_trace_fields():
@@ -61,8 +61,8 @@ def test_json_formatter_timestamp_is_iso8601_utc():
     assert parsed.tzinfo is not None
 ```
 
-- [ ] Run: `uv run python -m pytest tests/test_output.py -m unit -v` — expected: FAIL (no `trace_id` key).
-- [ ] **Implement** in `output.py`: add imports `from datetime import UTC, datetime` and `from opentelemetry import trace`, then:
+- [x] Run: `uv run python -m pytest tests/test_output.py -m unit -v` — expected: FAIL (no `trace_id` key).
+- [x] **Implement** in `output.py`: add imports `from datetime import UTC, datetime` and `from opentelemetry import trace`, then:
 
 ```python
 class TraceContextFilter(logging.Filter):
@@ -89,8 +89,8 @@ In `configure_logging`, attach the filter to the **handler** (logger filters don
     console.addFilter(TraceContextFilter())
 ```
 
-- [ ] Run: `uv run python -m pytest tests/test_output.py -m unit -v` — expected: PASS.
-- [ ] Run: `just test && just check`. Commit: `feat: add trace context and ISO-8601 timestamps to JSON logs`
+- [x] Run: `uv run python -m pytest tests/test_output.py -m unit -v` — expected: PASS.
+- [x] Run: `just test && just check`. Commit: `feat: add trace context and ISO-8601 timestamps to JSON logs`
 
 ## Task 3: `telemetry.py` — OTLP export to VictoriaTraces
 
@@ -99,7 +99,7 @@ In `configure_logging`, attach the filter to the **handler** (logger filters don
 - Modify: `src/clerk/cli.py` (replace the ad-hoc RQInstrumentor/BaggageSpanProcessor block at lines 27-36)
 - Test: `tests/test_telemetry.py`
 
-- [ ] **Write failing tests**:
+- [x] **Write failing tests**:
 
 ```python
 import pytest
@@ -130,8 +130,8 @@ def test_setup_telemetry_is_idempotent(monkeypatch):
     assert p1 is p2
 ```
 
-- [ ] Run: `uv run python -m pytest tests/test_telemetry.py -m unit -v` — expected: FAIL (module missing).
-- [ ] **Implement** `src/clerk/telemetry.py`:
+- [x] Run: `uv run python -m pytest tests/test_telemetry.py -m unit -v` — expected: FAIL (module missing).
+- [x] **Implement** `src/clerk/telemetry.py`:
 
 ```python
 """OpenTelemetry setup: traces exported to VictoriaTraces via OTLP/HTTP."""
@@ -205,7 +205,7 @@ def setup_telemetry(endpoint: str | None = None, service_name: str | None = None
 
 Notes: deliberately do **not** instrument `requests`/`urllib3` (avoids export-recursion noise), and do **not** call `LoggingInstrumentor` (Task 2 handles log correlation ourselves).
 
-- [ ] **Rewire `cli.py`**: delete lines 27-36 (RQInstrumentor import/instrument, trace/BaggageSpanProcessor block) and place immediately after `load_dotenv(find_dotenv())` and **before** `from .db import db` (so SQLAlchemy engines are created after instrumentation):
+- [x] **Rewire `cli.py`**: delete lines 27-36 (RQInstrumentor import/instrument, trace/BaggageSpanProcessor block) and place immediately after `load_dotenv(find_dotenv())` and **before** `from .db import db` (so SQLAlchemy engines are created after instrumentation):
 
 ```python
 from .telemetry import setup_telemetry
@@ -215,8 +215,8 @@ setup_telemetry()
 
 (Keep the `# ruff: noqa: E402` pragma covering these import-time statements.)
 
-- [ ] Run: `uv run python -m pytest tests/test_telemetry.py tests/test_cli.py -m unit -v` — expected: PASS (fix `tests/test_cli.py` fixtures that referenced the removed block if needed).
-- [ ] Commit: `feat: export OTel traces to VictoriaTraces via OTLP/HTTP`
+- [x] Run: `uv run python -m pytest tests/test_telemetry.py tests/test_cli.py -m unit -v` — expected: PASS (fix `tests/test_cli.py` fixtures that referenced the removed block if needed).
+- [x] Commit: `feat: export OTel traces to VictoriaTraces via OTLP/HTTP`
 
 ## Task 4: `metrics.py` — Prometheus metrics in multiprocess mode
 
@@ -225,8 +225,8 @@ setup_telemetry()
 - Modify: `pyproject.toml` deps (add `"prometheus-client>=0.21"`)
 - Test: `tests/test_metrics.py`
 
-- [ ] Add dependency: `prometheus-client>=0.21` to `[project] dependencies`; `uv lock && uv sync`.
-- [ ] **Write failing tests**:
+- [x] Add dependency: `prometheus-client>=0.21` to `[project] dependencies`; `uv lock && uv sync`.
+- [x] **Write failing tests**:
 
 ```python
 import os
@@ -276,8 +276,8 @@ def test_queue_depth_collector_swallows_redis_errors():
     assert families[0].samples == []
 ```
 
-- [ ] Run: `uv run python -m pytest tests/test_metrics.py -m unit -v` — expected: FAIL.
-- [ ] **Implement** `src/clerk/metrics.py`:
+- [x] Run: `uv run python -m pytest tests/test_metrics.py -m unit -v` — expected: FAIL.
+- [x] **Implement** `src/clerk/metrics.py`:
 
 ```python
 """Prometheus metrics for clerk workers, exposed for VictoriaMetrics scraping.
@@ -365,8 +365,8 @@ def start_metrics_server(port: int):
     return server
 ```
 
-- [ ] Run: `uv run python -m pytest tests/test_metrics.py -m unit -v` — expected: PASS.
-- [ ] Commit: `feat: add prometheus metrics module with queue depth collector`
+- [x] Run: `uv run python -m pytest tests/test_metrics.py -m unit -v` — expected: PASS.
+- [x] Commit: `feat: add prometheus metrics module with queue depth collector`
 
 ## Task 5: Worker command starts metrics server + records job outcomes
 
@@ -374,7 +374,7 @@ def start_metrics_server(port: int):
 - Modify: `src/clerk/cli.py` (`worker` command, `DiagnosticWorker`, lines ~87-161)
 - Test: `tests/test_cli.py`
 
-- [ ] **Write failing test** (adapt to existing `cli_module` fixture patterns in `tests/test_cli.py`):
+- [x] **Write failing test** (adapt to existing `cli_module` fixture patterns in `tests/test_cli.py`):
 
 ```python
 @pytest.mark.unit
@@ -396,8 +396,8 @@ def test_perform_job_records_metrics(monkeypatch):
     ...
 ```
 
-- [ ] Run: `uv run python -m pytest tests/test_cli.py -m unit -v` — expected: FAIL.
-- [ ] **Implement** in `cli.py`:
+- [x] Run: `uv run python -m pytest tests/test_cli.py -m unit -v` — expected: FAIL.
+- [x] **Implement** in `cli.py`:
 
 In `DiagnosticWorker`, record job outcomes at the single choke point that covers **all** jobs including plugin jobs:
 
@@ -438,8 +438,8 @@ In the `worker` command body, before the `num_workers == 0` early return:
         click.secho(f"Warning: metrics port {metrics_port} unavailable, continuing", fg="yellow")
 ```
 
-- [ ] Run: `uv run python -m pytest tests/test_cli.py tests/test_metrics.py -m unit -v` — expected: PASS.
-- [ ] Run: `just test && just check`. Commit: `feat: expose per-worker /metrics and record job outcomes`
+- [x] Run: `uv run python -m pytest tests/test_cli.py tests/test_metrics.py -m unit -v` — expected: PASS.
+- [x] Run: `just test && just check`. Commit: `feat: expose per-worker /metrics and record job outcomes`
 
 ## Task 6: Persist `run_id` in `job_tracking`
 
@@ -450,7 +450,7 @@ In the `worker` command body, before the `num_workers == 0` early return:
 - Modify: `src/clerk/workers.py` — pass `run_id` at the `track_job` call (~line 341) and the `track_jobs_bulk` call in `fetch_site_job` (~line 160); grep `track_job(|track_jobs_bulk(` for remaining call sites and pass `run_id` where in scope
 - Test: `tests/test_queue_db.py`
 
-- [ ] **Write failing tests** (follow the existing connection fixture patterns in `tests/test_queue_db.py`):
+- [x] **Write failing tests** (follow the existing connection fixture patterns in `tests/test_queue_db.py`):
 
 ```python
 def test_track_job_stores_run_id(...):
@@ -464,8 +464,8 @@ def test_track_jobs_bulk_stores_run_id(...):
     assert all(r["run_id"] == "springfield_1_abc" for r in rows)
 ```
 
-- [ ] Run: `uv run python -m pytest tests/test_queue_db.py -m unit -v` — expected: FAIL (unexpected kwarg).
-- [ ] **Implement**: add to `job_tracking_table`:
+- [x] Run: `uv run python -m pytest tests/test_queue_db.py -m unit -v` — expected: FAIL (unexpected kwarg).
+- [x] **Implement**: add to `job_tracking_table`:
 
 ```python
     sa.Column("run_id", sa.String(), nullable=True),
@@ -485,8 +485,8 @@ def downgrade():
 ```
 
 Update `track_job`/`track_jobs_bulk` signatures to `..., run_id: str | None = None` and include `"run_id": run_id` in the insert values. Update callers to pass `run_id`.
-- [ ] Run: `uv run python -m pytest tests/test_queue_db.py tests/test_db.py tests/test_workers.py -m unit -v` — expected: PASS.
-- [ ] Commit: `feat: persist run_id in job_tracking for run-level correlation`
+- [x] Run: `uv run python -m pytest tests/test_queue_db.py tests/test_db.py tests/test_workers.py -m unit -v` — expected: PASS.
+- [x] Commit: `feat: persist run_id in job_tracking for run-level correlation`
 
 ## Task 7: Deployment config — compose env, ports, tmpfs
 
@@ -494,7 +494,7 @@ Update `track_job`/`track_jobs_bulk` signatures to `..., run_id: str | None = No
 - Modify: `docker-compose.yml`
 - Modify: `.env.example`
 
-- [ ] Update `.env.example` — replace the removed Loki block with:
+- [x] Update `.env.example` — replace the removed Loki block with:
 
 ```bash
 # Observability
@@ -508,7 +508,7 @@ OTEL_SERVICE_NAME=clerk
 # Overrides: METRICS_PORT applies to any worker; defaults 9801-9805 by type
 ```
 
-- [ ] Update `docker-compose.yml` common anchor:
+- [x] Update `docker-compose.yml` common anchor:
 
 ```yaml
 x-common-settings: &common-settings
@@ -540,15 +540,15 @@ and per service, expose the metrics port:
 
 (ocr → 9802, compilation → 9803, deploy → 9805.)
 
-- [ ] Sanity: `docker compose config` parses cleanly.
-- [ ] Commit: `chore: wire trace export + metrics ports into docker-compose`
+- [x] Sanity: `docker compose config` parses cleanly.
+- [x] Commit: `chore: wire trace export + metrics ports into docker-compose`
 
 ## Task 8: Vector config for VictoriaLogs
 
 **Files:**
 - Create: `deployment/vector/vector.toml`
 
-- [ ] **Implement** (Vector v0.39+ TOML syntax; if your installed Vector rejects TOML, the content maps 1:1 to `vector.yaml`):
+- [x] **Implement** (Vector v0.39+ TOML syntax; if your installed Vector rejects TOML, the content maps 1:1 to `vector.yaml`):
 
 ```toml
 # Ship clerk Docker container logs to VictoriaLogs.
@@ -593,15 +593,15 @@ sinks:
 ```
 
 The ISO-8601 `timestamp` from Task 2 is what makes `_time_field=timestamp` parse correctly; `trace_id`, `span_id`, `run_id`, `subdomain`, `stage`, `job_id` arrive as regular fields — exactly what Grafana trace-to-log correlation needs.
-- [ ] Validate locally if you have vector: `vector validate --no-environment deployment/vector/vector.toml`
-- [ ] Commit: `feat: add vector config shipping clerk docker logs to VictoriaLogs`
+- [x] Validate locally if you have vector: `vector validate --no-environment deployment/vector/vector.toml`
+- [x] Commit: `feat: add vector config shipping clerk docker logs to VictoriaLogs`
 
 ## Task 9: Grafana wiring + VictoriaMetrics scrape docs
 
 **Files:**
 - Create: `docs/observability.md`
 
-- [ ] Write `docs/observability.md` covering (exact content, not placeholders):
+- [x] Write `docs/observability.md` covering (exact content, not placeholders):
 
 1. **Datasources** (Grafana):
    - VictoriaMetrics: Prometheus-type, URL `http://<vm>:8428`
@@ -628,14 +628,14 @@ scrape_configs:
    - Logs: LogsQL `{run_id="<run_id>"} | sort by (_time)` in VictoriaLogs Explore.
    - Postgres: `SELECT * FROM job_tracking WHERE run_id = '<run_id>' ORDER BY created_at` (Task 6) — table panel via the Postgres datasource.
 6. **MetricsQL examples**: `sum by (stage) (rate(clerk_jobs_total{status="failed"}[5m]))`, `histogram_quantile(0.95, sum by (le, stage) (rate(clerk_job_duration_seconds_bucket[5m])))`, `clerk_queue_depth{queue="ocr"}`.
-- [ ] Commit: `docs: grafana/victoria observability wiring guide`
+- [x] Commit: `docs: grafana/victoria observability wiring guide`
 
 ## Task 10: Full verification
 
-- [ ] `just test` — all tests pass (224+ new).
-- [ ] `just check` (lint + format-check + typecheck).
-- [ ] `pre-commit run --all-files`
-- [ ] Manual smoke (optional, needs local Victoria stack): run `victoria-traces` + `victoria-logs` + `victoria-metrics` containers, `docker compose up redis fetch_worker`, enqueue `clerk etl update -s <site>`, confirm in Grafana: trace for `job.fetch` with `clerk.run_id` attr, `/metrics` on 9801 serving `clerk_jobs_total`, logs in VLogs Explore with `trace_id`.
+- [x] `just test` — all tests pass (224+ new).
+- [x] `just check` (lint + format-check + typecheck).
+- [x] `pre-commit run --all-files`
+- [x] Manual smoke (optional, needs local Victoria stack): run `victoria-traces` + `victoria-logs` + `victoria-metrics` containers, `docker compose up redis fetch_worker`, enqueue `clerk etl update -s <site>`, confirm in Grafana: trace for `job.fetch` with `clerk.run_id` attr, `/metrics` on 9801 serving `clerk_jobs_total`, logs in VLogs Explore with `trace_id`.
 
 ---
 
