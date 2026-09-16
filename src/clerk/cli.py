@@ -9,6 +9,8 @@ import os
 import click
 from dotenv import find_dotenv, load_dotenv
 
+from opentelemetry import trace, context
+
 # Load .env file BEFORE local imports so extraction.py can read env vars
 # Use find_dotenv() to search parent directories for .env file
 load_dotenv(find_dotenv())
@@ -23,6 +25,8 @@ from .sheets import sheets
 from .utils import pm
 
 STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
+
+tracer = trace.get_tracer(__name__)
 
 
 @click.group()
@@ -82,11 +86,17 @@ def worker(worker_type, num_workers, burst):
     class DiagnosticWorker(Worker):
         """Custom RQ Worker with pre-fork diagnostic logging."""
 
-        def perform_job(self, job, queue):
+        def perform_job(self, job, queue) -> bool:
             """Override to add logging before and after fork happens."""
             # Call parent implementation (this will fork and execute job)
-            result = super().perform_job(job, queue)
-            return result
+            token = context.attach(context.Context())
+            try:
+                with tracer.start_as_current_span(f"job.{queue.name}"):
+                    result = super().perform_job(job, queue)
+                    return result
+            finally:
+                context.detach(token)
+            return False
 
     from .queue import (
         get_compilation_queue,
