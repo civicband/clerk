@@ -4,6 +4,11 @@ x-common-settings: &common-settings
   restart: on-failure
   environment:
     - STORAGE_DIR=/clerk_sites
+    - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://victoria-traces:10428/insert/opentelemetry/v1/traces}
+    - OTEL_SERVICE_NAME=clerk
+    - PROMETHEUS_MULTIPROC_DIR=/tmp/clerk-prom
+  tmpfs:
+    - /tmp/clerk-prom
   volumes:
     - ${STORAGE_DIR}:/clerk_sites/
     - .:/app
@@ -21,18 +26,26 @@ services:
   fetch_worker:
     <<: *common-settings
     command: clerk worker fetch -n ${FETCH_WORKERS}
+    ports:
+      - "9801:9801"
 
   ocr_worker:
     <<: *common-settings
     command: clerk worker ocr -n ${OCR_WORKERS}
+    ports:
+      - "9802:9802"
 
   compilation_worker:
     <<: *common-settings
     command: clerk worker compilation -n ${COMPILATION_WORKERS}
+    ports:
+      - "9803:9803"
 
   deploy_worker:
     <<: *common-settings
     command: clerk worker deploy -n ${DEPLOY_WORKERS}
+    ports:
+      - "9805:9805"
 
 networks:
   clerk:
