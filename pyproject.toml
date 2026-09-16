@@ -23,6 +23,21 @@ dependencies = [
     "certifi>=2025.11.12",
     "opentelemetry-distro>=0.65b0",
     "opentelemetry-exporter-otlp-proto-http>=1.44.0",
+    "opentelemetry-instrumentation-asyncio==0.65b0",
+    "opentelemetry-instrumentation-dbapi==0.65b0",
+    "opentelemetry-instrumentation-exceptions==0.65b0",
+    "opentelemetry-instrumentation-logging==0.65b0",
+    "opentelemetry-instrumentation-sqlite3==0.65b0",
+    "opentelemetry-instrumentation-threading==0.65b0",
+    "opentelemetry-instrumentation-urllib==0.65b0",
+    "opentelemetry-instrumentation-wsgi==0.65b0",
+    "opentelemetry-instrumentation-click==0.65b0",
+    "opentelemetry-instrumentation-httpx==0.65b0",
+    "opentelemetry-instrumentation-psycopg2==0.65b0",
+    "opentelemetry-instrumentation-redis==0.65b0",
+    "opentelemetry-instrumentation-requests==0.65b0",
+    "opentelemetry-instrumentation-sqlalchemy==0.65b0",
+    "opentelemetry-instrumentation-urllib3==0.65b0",
 ]
 
 [project.urls]
