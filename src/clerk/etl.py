@@ -10,7 +10,7 @@ from clerk.queue import enqueue_job, generate_run_id
 from clerk.utils import assert_db_exists, pm
 from clerk.workers import (
     db_compilation_job_with_trace,
-    deploy_job,
+    deploy_job_with_trace,
     ocr_document_job,
     queue_ocr,
 )
@@ -231,4 +231,4 @@ def compile(ctx) -> None:
 @click.pass_context
 def deploy(ctx) -> None:
     subdomain = ctx.obj.get("SUBDOMAIN")
-    deploy_job(subdomain)
+    deploy_job_with_trace(subdomain)

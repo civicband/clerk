@@ -566,6 +566,8 @@ def ocr_complete_coordinator(subdomain, run_id):
 def db_compilation_job_with_trace(subdomain, run_id=None):
     with tracer.start_as_current_span("db_compilation_job") as span:
         span.set_attribute("clerk.subdomain", subdomain)
+        if run_id is not None:
+            span.set_attribute("clerk.run_id", run_id)
         return db_compilation_job(subdomain, run_id=run_id)
 
 
@@ -737,6 +739,14 @@ def coordinator_job(subdomain, run_id=None):
     # Placeholder for coordinator logic
     # This would typically orchestrate the pipeline stages
     return {"status": "completed", "subdomain": subdomain, "run_id": run_id}
+
+
+def deploy_job_with_trace(subdomain, run_id=None):
+    with tracer.start_as_current_span("deploy_job") as span:
+        span.set_attribute("subdomain", subdomain)
+        if run_id is not None:
+            span.set_attribute("run_id", run_id)
+        return deploy_job(subdomain, run_id=run_id)
 
 
 def deploy_job(subdomain, run_id=None):
