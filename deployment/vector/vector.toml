@@ -3,8 +3,9 @@
 data_dir = "/var/lib/vector"
 
 [sources.clerk_docker]
-type = "docker"
-exclude_containers = ["^vector"]
+type = "docker_logs"
+# exclude_containers is literal prefix matching, not regex
+exclude_containers = ["vector"]
 
 [transforms.clerk_logs]
 type = "remap"
