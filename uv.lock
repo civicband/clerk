@@ -283,6 +283,7 @@ dependencies = [
     { name = "opentelemetry-instrumentation-wsgi" },
     { name = "opentelemetry-processor-baggage" },
     { name = "pluggy" },
+    { name = "prometheus-client" },
     { name = "psycopg2-binary" },
     { name = "python-dotenv" },
     { name = "redis" },
@@ -359,6 +360,7 @@ requires-dist = [
     { name = "pdfkit", marker = "extra == 'pdf'", specifier = ">=1.0.0" },
     { name = "pluggy", specifier = ">=1.5.0" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.5.0" },
+    { name = "prometheus-client", specifier = ">=0.21" },
     { name = "psycopg2-binary", specifier = ">=2.9.0" },
     { name = "pypdf", marker = "extra == 'pdf'", specifier = ">=4.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4.0" },
@@ -1651,6 +1653,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/31/9a/5ea9d6d95d5c07ba70166330a43bff7f0a074d0134eb7984eca6551e8c70/preshed-3.0.12-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:eafc08a86f77be78e722d96aa8a3a0aef0e3c7ac2f2ada22186a138e63d4033c", size = 910826, upload-time = "2025-11-17T13:00:16.861Z" },
     { url = "https://files.pythonhosted.org/packages/92/71/39024f9873ff317eac724b2759e94d013703800d970d51de77ccc6afff7e/preshed-3.0.12-cp314-cp314t-win_amd64.whl", hash = "sha256:fadaad54973b8697d5ef008735e150bd729a127b6497fd2cb068842074a6f3a7", size = 141358, upload-time = "2025-11-17T13:00:18.167Z" },
     { url = "https://files.pythonhosted.org/packages/9d/0d/431bb85252119f5d2260417fa7d164619b31eed8f1725b364dc0ade43a8e/preshed-3.0.12-cp314-cp314t-win_arm64.whl", hash = "sha256:c0c0d3b66b4c1e40aa6042721492f7b07fc9679ab6c361bc121aa54a1c3ef63f", size = 114839, upload-time = "2025-11-17T13:00:19.513Z" },
+]
+
+[[package]]
+name = "prometheus-client"
+version = "0.26.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/52/73/f1334c29c2af4cd9dba6c7817e61b611bd0215e2eb5565c6064a4de18802/prometheus_client-0.26.0.tar.gz", hash = "sha256:04a91bcf94e2cf74a44a1a874d651a2e853ed354b6e822f3b7487751465d5c2b", size = 92910, upload-time = "2026-07-24T19:36:41.893Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/eb/a3/b69efbf4143b5b9859b977770bbbabcc2796b702fa69dc40271e45cd5a56/prometheus_client-0.26.0-py3-none-any.whl", hash = "sha256:fa93d06737aa02bacd05794768508bb97d2fbee28cb3bca04eaae92f0ca953d6", size = 64494, upload-time = "2026-07-24T19:36:40.854Z" },
 ]
 
 [[package]]
