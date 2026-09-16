@@ -8,8 +8,7 @@ import os
 
 import click
 from dotenv import find_dotenv, load_dotenv
-
-from opentelemetry import trace, context
+from opentelemetry import context, trace
 
 # Load .env file BEFORE local imports so extraction.py can read env vars
 # Use find_dotenv() to search parent directories for .env file
