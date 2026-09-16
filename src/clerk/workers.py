@@ -8,8 +8,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import sqlite_utils
+from opentelemetry import baggage, trace
 from opentelemetry import context as otel_context
-from opentelemetry import trace
 from rq.utils import parse_timeout
 from sqlalchemy import select, update
 from sqlite_utils.utils import OperationalError
@@ -47,9 +47,6 @@ def detached_trace():
         yield
     finally:
         otel_context.detach(token)
-
-
-from opentelemetry import baggage, context as otel_context
 
 
 @contextmanager

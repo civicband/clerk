@@ -14,6 +14,10 @@ from dotenv import find_dotenv, load_dotenv
 load_dotenv(find_dotenv())
 # ruff: noqa: E402
 
+from .telemetry import setup_telemetry
+
+setup_telemetry()
+
 from . import output
 from .db import db
 from .etl import etl
@@ -23,17 +27,6 @@ from .sheets import sheets
 from .utils import pm
 
 STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
-
-from opentelemetry_instrumentation_rq import RQInstrumentor
-
-RQInstrumentor().instrument()
-
-from opentelemetry import trace
-from opentelemetry.processor.baggage import BaggageSpanProcessor, ALLOW_ALL_BAGGAGE_KEYS
-
-_provider = trace.get_tracer_provider()
-if hasattr(_provider, "add_span_processor"):
-    _provider.add_span_processor(BaggageSpanProcessor(ALLOW_ALL_BAGGAGE_KEYS))
 
 
 @click.group()
