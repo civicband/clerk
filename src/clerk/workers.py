@@ -274,7 +274,7 @@ def queue_ocr(fetcher, run_id, stage, ocr_backend, proceed=True) -> int:
         update_site_progress(conn, fetcher.subdomain, stage="ocr", stage_total=len(ocr_jobs))
 
         # Bulk insert all job tracking rows
-        track_jobs_bulk(conn, ocr_jobs, fetcher.subdomain, "ocr-page", "ocr")
+        track_jobs_bulk(conn, ocr_jobs, fetcher.subdomain, "ocr-page", "ocr", run_id=run_id)
 
         # Initialize atomic counters for OCR stage (even if 0 jobs)
         # This ensures the coordinator can trigger immediately for empty stages
@@ -335,7 +335,7 @@ def _attempt_coordinator_enqueue(subdomain, stage, run_id):
 
             # Track coordinator job
             with civic_db_connection() as conn:
-                track_job(conn, coord_job.id, subdomain, "ocr-coordinator", "ocr")
+                track_job(conn, coord_job.id, subdomain, "ocr-coordinator", "ocr", run_id=run_id)
 
             logger.log("Enqueued OCR coordinator job", coordinator_job_id=coord_job.id)
         else:
@@ -602,7 +602,7 @@ def ocr_complete_coordinator(subdomain, run_id):
 
         # Track in PostgreSQL
         with civic_db_connection() as conn:
-            track_job(conn, db_job.id, subdomain, "db-compilation", "compilation")
+            track_job(conn, db_job.id, subdomain, "db-compilation", "compilation", run_id=run_id)
         logger.log("Enqueued DB compilation job")
 
         duration = time.time() - start_time
@@ -739,7 +739,7 @@ def db_compilation_job(subdomain, run_id=None):
 
         # Track in PostgreSQL
         with civic_db_connection() as conn:
-            track_job(conn, job.id, subdomain, "deploy-site", "deploy")
+            track_job(conn, job.id, subdomain, "deploy-site", "deploy", run_id=run_id)
         logger.log("Enqueued deploy job", job_id=job.id)
 
         # Milestone: completed

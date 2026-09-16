@@ -7,7 +7,7 @@ from sqlalchemy import delete, insert, select, update
 from .models import job_tracking_table, site_progress_table
 
 
-def track_job(conn, rq_job_id, subdomain, job_type, stage):
+def track_job(conn, rq_job_id, subdomain, job_type, stage, run_id=None):
     """Track an RQ job in PostgreSQL for observability.
 
     Args:
@@ -16,18 +16,20 @@ def track_job(conn, rq_job_id, subdomain, job_type, stage):
         subdomain: Site subdomain
         job_type: Job type (fetch-site, ocr-page, etc.)
         stage: Processing stage (fetch, ocr, extraction, deploy)
+        run_id: Pipeline run identifier (optional)
     """
     stmt = insert(job_tracking_table).values(
         rq_job_id=rq_job_id,
         subdomain=subdomain,
         job_type=job_type,
         stage=stage,
+        run_id=run_id,
         created_at=datetime.now(UTC),
     )
     conn.execute(stmt)
 
 
-def track_jobs_bulk(conn, jobs, subdomain, job_type, stage):
+def track_jobs_bulk(conn, jobs, subdomain, job_type, stage, run_id=None):
     """Track multiple RQ jobs in PostgreSQL in a single bulk insert.
 
     This is much more efficient than calling track_job() in a loop,
@@ -39,6 +41,7 @@ def track_jobs_bulk(conn, jobs, subdomain, job_type, stage):
         subdomain: Site subdomain
         job_type: Job type (fetch-site, ocr-page, etc.)
         stage: Processing stage (fetch, ocr, extraction, deploy)
+        run_id: Pipeline run identifier (optional)
     """
     if not jobs:
         return
@@ -50,6 +53,7 @@ def track_jobs_bulk(conn, jobs, subdomain, job_type, stage):
             "subdomain": subdomain,
             "job_type": job_type,
             "stage": stage,
+            "run_id": run_id,
             "created_at": now,
         }
         for job in jobs

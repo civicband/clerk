@@ -72,6 +72,7 @@ job_tracking_table = Table(
     Column("subdomain", String, nullable=False, index=True),
     Column("job_type", String, nullable=False),
     Column("stage", String, nullable=True),
+    Column("run_id", String, nullable=True, index=True),
     Column("created_at", DateTime(timezone=True), server_default=func.now()),
 )
 
