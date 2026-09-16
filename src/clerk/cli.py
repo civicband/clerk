@@ -25,7 +25,9 @@ from .utils import pm
 
 STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
 
-tracer = trace.get_tracer(__name__)
+from opentelemetry_instrumentation_rq import RQInstrumentor
+
+RQInstrumentor().instrument()
 
 
 @click.group()
@@ -88,14 +90,8 @@ def worker(worker_type, num_workers, burst):
         def perform_job(self, job, queue) -> bool:
             """Override to add logging before and after fork happens."""
             # Call parent implementation (this will fork and execute job)
-            token = context.attach(context.Context())
-            try:
-                with tracer.start_as_current_span(f"job.{queue.name}"):
-                    result = super().perform_job(job, queue)
-                    return result
-            finally:
-                context.detach(token)
-            return False
+            result = super().perform_job(job, queue)
+            return result
 
     from .queue import (
         get_compilation_queue,
