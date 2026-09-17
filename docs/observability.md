@@ -81,13 +81,13 @@ Bare-metal fallback (per-worker servers, used only when `METRICS_PORT` is unset)
 
 ## Log shipping (Vector)
 
-Clerk emits one JSON object per log line on stdout. A Vector sidecar container (config: `deployment/vector/vector.toml`) ships those lines to VictoriaLogs:
+Clerk emits one JSON object per log line on stdout. A Vector container (config: `deployment/vector/vector.toml`) ships those lines to VictoriaLogs. The clerk `docker-compose.yml` includes a ready-to-use `vector` service: it mounts the config, reads the Docker socket, and requires `VICTORIALOGS_URL` in `.env` (see `.env.example`).
 
-1. **docker source** — collects container logs from the Docker daemon.
-2. **remap transform** — filters to clerk containers (container name must contain `clerk`), then flattens the JSON log line so every structured field is individually queryable in VictoriaLogs.
+1. **docker source** — collects container logs from the Docker daemon (host-wide socket; set `VICTORIALOGS_URL` before starting).
+2. **remap transform** — filters to clerk containers (container name must contain `clerk`; the compose gives clerk services explicit `container_name`s — `clerk-fetch`, `clerk-ocr`, `clerk-compilation`, `clerk-deploy`, `clerk-metrics` — so the filter doesn't depend on the compose project name), then flattens the JSON log line so every structured field is individually queryable in VictoriaLogs.
 3. **elasticsearch sink** — sends to VictoriaLogs' Elasticsearch-compatible ingest API.
 
-The endpoint defaults to `http://localhost:9428/insert/elasticsearch/` and can be overridden with the `VICTORIALOGS_URL` env var (bash-style default syntax: `${VICTORIALOGS_URL-http://localhost:9428}/insert/elasticsearch/`).
+`VICTORIALOGS_URL` must be reachable **from the host running the clerk containers** — `http://localhost:9428` only works when Vector runs alongside VictoriaLogs with host networking. If your Victoria stack binds ports to localhost only, route ingestion through vmauth or bind the ingest ports to the LAN.
 
 Field mapping (configured in the sink's `query` params):
 
