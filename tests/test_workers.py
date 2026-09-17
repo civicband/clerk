@@ -32,7 +32,6 @@ def test_db_compilation_job_accepts_run_id(mocker):
     mocker.patch("clerk.workers.build_db_from_text_internal")
     mocker.patch("clerk.workers.update_site_progress")
     mocker.patch("clerk.workers.get_deploy_queue")
-    mocker.patch("clerk.workers.track_job")
     mocker.patch("clerk.workers.update_page_count")
     mocker.patch("clerk.workers.rebuild_site_fts_internal")
     mocker.patch("os.path.exists", return_value=True)
@@ -59,7 +58,6 @@ def test_db_compilation_job_passes_run_id_to_deploy(mocker):
     mocker.patch("clerk.workers.civic_db_connection")
     mocker.patch("clerk.workers.build_db_from_text_internal")
     mocker.patch("clerk.workers.update_site_progress")
-    mocker.patch("clerk.workers.track_job")
     mocker.patch("clerk.workers.update_page_count")
     mocker.patch("clerk.workers.rebuild_site_fts_internal")
     mocker.patch("os.path.exists", return_value=True)
@@ -147,7 +145,6 @@ def test_fetch_site_job_logs_fetch_completed_with_metrics(mocker):
     mocker.patch("clerk.workers.get_fetcher")
     mocker.patch("clerk.workers.fetch_internal")
     mocker.patch("clerk.workers.update_site_progress")
-    mocker.patch("clerk.workers.track_job")
     mocker.patch("clerk.workers.queue_ocr", return_value=0)
 
     # Mock Path to return no PDFs (simplest case)
@@ -186,7 +183,6 @@ def test_fetch_site_job_passes_run_id_to_ocr_jobs(mocker):
     )
     mocker.patch("clerk.workers.create_site_progress")
     mocker.patch("clerk.workers.update_site_progress")
-    mocker.patch("clerk.workers.track_job")
     mocker.patch("clerk.workers.get_fetcher")
     mocker.patch("clerk.workers.fetch_internal")
     mocker.patch("clerk.workers.ClerkLogger")
@@ -208,9 +204,6 @@ def test_fetch_site_job_passes_run_id_to_ocr_jobs(mocker):
     mock_ocr_queue.prepare_data.return_value = mock_job_data
     mock_ocr_queue.enqueue_many.return_value = [mock_job]
     mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_ocr_queue)
-
-    # Mock track_jobs_bulk instead of track_job
-    mocker.patch("clerk.workers.track_jobs_bulk")
 
     # Mock compilation queue for coordinator
     mock_compilation_queue = mocker.MagicMock()
@@ -279,7 +272,6 @@ def test_ocr_complete_coordinator_accepts_run_id(mocker):
 
     mocker.patch("clerk.workers.civic_db_connection")
     mocker.patch("clerk.workers.update_site_progress")
-    mocker.patch("clerk.workers.track_job")
 
     # Mock txt directory verification
     mock_txt_dir = mocker.MagicMock()
@@ -462,9 +454,6 @@ def test_coordinator_resets_enqueued_flag(mock_site, tmp_path, monkeypatch, mock
     mock_deploy_queue.enqueue.return_value = mocker.MagicMock(id="deploy-job")
     mocker.patch("clerk.queue.get_deploy_queue", return_value=mock_deploy_queue)
 
-    # Mock job tracking to avoid database conflicts
-    mocker.patch("clerk.workers.track_job")
-
     # Run coordinator
     ocr_complete_coordinator(subdomain, run_id="test_run")
 
@@ -477,3 +466,134 @@ def test_coordinator_resets_enqueued_flag(mock_site, tmp_path, monkeypatch, mock
     assert site.current_stage == "compilation"  # Moved to compilation stage
     assert site.coordinator_enqueued is False  # Flag reset
     assert site.compilation_total == 1  # Next stage initialized
+
+
+class TestTraceWrapperRouting:
+    """Internal enqueues must use *_with_trace variants so spans carry baggage."""
+
+    def test_ocr_fan_out_enqueues_traced_wrapper(self, mocker, tmp_path):
+        """The OCR fan-out must enqueue ocr_document_job_with_trace, not the raw job."""
+        from clerk import workers
+
+        minutes_dir = tmp_path / "pdfs"
+        minutes_dir.mkdir()
+        (minutes_dir / "meeting1" / "2026-01-01.pdf").parent.mkdir(parents=True)
+        (minutes_dir / "meeting1" / "2026-01-01.pdf").touch()
+
+        mock_ocr_queue = mocker.patch("clerk.queue.get_ocr_queue").return_value
+        mock_ocr_queue.prepare_data.return_value = mocker.MagicMock()
+        mock_ocr_queue.enqueue_many.return_value = []
+
+        mocker.patch.object(workers, "get_env", side_effect=lambda key, default: default)
+        mocker.patch.object(workers, "civic_db_connection")
+        mocker.patch.object(workers, "update_site_progress")
+        mocker.patch.object(workers, "update_site")
+        mocker.patch.object(workers, "initialize_stage")
+
+        fetcher = mocker.MagicMock()
+        fetcher.subdomain = "test.civic.band"
+        fetcher.minutes_output_dir = minutes_dir
+        fetcher.agendas_output_dir = tmp_path / "no-agendas"
+        workers.queue_ocr(
+            fetcher, run_id="test_123_abc", stage="ocr", ocr_backend="tesseract", proceed=False
+        )
+
+        enqueued_fn = mock_ocr_queue.prepare_data.call_args[0][0]
+        assert enqueued_fn is workers.ocr_document_job_with_trace
+
+    def test_coordinator_enqueue_uses_traced_wrapper(self, mocker):
+        """The OCR-complete coordinator enqueue must route through the traced wrapper."""
+        from clerk import workers
+
+        mocker.patch.object(workers, "should_trigger_coordinator", return_value=True)
+        mocker.patch.object(workers, "claim_coordinator_enqueue", return_value=True)
+        mock_queue = mocker.patch("clerk.queue.get_compilation_queue").return_value
+        mock_queue.enqueue.return_value = mocker.MagicMock(id="coord-job")
+
+        workers._attempt_coordinator_enqueue("test.civic.band", "ocr", "test_123_abc")
+
+        enqueued_fn = mock_queue.enqueue.call_args[0][0]
+        assert enqueued_fn is workers.ocr_complete_coordinator_with_trace
+
+    def test_compilation_enqueue_uses_traced_wrapper(self, mocker, tmp_path):
+        """The coordinator's db-compilation enqueue must route through the traced wrapper."""
+        from clerk import workers
+
+        txt_dir = tmp_path / "test.civic.band" / "txt"
+        txt_dir.mkdir(parents=True)
+        (txt_dir / "meeting1" / "2026-01-01.txt").parent.mkdir(parents=True)
+        (txt_dir / "meeting1" / "2026-01-01.txt").touch()
+
+        def fake_get_env(key, default=None):
+            return str(tmp_path) if key == "STORAGE_DIR" else default
+
+        mocker.patch.object(workers, "get_env", side_effect=fake_get_env)
+        mocker.patch.object(workers, "civic_db_connection")
+        mock_conn = mocker.patch.object(
+            workers, "civic_db_connection"
+        ).return_value.__enter__.return_value
+        mock_conn.execute.return_value.fetchone.return_value = mocker.MagicMock(ocr_total=5)
+        mocker.patch.object(workers, "update_site")
+        mocker.patch.object(workers, "update")
+        mocker.patch.object(workers, "build_db_from_text_internal")
+        mocker.patch.object(workers, "update_page_count")
+        mocker.patch.object(workers, "get_site_by_subdomain")
+        mocker.patch.object(workers, "rebuild_site_fts_internal")
+        mocker.patch.object(workers.os.path, "exists", return_value=True)
+        mocker.patch.object(workers.os.path, "getsize", return_value=1024)
+        mock_db = mocker.patch("sqlite_utils.Database").return_value
+        mock_db.table_names.return_value = ["minutes", "agendas"]
+        mocker.patch("clerk.queue.get_deploy_queue")
+        mock_compilation_queue = mocker.patch("clerk.queue.get_compilation_queue").return_value
+        mock_compilation_queue.enqueue.return_value = mocker.MagicMock(id="comp-job")
+
+        workers.ocr_complete_coordinator("test.civic.band", run_id="test_123_abc")
+
+        enqueued_fn = mock_compilation_queue.enqueue.call_args[0][0]
+        assert enqueued_fn is workers.db_compilation_job_with_trace
+
+    def test_deploy_enqueue_uses_traced_wrapper(self, mocker, tmp_path):
+        """The compilation job's deploy enqueue must route through the traced wrapper."""
+        from clerk import workers
+
+        def fake_get_env(key, default=None):
+            return str(tmp_path) if key == "STORAGE_DIR" else default
+
+        mocker.patch.object(workers, "get_env", side_effect=fake_get_env)
+        mocker.patch.object(workers, "civic_db_connection")
+        mocker.patch.object(workers, "update_site")
+        mocker.patch.object(workers, "update")
+        mocker.patch.object(workers, "build_db_from_text_internal")
+        mocker.patch.object(workers, "update_page_count")
+        mocker.patch.object(workers, "get_site_by_subdomain")
+        mocker.patch.object(workers, "rebuild_site_fts_internal")
+        mocker.patch.object(workers, "update_site_progress")
+        mocker.patch.object(workers, "increment_stage_progress")
+        mocker.patch.object(workers.os.path, "exists", return_value=True)
+        mocker.patch.object(workers.os.path, "getsize", return_value=1024)
+        mock_db = mocker.patch("sqlite_utils.Database").return_value
+        mock_db.table_names.return_value = ["minutes", "agendas"]
+        mock_deploy_queue = mocker.patch.object(workers, "get_deploy_queue").return_value
+        mock_deploy_queue.enqueue.return_value = mocker.MagicMock(id="deploy-job")
+
+        workers.db_compilation_job("test.civic.band", run_id="test_123_abc")
+
+        enqueued_fn = mock_deploy_queue.enqueue.call_args[0][0]
+        assert enqueued_fn is workers.deploy_job_with_trace
+
+    def test_traced_wrappers_have_matching_signatures(self):
+        """Wrapper kwargs must exactly cover what enqueue sites pass."""
+        import inspect
+
+        from clerk import workers
+
+        for wrapper, raw in [
+            (workers.ocr_document_job_with_trace, workers.ocr_document_job),
+            (workers.ocr_complete_coordinator_with_trace, workers.ocr_complete_coordinator),
+            (workers.db_compilation_job_with_trace, workers.db_compilation_job),
+            (workers.deploy_job_with_trace, workers.deploy_job),
+            (workers.fetch_job_with_trace, workers.fetch_site_job),
+        ]:
+            raw_params = set(inspect.signature(raw).parameters)
+            wrapper_params = set(inspect.signature(wrapper).parameters)
+            assert wrapper_params == raw_params, wrapper.__name__

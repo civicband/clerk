@@ -9,8 +9,11 @@ import pytest
 import sqlite_utils
 from sqlalchemy import create_engine
 
+import clerk.telemetry
 from clerk.hookspecs import ClerkSpec
 from tests.mocks.mock_plugins import TestPlugin
+
+clerk.telemetry._configured = True
 
 
 def create_sites_table_with_schema(db_path):

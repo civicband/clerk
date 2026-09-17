@@ -4,6 +4,7 @@ This module provides the main CLI commands for managing civic data pipelines,
 including site creation, data fetching, OCR processing, and database operations.
 """
 
+import logging
 import os
 
 import click
@@ -14,6 +15,10 @@ from dotenv import find_dotenv, load_dotenv
 load_dotenv(find_dotenv())
 # ruff: noqa: E402
 
+from .telemetry import setup_telemetry
+
+setup_telemetry()
+
 from . import output
 from .db import db
 from .etl import etl
@@ -23,17 +28,6 @@ from .sheets import sheets
 from .utils import pm
 
 STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
-
-from opentelemetry_instrumentation_rq import RQInstrumentor
-
-RQInstrumentor().instrument()
-
-from opentelemetry import trace
-from opentelemetry.processor.baggage import BaggageSpanProcessor, ALLOW_ALL_BAGGAGE_KEYS
-
-_provider = trace.get_tracer_provider()
-if hasattr(_provider, "add_span_processor"):
-    _provider.add_span_processor(BaggageSpanProcessor(ALLOW_ALL_BAGGAGE_KEYS))
 
 
 @click.group()
@@ -48,7 +42,7 @@ if hasattr(_provider, "add_span_processor"):
     "--quiet",
     "-q",
     is_flag=True,
-    help="Suppress console output (logs still go to Loki)",
+    help="Suppress console output (logging is unaffected)",
 )
 @click.pass_context
 def cli(_, plugins_dir: str, quiet: bool):
@@ -94,10 +88,24 @@ def worker(worker_type, num_workers, burst):
         """Custom RQ Worker with pre-fork diagnostic logging."""
 
         def perform_job(self, job, queue) -> bool:
-            """Override to add logging before and after fork happens."""
-            # Call parent implementation (this will fork and execute job)
-            result = super().perform_job(job, queue)
-            return result
+            """Override to record job metrics, then delegate to RQ."""
+            import time
+
+            from .metrics import record_job_metrics
+
+            stage = queue.name
+            job_type = job.func_name
+            status = "failed"
+            start = time.monotonic()
+            try:
+                result = super().perform_job(job, queue)
+                status = "success" if result else "failed"
+                return result
+            finally:
+                try:
+                    record_job_metrics(stage, job_type, status, time.monotonic() - start)
+                except Exception:
+                    logging.getLogger(__name__).debug("Failed to record job metrics", exc_info=True)
 
     from .queue import (
         get_compilation_queue,
@@ -138,6 +146,17 @@ def worker(worker_type, num_workers, burst):
     queues = queue_map[worker_type]
     default_timeout = timeout_map[worker_type]
 
+    from .metrics import METRICS_PORTS, start_metrics_server
+
+    metrics_port = int(os.environ.get("METRICS_PORT", METRICS_PORTS[worker_type]))
+    if metrics_port > 0:
+        try:
+            start_metrics_server(metrics_port)
+        except OSError:
+            click.secho(
+                f"Warning: metrics port {metrics_port} unavailable, continuing", fg="yellow"
+            )
+
     if num_workers == 0:
         logger.log(message=f"Not starting workers for {worker_type}")
         return
@@ -159,6 +178,44 @@ def worker(worker_type, num_workers, burst):
             worker_class=DiagnosticWorker,
         )
         pool.start(burst=burst)
+
+
+@cli.command("metrics-exporter")
+@click.option(
+    "--port", "-p", type=int, default=None, help="Metrics port (default: $METRICS_PORT or 9800)"
+)
+def metrics_exporter(port):
+    """Serve one aggregated /metrics endpoint for all workers on this host.
+
+    Reads the shared PROMETHEUS_MULTIPROC_DIR written by worker processes.
+    Run one of these per machine instead of scraping per-worker endpoints.
+    """
+    import threading
+
+    from prometheus_client import start_http_server
+
+    from .metrics import build_aggregated_registry, sweep_dead_pid_files
+
+    mp_dir = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
+    if not mp_dir:
+        raise click.ClickException("PROMETHEUS_MULTIPROC_DIR must be set for the metrics exporter")
+    os.makedirs(mp_dir, exist_ok=True)
+    port = port or int(os.environ.get("METRICS_PORT", "9800"))
+    server, _ = start_http_server(port, registry=build_aggregated_registry(mp_dir))
+    click.echo(f"metrics exporter serving {mp_dir} on :{port}")
+
+    def sweep_loop():
+        import time
+
+        while True:
+            time.sleep(60)
+            try:
+                sweep_dead_pid_files(mp_dir)
+            except Exception:
+                logging.getLogger(__name__).debug("Metrics sweep failed", exc_info=True)
+
+    threading.Thread(target=sweep_loop, daemon=True).start()
+    threading.Event().wait()  # block forever
 
 
 cli.add_command(db)

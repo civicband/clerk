@@ -57,6 +57,10 @@ def generate_run_id(subdomain):
     return f"{subdomain}_{timestamp}_{random_suffix}"
 
 
+# Canonical list of all RQ queue names (single source of truth for metrics, etc.)
+QUEUE_NAMES = ["high", "fetch", "ocr", "compilation", "extraction", "deploy", "finance"]
+
+
 def get_high_queue():
     """Get high-priority queue (express lane)."""
     return Queue("high", connection=get_redis())

@@ -1,0 +1,37 @@
+# Ship clerk Docker container logs to VictoriaLogs.
+# Run with: vector --config /etc/vector/vector.toml
+data_dir = "/var/lib/vector"
+
+[sources.clerk_docker]
+type = "docker_logs"
+# exclude_containers is literal prefix matching, not regex
+exclude_containers = ["vector"]
+
+[transforms.clerk_logs]
+type = "remap"
+inputs = ["clerk_docker"]
+source = '''
+  if !contains(to_string(.container_name) ?? "", "clerk") {
+    abort
+  }
+  # Clerk emits JSON lines on stdout; flatten so each field is queryable
+  parsed, err = parse_json(to_string(.message) ?? "")
+  if err == null && is_object(parsed) {
+    . = merge(., parsed)
+  }
+  .host = get_hostname!()
+'''
+
+[sinks.vlogs]
+type = "elasticsearch"
+inputs = ["clerk_logs"]
+endpoints = ["${VICTORIALOGS_URL-http://localhost:9428}/insert/elasticsearch/"]
+api_version = "v8"
+compression = "gzip"
+healthcheck.enabled = false
+
+[sinks.vlogs.query]
+_msg_field = "message"
+_time_field = "timestamp"
+_stream_fields = "container_name,level,stage"
+# debug = "1"   # uncomment once to verify field mapping in VLogs logs

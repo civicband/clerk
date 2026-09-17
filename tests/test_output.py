@@ -2,6 +2,7 @@
 
 import json
 import logging
+from datetime import datetime
 
 from clerk import output
 from clerk.output import ClerkLogger, JsonFormatter
@@ -283,3 +284,67 @@ class TestJsonFormatter:
         assert "exception" in parsed
         assert "ValueError" in parsed["exception"]
         assert "Test error" in parsed["exception"]
+
+
+def _get_test_tracer():
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+
+    try:
+        trace.set_tracer_provider(TracerProvider())
+    except Exception:
+        pass
+    return trace.get_tracer("test")
+
+
+class TestTraceContext:
+    """Tests for trace context injection and ISO-8601 timestamps."""
+
+    def test_json_formatter_includes_trace_fields(self):
+        tracer = _get_test_tracer()
+        fmt = JsonFormatter()
+        rec = logging.LogRecord("t", logging.INFO, "p", 1, "hello", None, None)
+        with tracer.start_as_current_span("s") as span:
+            expected_trace = format(span.get_span_context().trace_id, "032x")
+            expected_span = format(span.get_span_context().span_id, "016x")
+            data = json.loads(fmt.format(rec))
+        assert data["trace_id"] == expected_trace
+        assert data["span_id"] == expected_span
+
+    def test_json_formatter_zero_trace_ids_without_active_span(self):
+        fmt = JsonFormatter()
+        rec = logging.LogRecord("t", logging.INFO, "p", 1, "hello", None, None)
+        data = json.loads(fmt.format(rec))
+        assert data["trace_id"] == "0" * 32
+        assert data["span_id"] == "0" * 16
+
+    def test_json_formatter_timestamp_is_iso8601_utc(self):
+        fmt = JsonFormatter()
+        rec = logging.LogRecord("t", logging.INFO, "p", 1, "hello", None, None)
+        data = json.loads(fmt.format(rec))
+        parsed = datetime.fromisoformat(data["timestamp"])
+        assert parsed.tzinfo is not None
+
+    def test_trace_context_filter_through_logging_pipeline(self):
+        import io
+
+        tracer = _get_test_tracer()
+        stream = io.StringIO()
+        handler = logging.StreamHandler(stream)
+        handler.setFormatter(JsonFormatter())
+        handler.addFilter(output.TraceContextFilter())
+        test_logger = logging.getLogger("trace_filter_test")
+        test_logger.handlers = [handler]
+        test_logger.setLevel(logging.INFO)
+        test_logger.propagate = False
+        try:
+            with tracer.start_as_current_span("s") as span:
+                expected_span = format(span.get_span_context().span_id, "016x")
+                test_logger.info("with span")
+            handler.flush()
+            data = json.loads(stream.getvalue().strip())
+        finally:
+            test_logger.handlers = []
+            test_logger.setLevel(logging.NOTSET)
+            test_logger.propagate = True
+        assert data["span_id"] == expected_span

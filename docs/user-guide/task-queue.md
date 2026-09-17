@@ -148,9 +148,6 @@ FETCH_WORKERS=2
 OCR_WORKERS=4
 EXTRACTION_WORKERS=2
 DEPLOY_WORKERS=1
-
-# Optional: Centralized Logging
-# LOKI_URL=http://localhost:3100/loki/api/v1/push
 ```
 
 ### Database Setup
@@ -168,9 +165,8 @@ clerk db current
 clerk db history
 ```
 
-The migrations create two tables:
+The migrations create one table:
 
-- **job_tracking**: Links RQ job IDs to sites for observability
 - **site_progress**: Tracks per-site progress through pipeline stages
 
 ## Running Workers

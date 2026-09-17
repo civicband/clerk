@@ -97,7 +97,8 @@ class TestPluginLoaderErrors:
     def test_fails_on_instantiation_error(self, plugins_dir):
         """Test that plugin instantiation errors cause failure."""
         bad_plugin = plugins_dir / "bad_init.py"
-        bad_plugin.write_text("""
+        bad_plugin.write_text(
+            """
 from clerk import hookimpl
 
 class BadPlugin:
@@ -107,7 +108,8 @@ class BadPlugin:
     @hookimpl
     def fetcher_class(self, label):
         return None
-""")
+"""
+        )
 
         with pytest.raises(click.ClickException, match="Error instantiating plugin"):
             load_plugins_from_directory(str(plugins_dir))
