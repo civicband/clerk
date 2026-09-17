@@ -110,7 +110,6 @@ def _instrumentors():
 
     return [
         ("rq", RQInstrumentor()),
-        ("redis", RedisInstrumentor()),
         # Covers PostgreSQL via SQLAlchemy engines. psycopg2 instrumentation is
         # deliberately skipped: it sits beneath SQLAlchemy and would duplicate spans.
         ("sqlalchemy", SQLAlchemyInstrumentor()),
