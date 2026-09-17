@@ -79,9 +79,9 @@ def update(ctx, next_site, all_years, skip_fetch, all_agendas):
             )
 
         if fetch_local:
-            from .workers import fetch_site_job
+            from .workers import fetch_job_with_trace
 
-            fetch_site_job(oldest_subdomain, generate_run_id(oldest_subdomain))
+            fetch_job_with_trace(oldest_subdomain, generate_run_id(oldest_subdomain))
         else:
             enqueue_job("fetch-site", oldest_subdomain, priority="normal")
         return
@@ -108,9 +108,9 @@ def update(ctx, next_site, all_years, skip_fetch, all_agendas):
             job_kwargs["skip_fetch"] = True
 
         if fetch_local:
-            from .workers import fetch_site_job
+            from .workers import fetch_job_with_trace
 
-            fetch_site_job(subdomain, run_id=generate_run_id(subdomain), **job_kwargs)
+            fetch_job_with_trace(subdomain, run_id=generate_run_id(subdomain), **job_kwargs)
         else:
             enqueue_job("fetch-site", subdomain, priority="high", **job_kwargs)
         return
@@ -175,9 +175,9 @@ def new(ctx):
     click.echo(f"Enqueueing new site {subdomain} with high priority")
     if ctx.obj["FETCH_LOCAL"]:
         from .queue import generate_run_id
-        from .workers import fetch_site_job
+        from .workers import fetch_job_with_trace
 
-        fetch_site_job(
+        fetch_job_with_trace(
             subdomain=subdomain,
             run_id=generate_run_id(subdomain),
             all_years=True,

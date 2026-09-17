@@ -184,7 +184,9 @@ def queue_ocr(fetcher, run_id, stage, ocr_backend, proceed=True) -> int:
         )
         pdf_files.extend(minutes_pdfs)
     else:
-        logger.log("Minutes PDF directory does not exist: %s", fetcher.minutes_output_dir)
+        logger.log(
+            "Minutes PDF directory does not exist", minutes_dir=str(fetcher.minutes_output_dir)
+        )
 
     # Collect agenda PDFs
     if agendas_dir.exists():
@@ -196,7 +198,9 @@ def queue_ocr(fetcher, run_id, stage, ocr_backend, proceed=True) -> int:
         )
         pdf_files.extend(agendas_pdfs)
     else:
-        logger.log("Agendas PDF directory does not exist: %s", fetcher.agendas_output_dir)
+        logger.log(
+            "Agendas PDF directory does not exist", agendas_dir=str(fetcher.agendas_output_dir)
+        )
 
     logger.log(
         "Total PDFs found for OCR",
@@ -251,7 +255,7 @@ def queue_ocr(fetcher, run_id, stage, ocr_backend, proceed=True) -> int:
             "proceed": proceed,
         }
         job_data = ocr_queue.prepare_data(
-            ocr_document_job,
+            ocr_document_job_with_trace,
             kwargs=params,
             timeout=ocr_timeout_seconds,
             description=f"OCR ({ocr_backend}): {pdf_path}",
@@ -321,7 +325,7 @@ def _attempt_coordinator_enqueue(subdomain, stage, run_id):
             compilation_queue = get_compilation_queue()
             with detached_trace():
                 coord_job = compilation_queue.enqueue(
-                    ocr_complete_coordinator,
+                    ocr_complete_coordinator_with_trace,
                     subdomain=subdomain,
                     run_id=run_id,
                     job_timeout="5m",
@@ -342,6 +346,11 @@ def ocr_document_job_with_trace(
         )
 
 
+def ocr_complete_coordinator_with_trace(subdomain, run_id):
+    with job_baggage(subdomain, run_id, "ocr"), tracer.start_as_current_span("ocr_coordinator"):
+        return ocr_complete_coordinator(subdomain, run_id)
+
+
 def ocr_document_job(subdomain, pdf_path, backend="tesseract", run_id=None, proceed=True):
     """RQ job: OCR a single PDF page using atomic counters.
 
@@ -351,40 +360,21 @@ def ocr_document_job(subdomain, pdf_path, backend="tesseract", run_id=None, proc
         backend: OCR backend (tesseract or vision)
         run_id: Pipeline run identifier
     """
-    import sys
-    import traceback
-
-    # Log IMMEDIATELY before any imports that might crash
-    try:
-        print(f"[EARLY] ocr_document_job starting: {subdomain}, {pdf_path}", file=sys.stderr)
-        sys.stderr.flush()
-    except Exception:
-        pass
-
-    try:
-        from rq import get_current_job
-
-        print("[EARLY] imports successful", file=sys.stderr)
-        sys.stderr.flush()
-    except Exception as e:
-        # Crash during import - log with minimal dependencies
-        print(f"[EARLY] Import failed: {type(e).__name__}: {e}", file=sys.stderr)
-        print(f"[EARLY] Traceback: {traceback.format_exc()}", file=sys.stderr)
-        sys.stderr.flush()
-        raise
-
     stage = "ocr"
     start_time = time.time()
     path_obj = Path(pdf_path)
 
     # Get RQ job ID for correlation with worker logs
+    from rq import get_current_job
+
     current_job = get_current_job()
     rq_job_id = current_job.id if current_job else "unknown"
 
-    logger = ClerkLogger(subdomain=subdomain, stage=stage, job_id=rq_job_id, backend=backend)
+    logger = ClerkLogger(
+        subdomain=subdomain, run_id=run_id, stage=stage, job_id=rq_job_id, backend=backend
+    )
 
     logger.log("ocr_started", pdf_name=path_obj.name)
-    sys.stderr.flush()  # Ensure early log reaches disk
 
     try:
         # Get site to create a fetcher instance
@@ -582,7 +572,7 @@ def ocr_complete_coordinator(subdomain, run_id):
 
         with detached_trace():
             compilation_queue.enqueue(
-                db_compilation_job,
+                db_compilation_job_with_trace,
                 subdomain=subdomain,
                 run_id=run_id,
                 job_timeout="30m",
@@ -645,7 +635,7 @@ def db_compilation_job(subdomain, run_id=None):
             )
         else:
             txt_files = []
-            logger.log("Text directory does not exist: %s", str(txt_dir))
+            logger.log("Text directory does not exist", directory=str(txt_dir))
 
         # Update progress counter
         with civic_db_connection() as conn:
@@ -718,7 +708,7 @@ def db_compilation_job(subdomain, run_id=None):
         deploy_queue = get_deploy_queue()
         with detached_trace():
             job = deploy_queue.enqueue(
-                deploy_job,
+                deploy_job_with_trace,
                 subdomain=subdomain,
                 run_id=run_id,
                 job_timeout="10m",

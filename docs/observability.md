@@ -99,13 +99,13 @@ Field mapping (configured in the sink's `query` params):
 
 - **Trace → logs**: In the Jaeger datasource settings, configure "Trace to logs" targeting the VictoriaLogs datasource with a LogsQL query like `{run_id="${__span.tags.clerk.run_id}"}`. NOTE: the exact `${__span.tags...}` variable syntax varies by Grafana version — verify against your Grafana version's docs.
 - **Logs → traces**: In the VictoriaLogs datasource settings, add a **derived field**: field `trace_id` → internal link to Explore with the Jaeger datasource, `traceID=${__value.raw}`.
-- Every log line carries `trace_id`/`span_id` (32/16 hex chars, zeros when no active span) injected from the active OTel span, plus `run_id`, `subdomain`, `stage`, and `job_id`.
+- Every log line carries `trace_id`/`span_id` (32/16 hex chars, zeros when no active span) injected from the active OTel span. Job loggers additionally attach `run_id`, `subdomain`, `stage`, and `job_id` where those are in scope.
 
 ## Stringing a run together by run_id
 
 `run_id` format: `{subdomain}_{unix_timestamp}_{6-char-random}` (generated in `src/clerk/queue.py::generate_run_id`). Two correlation paths:
 
-1. **Traces**: every span in every job of a run carries `clerk.run_id` (OTel baggage, stamped by `BaggageSpanProcessor`). In Explore with the Jaeger/VictoriaTraces datasource, search spans by tag `clerk.run_id=<run_id>`. Each job is its own trace (fetch is the root; the OCR fan-out intentionally breaks into separate traces via `detached_trace()`), so a "run" = a set of traces sharing the baggage attribute.
+1. **Traces**: every job span and its child spans (redis/sqlalchemy/sqlite3/httpx) carry `clerk.run_id` (OTel baggage, stamped by `BaggageSpanProcessor` on span start). In Explore with the Jaeger/VictoriaTraces datasource, search spans by tag `clerk.run_id=<run_id>`. Each job is its own trace (fetch is the root; the OCR fan-out intentionally breaks into separate traces via `detached_trace()`), so a "run" = a set of traces sharing the baggage attribute.
 2. **Logs**: LogsQL in VictoriaLogs Explore:
 
    ```
