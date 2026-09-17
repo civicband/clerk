@@ -16,6 +16,8 @@ VictoriaTraces implements the Jaeger Query JSON API, so Grafana's **Jaeger datas
 
 Tracing is configured in `src/clerk/telemetry.py`. `setup_telemetry()` runs at CLI import time and is **never fatal if VictoriaTraces is down** — the `BatchSpanProcessor` simply drops spans it cannot export, so workers keep running.
 
+**Fork safety:** RQ forks a child process per job, and OpenTelemetry's `BatchSpanProcessor` background thread does not survive `fork()` — job spans would silently never be exported. `setup_telemetry()` registers an `os.register_at_fork` hook that swaps in a fresh exporter + batch processor in every forked child.
+
 Auto-instrumentation supplies child spans for RQ job dispatch, Redis, PostgreSQL (via SQLAlchemy), sqlite-utils per-site DBs (via sqlite3), and httpx. psycopg2 is deliberately not instrumented separately — it sits beneath SQLAlchemy and would duplicate query spans.
 
 - `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` — OTLP/HTTP endpoint for trace export. Default: `http://localhost:10428/insert/opentelemetry/v1/traces`. Set per-deployment in `.env`; the docker-compose default is `http://victoria-traces:10428/insert/opentelemetry/v1/traces`.
