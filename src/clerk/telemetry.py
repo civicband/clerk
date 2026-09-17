@@ -1,5 +1,6 @@
 """OpenTelemetry setup: traces exported to VictoriaTraces via OTLP/HTTP."""
 
+import atexit
 import logging
 import os
 from typing import Any
@@ -65,20 +66,49 @@ def setup_telemetry(endpoint: str | None = None, service_name: str | None = None
     except Exception:
         logger.warning("Instrumentor import failed; continuing without tracing")
 
+    if hasattr(os, "register_at_fork"):
+        os.register_at_fork(after_in_child=_rearm_after_fork)
+
     _configured = True
     return trace.get_tracer_provider()
 
 
+def _rearm_after_fork(provider=None) -> None:
+    """Give a forked child process a working export pipeline.
+
+    Threads do not survive fork(): a BatchSpanProcessor inherited from the
+    parent has no worker thread, so spans queued in the child are never
+    exported — and the inherited exporter may hold connection-pool locks
+    seized at fork time. Swap every stale batch processor for a fresh one
+    with a fresh exporter; the child's spans (and its atexit flush) then
+    work. Registration happens once in setup_telemetry().
+    """
+    if provider is None:
+        provider = trace.get_tracer_provider()
+    if not isinstance(provider, TracerProvider):
+        return
+    multi = getattr(provider, "_active_span_processor", None)
+    if multi is None or not hasattr(multi, "_span_processors"):
+        return
+    keep = []
+    for proc in multi._span_processors:
+        if isinstance(proc, BatchSpanProcessor):
+            # Its worker thread died in the fork; queued spans are lost, and
+            # its atexit flush would use the poisoned parent exporter.
+            atexit.unregister(proc.shutdown)
+        else:
+            keep.append(proc)
+    multi._span_processors = (*keep, BatchSpanProcessor(build_span_exporter()))
+
+
 def _instrumentors():
     from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-    from opentelemetry.instrumentation.redis import RedisInstrumentor
     from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
     from opentelemetry.instrumentation.sqlite3 import SQLite3Instrumentor
     from opentelemetry_instrumentation_rq import RQInstrumentor
 
     return [
         ("rq", RQInstrumentor()),
-        ("redis", RedisInstrumentor()),
         # Covers PostgreSQL via SQLAlchemy engines. psycopg2 instrumentation is
         # deliberately skipped: it sits beneath SQLAlchemy and would duplicate spans.
         ("sqlalchemy", SQLAlchemyInstrumentor()),

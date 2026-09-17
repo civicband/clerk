@@ -182,8 +182,97 @@ def test_setup_telemetry_survives_instrumentors_import_failure(monkeypatch):
 
 
 @pytest.mark.unit
-def test_instrumentor_set_covers_rq_redis_sqlalchemy_sqlite3_httpx():
+def test_instrumentor_set_covers_rq_sqlalchemy_sqlite3_httpx():
     import clerk.telemetry as telemetry
 
     names = [name for name, _ in telemetry._instrumentors()]
-    assert names == ["rq", "redis", "sqlalchemy", "sqlite3", "httpx"]
+    assert names == ["rq", "sqlalchemy", "sqlite3", "httpx"]
+
+
+@pytest.mark.unit
+def test_rearm_after_fork_swaps_stale_batch_processor(monkeypatch):
+    """Stale BatchSpanProcessors are dropped, others kept, a fresh one added."""
+    from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
+
+    import clerk.telemetry as telemetry
+
+    class FakeExporter(SpanExporter):
+        def export(self, spans):
+            return SpanExportResult.SUCCESS
+
+        def shutdown(self):
+            return SpanExportResult.SUCCESS
+
+    provider = telemetry.build_provider(endpoint="http://test:10428/x")
+    stale_batch = provider._active_span_processor._span_processors[1]  # the batch one
+
+    monkeypatch.setattr(telemetry, "build_span_exporter", lambda endpoint=None: FakeExporter())
+    unregister_calls = []
+    monkeypatch.setattr(telemetry.atexit, "unregister", unregister_calls.append)
+
+    telemetry._rearm_after_fork(provider)
+
+    processors = provider._active_span_processor._span_processors
+    assert stale_batch not in processors
+    assert isinstance(processors[0], telemetry.BaggageSpanProcessor)
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+    assert isinstance(processors[1], BatchSpanProcessor)
+    assert len(processors) == 2
+    assert unregister_calls == [stale_batch.shutdown]
+
+
+@pytest.mark.unit
+def test_setup_telemetry_registers_fork_handler(monkeypatch, no_global_side_effects):
+    import clerk.telemetry as telemetry
+
+    registered = {}
+    monkeypatch.setattr(
+        telemetry.os,
+        "register_at_fork",
+        lambda after_in_child=None: registered.update(handler=after_in_child),
+    )
+    monkeypatch.setattr(telemetry, "_configured", False)
+    telemetry.setup_telemetry()
+    assert registered["handler"] is telemetry._rearm_after_fork
+
+
+@pytest.mark.skipif(not hasattr(__import__("os"), "fork"), reason="requires fork")
+@pytest.mark.unit
+def test_forked_child_exports_spans_after_fork(monkeypatch):
+    """End-to-end proof: a span ended in a forked child reaches the exporter."""
+    import os
+
+    from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
+
+    import clerk.telemetry as telemetry
+
+    read_fd, write_fd = os.pipe()
+
+    class PipeExporter(SpanExporter):
+        def export(self, spans):
+            os.write(write_fd, str(len(spans)).encode())
+            return SpanExportResult.SUCCESS
+
+        def shutdown(self):
+            return SpanExportResult.SUCCESS
+
+    monkeypatch.setattr(telemetry, "build_span_exporter", lambda endpoint=None: PipeExporter())
+    provider = telemetry.build_provider(endpoint="http://test:10428/x")
+
+    pid = os.fork()
+    if pid == 0:
+        # child: the fresh batch processor must export the span via
+        # force_flush even though the inherited worker thread is gone
+        try:
+            telemetry._rearm_after_fork(provider)
+            with provider.get_tracer("fork-test").start_as_current_span("child-span"):
+                pass
+            provider.force_flush()
+        finally:
+            os._exit(0)
+
+    os.close(write_fd)
+    data = os.read(read_fd, 64)
+    os.waitpid(pid, 0)
+    assert data == b"1"
