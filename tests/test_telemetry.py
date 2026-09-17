@@ -182,11 +182,11 @@ def test_setup_telemetry_survives_instrumentors_import_failure(monkeypatch):
 
 
 @pytest.mark.unit
-def test_instrumentor_set_covers_rq_redis_sqlalchemy_sqlite3_httpx():
+def test_instrumentor_set_covers_rq_sqlalchemy_sqlite3_httpx():
     import clerk.telemetry as telemetry
 
     names = [name for name, _ in telemetry._instrumentors()]
-    assert names == ["rq", "redis", "sqlalchemy", "sqlite3", "httpx"]
+    assert names == ["rq", "sqlalchemy", "sqlite3", "httpx"]
 
 
 @pytest.mark.unit

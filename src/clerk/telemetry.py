@@ -103,7 +103,6 @@ def _rearm_after_fork(provider=None) -> None:
 
 def _instrumentors():
     from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-    from opentelemetry.instrumentation.redis import RedisInstrumentor
     from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
     from opentelemetry.instrumentation.sqlite3 import SQLite3Instrumentor
     from opentelemetry_instrumentation_rq import RQInstrumentor
