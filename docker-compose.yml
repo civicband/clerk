@@ -18,6 +18,7 @@ x-common-settings: &common-settings
 services:
   redis:
     image: redis:7-alpine
+    container_name: redis
     ports:
       - 6379:6379
     networks:
@@ -25,26 +26,31 @@ services:
 
   fetch_worker:
     <<: *common-settings
+    container_name: clerk-fetch
     command: clerk worker fetch -n ${FETCH_WORKERS}
     pid: "host"
 
   ocr_worker:
     <<: *common-settings
+    container_name: clerk-ocr
     command: clerk worker ocr -n ${OCR_WORKERS}
     pid: "host"
 
   compilation_worker:
     <<: *common-settings
+    container_name: clerk-compilation
     command: clerk worker compilation -n ${COMPILATION_WORKERS}
     pid: "host"
 
   deploy_worker:
     <<: *common-settings
+    container_name: clerk-deploy
     command: clerk worker deploy -n ${DEPLOY_WORKERS}
     pid: "host"
 
   metrics:
     <<: *common-settings
+    container_name: clerk-metrics
     command: clerk metrics-exporter
     pid: "host"
     environment:
@@ -55,6 +61,22 @@ services:
       - PROMETHEUS_MULTIPROC_DIR=/prom
     ports:
       - "9800:9800"
+
+  vector:
+    image: timberio/vector:0.46.0-distroless-libc # check for newer tag
+    container_name: vector
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - VECTOR_DANGEROUSLY_ALLOW_ENV_VAR_INTERPOLATION=true
+    command: ["--config", "/etc/vector/vector.toml"]
+    volumes:
+      - ./deployment/vector/vector.toml:/etc/vector/vector.toml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    # don't collect vector's own logs into a loop
+    logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "3" }
 
 networks:
   clerk:
