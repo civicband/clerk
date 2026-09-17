@@ -33,6 +33,7 @@ from clerk.ocr_utils import (
     retry_on_transient,
 )
 from clerk.output import logger
+from clerk.telemetry import traced
 from clerk.utils import STORAGE_DIR, build_db_from_text_internal, pm
 
 # Optional PDF dependencies
@@ -232,6 +233,7 @@ def _safe_pdf_to_images(
         result_queue.join_thread()
 
 
+@traced("fetch.internal")
 def fetch_internal(subdomain: str, fetcher: Fetcher):
     from .db import civic_db_connection, update_site
 
@@ -557,6 +559,7 @@ class Fetcher:
                     output_path=output_path,
                 )
 
+    @traced("fetch.docs_from_page")
     def fetch_docs_from_page(
         self, page_number: int, meeting: str, date: str, prefix: str
     ) -> str | None:
@@ -600,6 +603,7 @@ class Fetcher:
                     return doc_id
         return None
 
+    @traced("fetch.make_html")
     def make_html_from_pdf(self, date: str, doc_path: str) -> None:
         # TODO: assert
         html_dir = os.path.join(self.docs_html_dir, date)
@@ -615,6 +619,7 @@ class Fetcher:
             stderr=subprocess.DEVNULL,
         )
 
+    @traced("ocr.all")
     def ocr(self, backend: str = "tesseract") -> None:
         """Run OCR on both minutes and agendas.
 
@@ -638,6 +643,7 @@ class Fetcher:
             duration_seconds=round(elapsed_time, 2),
         )
 
+    @traced("transform")
     def transform(self) -> None:
         build_db_from_text_internal(self.subdomain)
         self.assert_site_db_exists()
@@ -656,6 +662,7 @@ class Fetcher:
             previous_pages=self.previous_page_count,
         )
 
+    @traced("ocr.do")
     def do_ocr(self, prefix: str = "", backend: str = "tesseract") -> None:
         """Run OCR on all PDFs in the directory.
 

@@ -32,6 +32,7 @@ from .queue_db import (
     update_site_progress,
 )
 from .settings import get_env
+from .telemetry import traced
 from .utils import build_db_from_text_internal, update_page_count
 
 tracer = trace.get_tracer("clerk")
@@ -162,6 +163,7 @@ def fetch_site_job(
         raise
 
 
+@traced("ocr.queue")
 def queue_ocr(fetcher, run_id, stage, ocr_backend, proceed=True) -> int:
     from .queue import get_ocr_queue
 

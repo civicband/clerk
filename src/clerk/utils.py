@@ -14,6 +14,7 @@ import sqlite_utils
 
 from .hookspecs import ClerkSpec
 from .output import logger
+from .telemetry import traced
 
 # Set to 4 or 6 after running verify_ids.py. Do not guess.
 LEGACY_VARIANT = 4
@@ -282,6 +283,7 @@ def assert_db_exists():
     return engine
 
 
+@traced("db.build_table")
 def build_table_from_text(
     subdomain,
     txt_dir,
@@ -403,6 +405,7 @@ def build_table_from_text(
     )
 
 
+@traced("db.build")
 def build_db_from_text_internal(subdomain):
     """Build meetings database from text files.
 
@@ -447,6 +450,7 @@ def build_db_from_text_internal(subdomain):
     logger.log(f"Database build completed elapsed_time={elapsed_time:.2f}")
 
 
+@traced("db.update_page_count")
 def update_page_count(subdomain):
     from .db import civic_db_connection, update_site
 

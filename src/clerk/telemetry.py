@@ -2,7 +2,9 @@
 
 import logging
 import os
-from typing import Any
+from collections.abc import Callable
+from functools import wraps
+from typing import Any, ParamSpec, TypeVar
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -16,6 +18,28 @@ logger = logging.getLogger(__name__)
 DEFAULT_TRACES_ENDPOINT = "http://localhost:10428/insert/opentelemetry/v1/traces"
 
 _configured = False
+
+P = ParamSpec("P")
+T = TypeVar("T")
+
+
+def traced(name: str) -> Callable[[Callable[P, T]], Callable[P, T]]:
+    """Run the wrapped function inside a span named `name`.
+
+    The tracer is resolved per call so the decorator works regardless of
+    when the global TracerProvider is configured. Exceptions are recorded
+    on the span by start_as_current_span and re-raised.
+    """
+
+    def decorator(func: Callable[P, T]) -> Callable[P, T]:
+        @wraps(func)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+            with trace.get_tracer("clerk").start_as_current_span(name):
+                return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
 
 
 def build_resource(service_name: str | None = None) -> Resource:
