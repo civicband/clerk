@@ -190,6 +190,63 @@ def test_instrumentor_set_covers_rq_sqlalchemy_sqlite3_httpx():
 
 
 @pytest.mark.unit
+def test_traced_decorator_creates_span(monkeypatch):
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(telemetry.trace, "get_tracer", lambda _name: provider.get_tracer("test"))
+
+    @telemetry.traced("test.span")
+    def do_work(value):
+        return value + 1
+
+    assert do_work(1) == 2
+
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "test.span"
+
+
+@pytest.mark.unit
+def test_traced_decorator_records_exception_and_reraises(monkeypatch):
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+    from opentelemetry.trace import StatusCode
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(telemetry.trace, "get_tracer", lambda _name: provider.get_tracer("test"))
+
+    @telemetry.traced("test.fail")
+    def boom():
+        raise ValueError("boom")
+
+    with pytest.raises(ValueError, match="boom"):
+        boom()
+
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "test.fail"
+    assert spans[0].status.status_code == StatusCode.ERROR
+
+
+@pytest.mark.unit
+def test_traced_decorator_preserves_function_metadata():
+    @telemetry.traced("test.meta")
+    def documented():
+        """Docstring."""
+
+    assert documented.__name__ == "documented"
+    assert documented.__doc__ == "Docstring."
+
+
+@pytest.mark.unit
 def test_rearm_after_fork_swaps_stale_batch_processor(monkeypatch):
     """Stale BatchSpanProcessors are dropped, others kept, a fresh one added."""
     from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
