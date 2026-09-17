@@ -211,3 +211,11 @@ def test_queue_depth_collector_survives_redis_outage(monkeypatch):
     collector = QueueDepthCollector(queue_names=["fetch"], count_fn=redis_outage)
     families = list(collector.collect())  # must not raise SystemExit
     assert families[0].samples == []
+
+
+@pytest.mark.unit
+def test_queue_names_is_sourced_from_queue_module():
+    import clerk.metrics as metrics
+    import clerk.queue as queue
+
+    assert metrics.QUEUE_NAMES is queue.QUEUE_NAMES

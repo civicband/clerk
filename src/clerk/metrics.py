@@ -13,6 +13,8 @@ from prometheus_client import CollectorRegistry, Counter, Histogram
 from prometheus_client.core import GaugeMetricFamily
 from prometheus_client.multiprocess import MultiProcessCollector
 
+from .queue import QUEUE_NAMES
+
 logger = logging.getLogger(__name__)
 
 # Identifies which worker container wrote a metric sample. In Docker,
@@ -26,8 +28,6 @@ METRICS_PORTS = {
     "extraction": 9804,
     "deploy": 9805,
 }
-
-QUEUE_NAMES = ["high", "fetch", "ocr", "compilation", "extraction", "deploy", "finance"]
 
 
 def configure_multiprocess_dir() -> str:

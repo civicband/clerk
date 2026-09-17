@@ -73,11 +73,16 @@ def _instrumentors():
     from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
     from opentelemetry.instrumentation.redis import RedisInstrumentor
     from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+    from opentelemetry.instrumentation.sqlite3 import SQLite3Instrumentor
     from opentelemetry_instrumentation_rq import RQInstrumentor
 
     return [
         ("rq", RQInstrumentor()),
         ("redis", RedisInstrumentor()),
+        # Covers PostgreSQL via SQLAlchemy engines. psycopg2 instrumentation is
+        # deliberately skipped: it sits beneath SQLAlchemy and would duplicate spans.
         ("sqlalchemy", SQLAlchemyInstrumentor()),
+        # Covers sqlite-utils per-site DBs (meetings.db inserts, FTS rebuilds).
+        ("sqlite3", SQLite3Instrumentor()),
         ("httpx", HTTPXClientInstrumentor()),
     ]
