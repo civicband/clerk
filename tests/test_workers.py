@@ -583,6 +583,7 @@ def test_queue_ocr_initializes_stage_before_enqueue(mocker, tmp_path, monkeypatc
     mocker.patch("clerk.workers.ClerkLogger")
 
     order = []
+    mocker.patch("clerk.workers.civic_db_connection")
     mocker.patch(
         "clerk.workers.initialize_stage",
         side_effect=lambda *a, **k: order.append("initialize"),

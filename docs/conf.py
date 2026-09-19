@@ -31,7 +31,7 @@ myst_enable_extensions = [
 # Templates and static files
 templates_path = ["_templates"]
 html_static_path = ["_static"]
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "superpowers/plans/*"]
 
 # Suppress warnings from historical plan documents
 suppress_warnings = [
