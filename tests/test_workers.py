@@ -468,6 +468,138 @@ def test_coordinator_resets_enqueued_flag(mock_site, tmp_path, monkeypatch, mock
     assert site.compilation_total == 1  # Next stage initialized
 
 
+def _make_coordinator_site(tmp_path, monkeypatch, subdomain="test-site"):
+    """Create a site in a temp DB initialized with ocr_total=0 and claimed coordinator."""
+    from sqlalchemy import create_engine
+
+    from clerk.db import civic_db_connection, upsert_site
+    from clerk.models import metadata
+
+    db_path = tmp_path / "civic.db"
+    engine = create_engine(f"sqlite:///{db_path}")
+    metadata.create_all(engine)
+    monkeypatch.setattr("clerk.db.get_civic_db", lambda: engine)
+
+    with civic_db_connection() as conn:
+        upsert_site(
+            conn,
+            {
+                "subdomain": subdomain,
+                "name": "Test Site",
+                "state": "CA",
+                "kind": "city-council",
+                "scraper": "test_scraper",
+                "status": "needs_ocr",
+            },
+        )
+    return engine
+
+
+def test_coordinator_defers_when_ocr_jobs_still_pending(tmp_path, monkeypatch, mocker):
+    """ocr_total==0 with pending OCR jobs must not mark no_documents.
+
+    The old race could run the coordinator before initialize_stage committed,
+    making ocr_total read as 0 while OCR jobs were queued. The coordinator
+    must defer instead of killing the site, and release its claim so the
+    pending jobs can re-trigger it.
+    """
+    from sqlalchemy import select
+
+    from clerk.db import civic_db_connection
+    from clerk.models import sites_table
+    from clerk.pipeline_state import claim_coordinator_enqueue, initialize_stage
+    from clerk.workers import ocr_complete_coordinator
+
+    subdomain = "test-site"
+    _make_coordinator_site(tmp_path, monkeypatch, subdomain)
+
+    # Simulate the race: coordinator claimed, ocr_total still 0, jobs queued
+    initialize_stage(subdomain, "ocr", total_jobs=0)
+    claim_coordinator_enqueue(subdomain)
+
+    monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+    mocker.patch("clerk.workers.has_pending_ocr_jobs", return_value=True)
+
+    ocr_complete_coordinator(subdomain, run_id="race_run")
+
+    with civic_db_connection() as conn:
+        site = conn.execute(
+            select(sites_table).where(sites_table.c.subdomain == subdomain)
+        ).fetchone()
+
+    assert site.current_stage == "ocr"  # Not force-completed
+    assert site.status != "no_documents"  # Site not marked dead
+    assert site.coordinator_enqueued is False  # Claim released for re-trigger
+
+
+def test_coordinator_no_documents_resets_enqueued_flag(tmp_path, monkeypatch, mocker):
+    """Legitimate no-documents case marks the site but releases the claim."""
+    from sqlalchemy import select
+
+    from clerk.db import civic_db_connection
+    from clerk.models import sites_table
+    from clerk.pipeline_state import claim_coordinator_enqueue, initialize_stage
+    from clerk.workers import ocr_complete_coordinator
+
+    subdomain = "test-site"
+    _make_coordinator_site(tmp_path, monkeypatch, subdomain)
+
+    initialize_stage(subdomain, "ocr", total_jobs=0)
+    claim_coordinator_enqueue(subdomain)
+
+    monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+    mocker.patch("clerk.workers.has_pending_ocr_jobs", return_value=False)
+
+    ocr_complete_coordinator(subdomain, run_id="empty_run")
+
+    with civic_db_connection() as conn:
+        site = conn.execute(
+            select(sites_table).where(sites_table.c.subdomain == subdomain)
+        ).fetchone()
+
+    assert site.current_stage == "completed"
+    assert site.status == "no_documents"
+    assert site.coordinator_enqueued is False  # Claim released for future fetches
+
+
+def test_queue_ocr_initializes_stage_before_enqueue(mocker, tmp_path, monkeypatch):
+    """Stage counters must be committed before OCR jobs go live in Redis.
+
+    Enqueueing first lets fast workers finish inside the window before
+    initialize_stage commits, so their counter increments get wiped and the
+    coordinator can never trigger.
+    """
+    from clerk import workers
+
+    fetcher = mocker.MagicMock()
+    fetcher.subdomain = "test-site"
+    fetcher.minutes_output_dir = tmp_path / "pdfs"
+    fetcher.agendas_output_dir = tmp_path / "_agendas_pdfs"
+    fetcher.minutes_output_dir.mkdir()
+    (fetcher.minutes_output_dir / "2024-01-01.pdf").write_bytes(b"%PDF-1.4 test")
+
+    monkeypatch.setenv("DEFAULT_OCR_BACKEND", "tesseract")
+    monkeypatch.setenv("OCR_JOB_TIMEOUT", "20m")
+    mocker.patch("clerk.workers.ClerkLogger")
+
+    order = []
+    mocker.patch(
+        "clerk.workers.initialize_stage",
+        side_effect=lambda *a, **k: order.append("initialize"),
+    )
+    mocker.patch("clerk.workers.update_site_progress")
+    mocker.patch("clerk.workers.update_site")
+
+    mock_queue = mocker.MagicMock()
+    mock_queue.prepare_data.side_effect = lambda *a, **k: {"prepared": True}
+    mock_queue.enqueue_many.side_effect = lambda jobs: order.append("enqueue") or []
+    mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_queue)
+
+    workers.queue_ocr(fetcher, run_id="run_1", stage="ocr", ocr_backend="tesseract")
+
+    assert order == ["initialize", "enqueue"]
+
+
 class TestTraceWrapperRouting:
     """Internal enqueues must use *_with_trace variants so spans carry baggage."""
 

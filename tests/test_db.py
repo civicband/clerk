@@ -254,6 +254,45 @@ class TestErrorHandling:
         assert not call_args.startswith("postgres://")
 
 
+class TestEngineCaching:
+    """get_civic_db must cache engines per DATABASE_URL instead of reconnecting per call."""
+
+    def test_same_url_returns_cached_engine(self, monkeypatch, tmp_path):
+        """Repeated get_civic_db calls with the same URL return the same engine."""
+        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/cached.db")
+
+        engine1 = get_civic_db()
+        engine2 = get_civic_db()
+
+        assert engine1 is engine2
+
+    def test_different_url_returns_new_engine(self, monkeypatch, tmp_path):
+        """A changed DATABASE_URL must produce a different engine."""
+        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/first.db")
+        engine1 = get_civic_db()
+
+        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/second.db")
+        engine2 = get_civic_db()
+
+        assert engine1 is not engine2
+
+    def test_cached_engine_supports_queries(self, monkeypatch, tmp_path):
+        """The cached engine is a fully functional connection source."""
+        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/functional.db")
+        engine = get_civic_db()
+        from clerk.models import metadata
+
+        metadata.create_all(engine)
+
+        with civic_db_connection() as conn:
+            insert_site(conn, {"subdomain": "cached", "name": "Cached City"})
+            site = get_site_by_subdomain(conn, "cached")
+
+        assert site is not None
+        assert site["subdomain"] == "cached"
+        assert str(engine.url) == f"sqlite:///{tmp_path}/functional.db"
+
+
 @pytest.mark.unit
 class TestGetOldestSite:
     """Tests for get_oldest_site function."""

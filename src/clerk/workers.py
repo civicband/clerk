@@ -246,7 +246,24 @@ def queue_ocr(fetcher, run_id, stage, ocr_backend, proceed=True) -> int:
     ocr_timeout_str = get_env("OCR_JOB_TIMEOUT", "20m")
     ocr_timeout_seconds = parse_timeout(ocr_timeout_str)
 
-    # Phase 1: Prepare all job data (no I/O, just data structure creation)
+    # Phase 1: Initialize stage counters BEFORE any job is live in Redis.
+    # Enqueueing first lets fast workers finish inside the window before
+    # initialize_stage commits, which wipes their counter increments and
+    # leaves the coordinator unable to trigger.
+    with civic_db_connection() as conn:
+        # Update site progress
+        update_site_progress(conn, fetcher.subdomain, stage="ocr", stage_total=len(pdf_files))
+
+        # Initialize atomic counters for OCR stage (even if 0 jobs)
+        # This ensures the coordinator can trigger immediately for empty stages
+        initialize_stage(fetcher.subdomain, stage="ocr", total_jobs=len(pdf_files))
+    logger.log(
+        "Initialized OCR stage with atomic counters",
+        total_jobs=len(pdf_files),
+        has_jobs=len(pdf_files) > 0,
+    )
+
+    # Phase 2: Prepare all job data (no I/O, just data structure creation)
     job_datas = []
     for pdf_path in pdf_files:
         params = {
@@ -264,27 +281,12 @@ def queue_ocr(fetcher, run_id, stage, ocr_backend, proceed=True) -> int:
         )
         job_datas.append(job_data)
 
-    # Phase 2: Batch enqueue all jobs to RQ in a single Redis pipeline
+    # Phase 3: Batch enqueue all jobs to RQ in a single Redis pipeline
     # This is much faster than individual enqueue() calls for large batches
     with detached_trace():
         ocr_jobs = ocr_queue.enqueue_many(job_datas) if job_datas else []
 
     logger.log("Batch enqueued OCR jobs to RQ", job_count=len(ocr_jobs))
-
-    # Phase 3: Atomically update database in a single transaction
-    # This prevents partial state if DB connection fails mid-operation
-    with civic_db_connection() as conn:
-        # Update site progress
-        update_site_progress(conn, fetcher.subdomain, stage="ocr", stage_total=len(ocr_jobs))
-
-        # Initialize atomic counters for OCR stage (even if 0 jobs)
-        # This ensures the coordinator can trigger immediately for empty stages
-        initialize_stage(fetcher.subdomain, stage="ocr", total_jobs=len(ocr_jobs))
-    logger.log(
-        "Initialized OCR stage with atomic counters",
-        total_jobs=len(ocr_jobs),
-        has_jobs=len(ocr_jobs) > 0,
-    )
 
     if len(ocr_jobs) == 0:
         logger.log(
@@ -474,6 +476,38 @@ def ocr_document_job(subdomain, pdf_path, backend="tesseract", run_id=None, proc
         # This prevents RQ from marking the job as failed
 
 
+def has_pending_ocr_jobs(subdomain) -> bool:
+    """Check whether any OCR jobs for a site are queued or in flight.
+
+    Used by the OCR coordinator to avoid marking a site as having no
+    documents while its jobs are still waiting in Redis (possible when the
+    coordinator fires before stage counters were initialized).
+
+    Args:
+        subdomain: Site subdomain
+
+    Returns:
+        True if any queued/started/deferred OCR job belongs to this subdomain
+    """
+    from rq.registry import DeferredJobRegistry, StartedJobRegistry
+
+    from .queue import get_ocr_queue
+
+    ocr_queue = get_ocr_queue()
+    job_ids = list(ocr_queue.job_ids)
+    job_ids += StartedJobRegistry(queue=ocr_queue).get_job_ids()
+    job_ids += DeferredJobRegistry(queue=ocr_queue).get_job_ids()
+
+    for job_id in job_ids:
+        job = ocr_queue.fetch_job(job_id)
+        if job is None:
+            continue
+        kwargs = job.kwargs or {}
+        if kwargs.get("subdomain") == subdomain or subdomain in (job.args or []):
+            return True
+    return False
+
+
 def ocr_complete_coordinator(subdomain, run_id):
     """RQ job: Runs after ALL OCR jobs complete, spawns database compilation.
 
@@ -503,6 +537,27 @@ def ocr_complete_coordinator(subdomain, run_id):
             ).fetchone()
 
         if site and site.ocr_total == 0:
+            # Zero counter can mean "no PDFs fetched" OR "coordinator raced
+            # ahead of initialize_stage while OCR jobs are still queued".
+            if has_pending_ocr_jobs(subdomain):
+                logger.log(
+                    "OCR jobs still pending despite ocr_total == 0 - deferring instead of "
+                    "marking no_documents",
+                    level="warning",
+                )
+                # Release the claim so the pending jobs can re-trigger the
+                # coordinator when they finish
+                with civic_db_connection() as conn:
+                    conn.execute(
+                        update(sites_table)
+                        .where(sites_table.c.subdomain == subdomain)
+                        .values(
+                            coordinator_enqueued=False,
+                            updated_at=datetime.now(UTC),
+                        )
+                    )
+                return
+
             # No PDFs were fetched - mark site as completed with error
             logger.log("No documents to process - fetch found 0 PDFs", level="warning")
 
@@ -512,6 +567,7 @@ def ocr_complete_coordinator(subdomain, run_id):
                     .where(sites_table.c.subdomain == subdomain)
                     .values(
                         current_stage="completed",
+                        coordinator_enqueued=False,  # Release claim for future fetches
                         last_error_stage="fetch",
                         last_error_message="No PDFs found during fetch - site may have no documents or fetch failed",
                         last_error_at=datetime.now(UTC),
