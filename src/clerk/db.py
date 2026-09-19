@@ -4,9 +4,11 @@ Supports both SQLite (dev) and PostgreSQL (production) based on DATABASE_URL.
 """
 
 from contextlib import contextmanager
+from functools import cache
 
 import click
 from sqlalchemy import create_engine, delete, insert, select, update
+from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.pool import QueuePool
 from sqlalchemy.sql import text
@@ -15,14 +17,51 @@ from .output import logger
 from .settings import get_env
 
 
+@cache
+def _get_engine(database_url: str) -> Engine:
+    """Build and cache one engine per distinct database URL.
+
+    create_engine is expensive (TCP connect + validation) and must only run
+    once per URL per process; every civic_db_connection() call then checks a
+    connection out of the existing pool.
+
+    Args:
+        database_url: Normalized SQLAlchemy database URL
+
+    Returns:
+        A validated SQLAlchemy Engine
+
+    Raises:
+        RuntimeError: If PostgreSQL connection cannot be established.
+    """
+    is_postgres = "postgresql" in database_url
+    engine_kwargs = {}
+    if is_postgres:
+        engine_kwargs = {
+            "poolclass": QueuePool,
+            "pool_pre_ping": True,  # Verify connections before use
+            "pool_recycle": 3600,  # Recycle connections every hour
+            "pool_size": int(get_env("DB_POOL_SIZE", "5")),
+            "max_overflow": int(get_env("DB_MAX_OVERFLOW", "10")),
+            "connect_args": {"connect_timeout": 10},
+        }
+    engine = create_engine(database_url, **engine_kwargs)
+    # Validate the connection once at engine creation (fail-fast)
+    with engine.connect() as conn:
+        conn.execute(text("SELECT 1"))
+    return engine
+
+
 def get_civic_db():
     """
-    Returns a database engine based on environment.
+    Returns a cached database engine based on environment.
 
     - If DATABASE_URL is set → SQLAlchemy engine for PostgreSQL
     - If not set → SQLAlchemy engine for SQLite civic.db
 
-    Fails fast if PostgreSQL connection cannot be established.
+    Engines are cached per URL (see _get_engine) so repeated calls reuse the
+    same connection pool. Fails fast if PostgreSQL connection cannot be
+    established.
     """
     database_url = get_env("DATABASE_URL")
 
@@ -30,20 +69,8 @@ def get_civic_db():
         # Normalize postgres:// to postgresql:// for SQLAlchemy 1.4+
         if database_url.startswith("postgres://"):
             database_url = database_url.replace("postgres://", "postgresql://", 1)
-
-        # Production: PostgreSQL
         try:
-            engine = create_engine(
-                database_url,
-                poolclass=QueuePool,
-                pool_pre_ping=True,  # Verify connections before use
-                pool_recycle=3600,  # Recycle connections every hour
-                connect_args={"connect_timeout": 10} if "postgresql" in database_url else {},
-            )
-            # Test connection immediately
-            with engine.connect() as conn:
-                conn.execute(text("SELECT 1"))
-            return engine
+            return _get_engine(database_url)
         except OperationalError as e:
             error_msg = f"Cannot connect to database: {e}"
             print(f"ERROR: {error_msg}")
@@ -52,7 +79,7 @@ def get_civic_db():
             raise RuntimeError(error_msg) from e
     else:
         # Development: SQLite
-        return create_engine("sqlite:///civic.db")
+        return _get_engine("sqlite:///civic.db")
 
 
 @contextmanager

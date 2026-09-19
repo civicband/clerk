@@ -120,6 +120,22 @@ def test_should_trigger_coordinator_ready(test_site):
     assert result is True  # 2 + 1 == 3
 
 
+def test_should_trigger_coordinator_overcounted(test_site):
+    """Coordinator should trigger even when completed+failed exceeds total.
+
+    The old enqueue/initialize race could wipe counter increments, leaving
+    completed+failed permanently below total. A site whose counters were
+    reset mid-flight must not be stuck forever.
+    """
+    initialize_stage(test_site, "ocr", total_jobs=3)
+    for _ in range(4):
+        increment_completed(test_site, "ocr")
+
+    result = should_trigger_coordinator(test_site, "ocr")
+
+    assert result is True  # 4 > 3
+
+
 def test_claim_coordinator_enqueue_success(test_site):
     """Test claiming coordinator enqueue succeeds."""
     initialize_stage(test_site, "ocr", total_jobs=1)

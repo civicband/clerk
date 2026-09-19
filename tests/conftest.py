@@ -16,6 +16,24 @@ from tests.mocks.mock_plugins import TestPlugin
 clerk.telemetry._configured = True
 
 
+@pytest.fixture(autouse=True)
+def reset_db_engine_cache():
+    """Reset the clerk.db engine cache around every test.
+
+    The engine cache is keyed on DATABASE_URL, which tests change freely
+    (including cwd-relative SQLite URLs). Clearing per-test prevents one
+    test's engine from leaking into another.
+    """
+    from clerk import db as clerk_db
+
+    engine_fn = getattr(clerk_db, "_get_engine", None)
+    if engine_fn is not None and hasattr(engine_fn, "cache_clear"):
+        engine_fn.cache_clear()
+    yield
+    if engine_fn is not None and hasattr(engine_fn, "cache_clear"):
+        engine_fn.cache_clear()
+
+
 def create_sites_table_with_schema(db_path):
     """Create a sites table using SQLAlchemy model schema.
 

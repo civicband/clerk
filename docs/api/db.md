@@ -7,4 +7,5 @@ Database operations and utilities.
    :members:
    :undoc-members:
    :show-inheritance:
+   :exclude-members: create_engine
 ```

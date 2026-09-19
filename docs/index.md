@@ -21,6 +21,7 @@ A Python library for managing civic data pipelines for civic.band. Clerk handles
 setup/index
 getting-started/index
 user-guide/index
+observability
 developer-guide/index
 api/index
 design-docs/index

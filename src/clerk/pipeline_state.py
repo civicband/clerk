@@ -97,7 +97,7 @@ def should_trigger_coordinator(subdomain: str, stage: str) -> bool:
         stage: Pipeline stage
 
     Returns:
-        True if completed + failed == total (all jobs done)
+        True if completed + failed >= total (all jobs done or accounted for)
     """
     with civic_db_connection() as conn:
         site = conn.execute(
@@ -111,7 +111,11 @@ def should_trigger_coordinator(subdomain: str, stage: str) -> bool:
     completed = getattr(site, f"{stage}_completed")
     failed = getattr(site, f"{stage}_failed")
 
-    return (completed + failed) == total and not site.coordinator_enqueued
+    # >= rather than ==: the enqueue/initialize race (before initialize ran
+    # first) could wipe counter increments, leaving completed+failed
+    # permanently below total. Exact equality would strand such sites.
+    # claim_coordinator_enqueue's atomic update prevents duplicate coordinators.
+    return (completed + failed) >= total and not site.coordinator_enqueued
 
 
 def claim_coordinator_enqueue(subdomain: str) -> bool:
