@@ -593,7 +593,9 @@ def test_queue_ocr_initializes_stage_before_enqueue(mocker, tmp_path, monkeypatc
 
     mock_queue = mocker.MagicMock()
     mock_queue.prepare_data.side_effect = lambda *a, **k: {"prepared": True}
-    mock_queue.enqueue_many.side_effect = lambda jobs: order.append("enqueue") or []
+    # Return one fake job so queue_ocr's empty-stage branch (which would hit
+    # the real pipeline_state DB) is not exercised by this ordering test
+    mock_queue.enqueue_many.side_effect = lambda jobs: order.append("enqueue") or [mocker.MagicMock()]
     mocker.patch("clerk.queue.get_ocr_queue", return_value=mock_queue)
 
     workers.queue_ocr(fetcher, run_id="run_1", stage="ocr", ocr_backend="tesseract")
