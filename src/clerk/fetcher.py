@@ -278,7 +278,7 @@ class Fetcher:
         self.site = site
         self.all_agendas = all_agendas
 
-        self.ocr_lang = "eng+spa"
+        self.ocr_lang = os.environ.get("OCR_LANGS", "eng+spa")
 
         if not self.start_year:
             self.start_year = site["start_year"]
@@ -832,6 +832,9 @@ class Fetcher:
                 "stdout",
             ],
             stderr=subprocess.DEVNULL,
+            # Cap OpenMP threads: tesseract defaults to ~4 OMP threads per process,
+            # which oversubscribes the host when many OCR jobs run concurrently.
+            env={**os.environ, "OMP_THREAD_LIMIT": os.environ.get("TESSERACT_OMP_THREADS", "1")},
         )
         return text.decode("utf-8")
 
@@ -1000,6 +1003,14 @@ class Fetcher:
             conversion_failed = False
             for chunk_start in range(1, total_pages + 1, PDF_CHUNK_SIZE):
                 chunk_end = min(chunk_start + PDF_CHUNK_SIZE - 1, total_pages)
+
+                # Skip re-rendering chunks whose pages are all already OCR'd
+                # (resumes after timeouts/retries previously re-rendered every page)
+                if all(
+                    os.path.exists(f"{doc_txt_dir_path}/{page}.txt")
+                    for page in range(chunk_start, chunk_end + 1)
+                ):
+                    continue
 
                 if USE_PDF_SUBPROCESS_ISOLATION:
                     self.logger.log(

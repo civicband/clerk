@@ -555,6 +555,62 @@ class TestOCRWithTesseract:
         assert str(image_path) in args
         assert "stdout" in args
 
+    def test_ocr_with_tesseract_limits_omp_threads(self, tmp_path, mocker):
+        """Tesseract subprocess must cap OpenMP threads to avoid oversubscription."""
+        from clerk.fetcher import Fetcher
+
+        image_path = tmp_path / "test.png"
+        image_path.write_bytes(b"fake png data")
+
+        mock_check_output = mocker.patch("subprocess.check_output")
+        mock_check_output.return_value = b"Test OCR text"
+
+        site = {"subdomain": "test", "start_year": 2020, "pages": 0}
+        fetcher = Fetcher(site)
+        fetcher._ocr_with_tesseract(image_path)
+
+        env = mock_check_output.call_args[1]["env"]
+        assert env["OMP_THREAD_LIMIT"] == "1"
+
+    def test_ocr_with_tesseract_omp_thread_limit_override(self, tmp_path, mocker, monkeypatch):
+        """TESSERACT_OMP_THREADS env var overrides the OpenMP thread cap."""
+        from clerk.fetcher import Fetcher
+
+        image_path = tmp_path / "test.png"
+        image_path.write_bytes(b"fake png data")
+
+        mock_check_output = mocker.patch("subprocess.check_output")
+        mock_check_output.return_value = b"Test OCR text"
+
+        monkeypatch.setenv("TESSERACT_OMP_THREADS", "4")
+
+        site = {"subdomain": "test", "start_year": 2020, "pages": 0}
+        fetcher = Fetcher(site)
+        fetcher._ocr_with_tesseract(image_path)
+
+        env = mock_check_output.call_args[1]["env"]
+        assert env["OMP_THREAD_LIMIT"] == "4"
+
+    def test_ocr_langs_env_override(self, tmp_path, mocker, monkeypatch):
+        """OCR_LANGS env var overrides the default eng+spa language pair."""
+        from clerk.fetcher import Fetcher
+
+        image_path = tmp_path / "test.png"
+        image_path.write_bytes(b"fake png data")
+
+        mock_check_output = mocker.patch("subprocess.check_output")
+        mock_check_output.return_value = b"Test OCR text"
+
+        monkeypatch.setenv("OCR_LANGS", "eng")
+
+        site = {"subdomain": "test", "start_year": 2020, "pages": 0}
+        fetcher = Fetcher(site)
+        fetcher._ocr_with_tesseract(image_path)
+
+        args = mock_check_output.call_args[0][0]
+        assert "eng" in args
+        assert "eng+spa" not in args
+
     def test_ocr_with_tesseract_handles_subprocess_error(self, tmp_path, mocker):
         """Test that _ocr_with_tesseract handles subprocess errors."""
         import subprocess
@@ -637,5 +693,51 @@ def test_do_ocr_job_uses_tesseract_backend(tmp_path, mocker, monkeypatch):
 
     # Verify Tesseract was called
     assert mock_tesseract.called
+
+    manifest.close()
+
+
+def test_do_ocr_job_skips_fully_ocrd_chunks(tmp_path, mocker, monkeypatch):
+    """PDF chunks whose pages all have .txt files must not be re-rendered by poppler."""
+    from clerk.fetcher import Fetcher
+    from clerk.ocr_utils import FailureManifest
+
+    monkeypatch.setenv("STORAGE_DIR", str(tmp_path))
+    monkeypatch.setattr("clerk.fetcher.STORAGE_DIR", str(tmp_path))
+
+    site = {"subdomain": "test", "start_year": 2020, "pages": 0}
+    fetcher = Fetcher(site)
+
+    manifest = FailureManifest(str(tmp_path / "failures.jsonl"))
+    mocker.patch("clerk.fetcher.PDF_SUPPORT", True)
+    mocker.patch("clerk.fetcher.USE_PDF_SUBPROCESS_ISOLATION", False)
+    # Pin chunk size: other tests reload this module with PDF_CHUNK_SIZE in env
+    mocker.patch("clerk.fetcher.PDF_CHUNK_SIZE", 20)
+
+    reader = mocker.patch("clerk.fetcher.PdfReader")
+    reader.return_value.pages.__len__.return_value = 45
+
+    convert = mocker.patch(
+        "clerk.fetcher.convert_from_path", return_value=[mocker.MagicMock()]
+    )
+    mocker.patch("clerk.fetcher.pm.hook.upload_static_file")
+    mocker.patch("os.remove")
+    mocker.patch("os.utime")
+    mocker.patch("shutil.rmtree")
+
+    (tmp_path / "test" / "pdfs" / "meeting").mkdir(parents=True)
+    (tmp_path / "test" / "pdfs" / "meeting" / "2024-01-01.pdf").write_bytes(b"fake pdf")
+    txt_dir = tmp_path / "test" / "txt" / "meeting" / "2024-01-01"
+    txt_dir.mkdir(parents=True)
+    for page in range(1, 41):
+        (txt_dir / f"{page}.txt").write_text("done")
+
+    fetcher.do_ocr_job(("", "meeting", "2024-01-01"), manifest, "job_1", backend="tesseract")
+
+    # Pages 1-40 are done: only the 41-45 chunk should be rendered
+    assert convert.call_count == 1
+    kwargs = convert.call_args[1]
+    assert kwargs["first_page"] == 41
+    assert kwargs["last_page"] == 45
 
     manifest.close()
