@@ -133,7 +133,7 @@ def _instrumentors():
 
     return [
         ("rq", RQInstrumentor()),
-        # Covers PostgreSQL via SQLAlchemy engines. psycopg2 instrumentation is
+        # Covers PostgreSQL via SQLAlchemy engines. psycopg instrumentation is
         # deliberately skipped: it sits beneath SQLAlchemy and would duplicate spans.
         ("sqlalchemy", SQLAlchemyInstrumentor()),
         # Covers sqlite-utils per-site DBs (meetings.db inserts, FTS rebuilds).

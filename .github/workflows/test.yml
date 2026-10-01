@@ -12,6 +12,25 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.12", "3.13"]
+        sqlalchemy-version: ["2.1.*"]
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: clerk
+          POSTGRES_PASSWORD: clerk
+          POSTGRES_DB: clerk_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U clerk"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      TEST_DATABASE_URL: postgresql://clerk:clerk@localhost:5432/clerk_test
 
     steps:
       - uses: actions/checkout@v4
@@ -27,6 +46,21 @@ jobs:
       - name: Install dependencies
         run: |
           uv pip install --system -e ".[dev]"
+
+      - name: Pin SQLAlchemy ${{ matrix.sqlalchemy-version }}
+        run: |
+          uv pip install --system "sqlalchemy==${{ matrix.sqlalchemy-version }}"
+
+      - name: Verify psycopg3 PostgreSQL dialect
+        run: |
+          python -c "
+          from sqlalchemy import create_engine, text
+          e = create_engine('postgresql+psycopg://clerk:clerk@localhost:5432/clerk_test')
+          assert e.dialect.driver == 'psycopg', e.dialect.driver
+          with e.connect() as c:
+              c.execute(text('SELECT 1'))
+          print('psycopg3 OK')
+          "
 
       - name: Run tests
         run: |
