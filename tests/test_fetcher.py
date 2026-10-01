@@ -717,9 +717,7 @@ def test_do_ocr_job_skips_fully_ocrd_chunks(tmp_path, mocker, monkeypatch):
     reader = mocker.patch("clerk.fetcher.PdfReader")
     reader.return_value.pages.__len__.return_value = 45
 
-    convert = mocker.patch(
-        "clerk.fetcher.convert_from_path", return_value=[mocker.MagicMock()]
-    )
+    convert = mocker.patch("clerk.fetcher.convert_from_path", return_value=[mocker.MagicMock()])
     mocker.patch("clerk.fetcher.pm.hook.upload_static_file")
     mocker.patch("os.remove")
     mocker.patch("os.utime")

@@ -29,7 +29,7 @@ pre-commit run --all-files  # hooks: trailing-whitespace, ruff, mypy
 - `cli_module` fixture needed: `import clerk.cli` returns the Click group (not the `.py` module). Use `sys.modules["clerk.cli"]` via the fixture to get the actual module.
 - `monkeypatch_storage_dir` fixture patches both `clerk.cli.STORAGE_DIR` and `clerk.utils.STORAGE_DIR`
 - Integration tests require PostgreSQL+Redis (marked `integration`)
-- 224 tests, 3 skipped (PostgreSQL backend tests skipped without `DATABASE_URL`)
+- 224 tests, 3 skipped (PostgreSQL backend tests skipped without `TEST_DATABASE_URL`)
 
 ## Architecture
 - **`src/clerk/cli.py`** — Click CLI, loads `.env` via python-dotenv at import time (**before** any local imports)

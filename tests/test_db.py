@@ -174,6 +174,7 @@ class TestPostgreSQLBackend:
         monkeypatch.setenv("DATABASE_URL", test_db_url)
         engine = get_civic_db()
         assert "postgresql" in str(engine.url)
+        assert engine.dialect.driver == "psycopg"
 
     def test_insert_and_get_site_postgresql(self, postgres_db):
         """Test inserting and retrieving a site with PostgreSQL."""
@@ -232,8 +233,8 @@ class TestErrorHandling:
         with pytest.raises(RuntimeError, match="Cannot connect to database"):
             get_civic_db()
 
-    def test_postgres_url_normalized_to_postgresql(self, monkeypatch, mocker):
-        """Test that postgres:// URLs are normalized to postgresql://."""
+    def test_postgres_url_normalized_to_psycopg(self, monkeypatch, mocker):
+        """Test that postgres:// URLs are normalized to the explicit psycopg driver."""
         # Mock create_engine to avoid actual connection
         mock_engine = mocker.MagicMock()
         mock_connection = mocker.MagicMock()
@@ -248,10 +249,27 @@ class TestErrorHandling:
 
         get_civic_db()
 
-        # Verify create_engine was called with postgresql:// (normalized)
+        # Verify create_engine was called with the explicit psycopg driver
         call_args = mock_create_engine.call_args[0][0]
-        assert call_args.startswith("postgresql://")
+        assert call_args.startswith("postgresql+psycopg://")
         assert not call_args.startswith("postgres://")
+
+    def test_explicit_postgres_driver_preserved(self, monkeypatch, mocker):
+        """An explicit driver in DATABASE_URL must be left untouched."""
+        mock_engine = mocker.MagicMock()
+        mock_connection = mocker.MagicMock()
+        mock_engine.connect.return_value.__enter__ = mocker.MagicMock(return_value=mock_connection)
+        mock_engine.connect.return_value.__exit__ = mocker.MagicMock(return_value=None)
+        mock_connection.execute.return_value = None
+
+        mock_create_engine = mocker.patch("clerk.db.create_engine", return_value=mock_engine)
+
+        monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg2://user:pass@host:5432/db")
+
+        get_civic_db()
+
+        call_args = mock_create_engine.call_args[0][0]
+        assert call_args == "postgresql+psycopg2://user:pass@host:5432/db"
 
 
 class TestEngineCaching:

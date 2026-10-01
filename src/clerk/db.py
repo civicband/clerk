@@ -66,9 +66,14 @@ def get_civic_db():
     database_url = get_env("DATABASE_URL")
 
     if database_url:
-        # Normalize postgres:// to postgresql:// for SQLAlchemy 1.4+
+        # Normalize the bare postgres:// and postgresql:// schemes to an explicit
+        # psycopg (v3) driver. SQLAlchemy 2.1 changed the default DBAPI for the
+        # bare postgresql:// scheme from psycopg2 to psycopg; being explicit keeps
+        # driver selection deterministic rather than relying on that default.
         if database_url.startswith("postgres://"):
-            database_url = database_url.replace("postgres://", "postgresql://", 1)
+            database_url = database_url.replace("postgres://", "postgresql+psycopg://", 1)
+        elif database_url.startswith("postgresql://"):
+            database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
         try:
             return _get_engine(database_url)
         except OperationalError as e:
