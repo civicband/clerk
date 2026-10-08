@@ -228,7 +228,7 @@ class TestGetFetcher:
         monkeypatch.setattr(fetcher_module, "pm", mock_plugin_manager)
 
         sample_site_data["scraper"] = "test_scraper"
-        fetcher = get_fetcher(sample_site_data, all_years=False, all_agendas=False)
+        fetcher = get_fetcher(sample_site_data, all_agendas=False)
 
         assert fetcher is not None
         assert hasattr(fetcher, "fetch_events")
@@ -246,7 +246,7 @@ class TestGetFetcher:
             # Since we're not using all_years, should use last_updated year
             # This will fail to get a fetcher, but we're testing the logic
             try:
-                get_fetcher(sample_site_data, all_years=False, all_agendas=False)
+                get_fetcher(sample_site_data, all_agendas=False)
             except (TypeError, AttributeError):
                 # Expected to fail since we're mocking
                 pass
@@ -261,7 +261,7 @@ class TestGetFetcher:
 
             # With all_years=True, should use start_year
             try:
-                get_fetcher(sample_site_data, all_years=True, all_agendas=False)
+                get_fetcher(sample_site_data, all_agendas=False)
             except (TypeError, AttributeError):
                 # May fail due to mocking, but logic is tested
                 pass

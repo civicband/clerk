@@ -23,6 +23,7 @@ from typing import Any
 import httpx
 import sqlite_utils
 from bs4 import BeautifulSoup
+from dateutil import relativedelta
 
 from clerk.ocr_utils import (
     CRITICAL_ERRORS,
@@ -270,18 +271,30 @@ def fetch_internal(subdomain: str, fetcher: Fetcher):
 
 class Fetcher:
     def __init__(
-        self, site: dict[str, Any], start_year: int | None = None, all_agendas: bool = False
+        self,
+        site: dict[str, Any],
+        start_year: int | None = None,
+        all_agendas: bool = False,
+        start_date_str: str | None = None,
+        end_date_str: str | None = None,
     ) -> None:
         self.subdomain = site["subdomain"]
-        self.start_year = start_year
+        self.start_year = site["start_year"]
         self.today = datetime.today()
         self.site = site
         self.all_agendas = all_agendas
 
         self.ocr_lang = os.environ.get("OCR_LANGS", "eng+spa")
 
-        if not self.start_year:
-            self.start_year = site["start_year"]
+        if not start_date_str:
+            self.start_date = datetime(site["start_year"], 1, 1)
+        else:
+            self.start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+
+        if not end_date_str:
+            self.end_date = self.today + relativedelta.relativedelta(months=6)
+        else:
+            self.end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
 
         # TODO: always go one year back and one year forward
 
@@ -445,6 +458,7 @@ class Fetcher:
         )
         return body
 
+    @traced(name="fetch.fetch_and_write_pdf")
     def fetch_and_write_pdf(
         self, url: str, kind: str, meeting: str, date: str, headers: dict[str, str] | None = None
     ) -> None:
@@ -559,7 +573,7 @@ class Fetcher:
                     output_path=output_path,
                 )
 
-    @traced("fetch.docs_from_page")
+    @traced("fetch.fetch_docs_from_page")
     def fetch_docs_from_page(
         self, page_number: int, meeting: str, date: str, prefix: str
     ) -> str | None:
@@ -603,7 +617,7 @@ class Fetcher:
                     return doc_id
         return None
 
-    @traced("fetch.make_html")
+    @traced("fetch.make_html_from_pdf")
     def make_html_from_pdf(self, date: str, doc_path: str) -> None:
         # TODO: assert
         html_dir = os.path.join(self.docs_html_dir, date)
@@ -619,7 +633,7 @@ class Fetcher:
             stderr=subprocess.DEVNULL,
         )
 
-    @traced("ocr.all")
+    @traced("ocr.ocr")
     def ocr(self, backend: str = "tesseract") -> None:
         """Run OCR on both minutes and agendas.
 
@@ -662,7 +676,7 @@ class Fetcher:
             previous_pages=self.previous_page_count,
         )
 
-    @traced("ocr.do")
+    @traced("ocr.do_ocr")
     def do_ocr(self, prefix: str = "", backend: str = "tesseract") -> None:
         """Run OCR on all PDFs in the directory.
 
@@ -1201,15 +1215,8 @@ class Fetcher:
         raise NotImplementedError("Subclasses must implement fetch_events()")
 
 
-def get_fetcher(site, all_years=False, all_agendas=False) -> Fetcher:  # type: ignore
-    start_year = site["start_year"]
+def get_fetcher(site, all_agendas=False, start_date_str=None, end_date_str=None) -> Fetcher:  # type: ignore
     fetcher_class = None
-    try:
-        start_year = datetime.strptime(site["last_updated"], "%Y-%m-%dT%H:%M:%S").year
-    except TypeError:
-        start_year = site["start_year"]
-    if all_years:
-        start_year = site["start_year"]
     fetcher_class = pm.hook.fetcher_class(label=site["scraper"])
 
     fetcher_class = list(filter(None, fetcher_class))
@@ -1217,10 +1224,14 @@ def get_fetcher(site, all_years=False, all_agendas=False) -> Fetcher:  # type: i
         fetcher_class = fetcher_class[0]
 
     if fetcher_class:
-        return fetcher_class(site, start_year, all_agendas)  # type: ignore[no-any-return, operator]  # pyright: ignore[reportCallIssue]
+        return fetcher_class(
+            site, all_agendas=all_agendas, start_date=start_date_str, end_date=end_date_str
+        )  # type: ignore[no-any-return, operator]  # pyright: ignore[reportCallIssue]
     if site["scraper"] == "custom":
         import importlib
 
         module_path = f"fetchers.custom.{site['subdomain'].replace('.', '_')}"
         fetcher = importlib.import_module(module_path)
-        return fetcher.custom_fetcher(site, start_year, all_agendas)  # type: ignore[no-any-return]
+        return fetcher.custom_fetcher(
+            site, all_agendas=all_agendas, start_date=start_date_str, end_date=end_date_str
+        )  # type: ignore[no-any-return]

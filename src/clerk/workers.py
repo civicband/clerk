@@ -64,39 +64,41 @@ def job_baggage(subdomain, run_id, stage):
 def fetch_job_with_trace(
     subdomain,
     run_id,
-    all_years=False,
     all_agendas=False,
     ocr_backend=None,
     proceed=True,
     skip_fetch=False,
+    start_date_str=None,
+    end_date_str=None,
 ):
     with job_baggage(subdomain, run_id, "fetch"), tracer.start_as_current_span("job.fetch"):
         return fetch_site_job(
             subdomain,
             run_id,
-            all_years=all_years,
             all_agendas=all_agendas,
             ocr_backend=ocr_backend,
             proceed=proceed,
             skip_fetch=skip_fetch,
+            start_date_str=start_date_str,
+            end_date_str=end_date_str,
         )
 
 
 def fetch_site_job(
     subdomain,
     run_id,
-    all_years=False,
     all_agendas=False,
     ocr_backend=None,
     proceed=True,
     skip_fetch=False,
+    start_date_str=None,
+    end_date_str=None,
 ):
     """RQ job: Fetch PDFs for a site then spawn OCR jobs.
 
     Args:
         subdomain: Site subdomain
         run_id: Pipeline run identifier
-        all_years: Fetch all years (default: False)
         all_agendas: Fetch all agendas (default: False)
         ocr_backend: OCR backend to use (tesseract or vision). Defaults to DEFAULT_OCR_BACKEND env var.
     """
@@ -108,7 +110,6 @@ def fetch_site_job(
 
     logger.log(
         "fetch_started",
-        all_years=all_years,
         all_agendas=all_agendas,
     )
 
@@ -126,7 +127,9 @@ def fetch_site_job(
             scraper=site.get("scraper"),
         )
 
-        fetcher: Fetcher = get_fetcher(site, all_years=all_years, all_agendas=all_agendas)
+        fetcher: Fetcher = get_fetcher(
+            site, all_agendas=all_agendas, start_date_str=start_date_str, end_date_str=end_date_str
+        )
 
         if not skip_fetch:
             # Update progress to fetch stage

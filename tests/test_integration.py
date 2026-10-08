@@ -104,7 +104,7 @@ class TestPluginIntegration:
         from clerk.fetcher import get_fetcher
 
         site = civic_db["sites"].get("plugin-test.civic.band")
-        fetcher = get_fetcher(site, all_years=False, all_agendas=False)
+        fetcher = get_fetcher(site, all_agendas=False)
 
         # Should get MockFetcher from TestPlugin
         assert fetcher is not None

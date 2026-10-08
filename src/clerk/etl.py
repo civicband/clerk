@@ -3,6 +3,7 @@ import json
 from typing import Any
 
 import click
+from dateutil import parser
 
 from clerk.db import civic_db_connection, get_oldest_site, get_site_by_subdomain, upsert_site
 from clerk.fetcher import Fetcher, get_fetcher
@@ -52,12 +53,34 @@ def etl(ctx, subdomain, proceed=True, ocr_backend="tesseract", fetch_local=False
 @click.option("-a", "--all-years", is_flag=True)
 @click.option("--skip-fetch", is_flag=True)
 @click.option("--all-agendas", is_flag=True)
+@click.option(
+    "--start-date",
+    help="When to start. Can either be a year (ie, 2020), or an ISO 8601 date (ie, 2019-08-14)",
+)
+@click.option(
+    "--end-date",
+    help="When to end. Can either be a year (ie, 2025), or an ISO 8601 date (ie, 2024-08-14)",
+)
 @click.pass_context
-def update(ctx, next_site, all_years, skip_fetch, all_agendas):
+def update(ctx, next_site, all_years, skip_fetch, all_agendas, start_date, end_date):
     """Update a site."""
 
     fetch_local = ctx.obj.get("FETCH_LOCAL")
     subdomain = ctx.obj.get("SUBDOMAIN")
+
+    if start_date:
+        try:
+            start_date = parser.isoparse(start_date).strftime("%Y-%m-%d")
+        except (ValueError, TypeError):
+            click.echo(f"Failed to parse start date '{start_date}'")
+            return
+    if end_date:
+        try:
+            end_date = parser.isoparse(end_date).strftime("%Y-%m-%d")
+        except (ValueError, TypeError):
+            click.echo(f"Failed to parse end date '{end_date}'")
+            return
+
     if next_site:
         # Auto-scheduler mode: enqueue oldest site with normal priority
         oldest_subdomain = get_oldest_site(lookback_hours=23)
@@ -100,10 +123,14 @@ def update(ctx, next_site, all_years, skip_fetch, all_agendas):
         job_kwargs: dict[str, Any] = {}
         job_kwargs["ocr_backend"] = ctx.obj.get("OCR_BACKEND")
         job_kwargs["proceed"] = ctx.obj.get("PROCEED")
+        if start_date:
+            job_kwargs["start_date_str"] = start_date
         if all_years:
-            job_kwargs["all_years"] = True
+            job_kwargs["start_date_str"] = site["start_year"]
         if all_agendas:
             job_kwargs["all_agendas"] = True
+        if end_date:
+            job_kwargs["end_date_str"] = end_date
         if skip_fetch:
             job_kwargs["skip_fetch"] = True
 
@@ -180,20 +207,20 @@ def new(ctx):
         fetch_job_with_trace(
             subdomain=subdomain,
             run_id=generate_run_id(subdomain),
-            all_years=True,
             all_agendas=all_agendas,
             ocr_backend=ctx.obj.get("OCR_BACKEND"),
             proceed=ctx.obj.get("PROCEED"),
+            start_date_str=f"{start_year}-01-01",
         )
     else:
         enqueue_job(
             "fetch-site",
             subdomain,
             priority="high",
-            all_years=True,
             all_agendas=all_agendas,
             ocr_backend=ctx.obj.get("OCR_BACKEND"),
             proceed=ctx.obj.get("PROCEED"),
+            start_date_str=f"{start_year}-01-01",
         )
     pm.hook.post_create(subdomain=subdomain)
 
