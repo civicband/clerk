@@ -2,10 +2,12 @@
 
 import os
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import sqlite_utils
+from dateutil import relativedelta
 
 from clerk.fetcher import Fetcher
 
@@ -13,20 +15,38 @@ from clerk.fetcher import Fetcher
 class MockFetcher(Fetcher):
     """Mock fetcher that simulates the fetcher interface without external dependencies."""
 
-    def __init__(self, site: dict[str, Any], start_year: int, all_agendas: bool = False):
+    def __init__(
+        self,
+        site: dict[str, Any],
+        all_agendas: bool = False,
+        start_date_str: str | None = None,
+        end_date_str: str | None = None,
+    ):
         """Initialize the mock fetcher, skipping parent's filesystem setup.
 
         Args:
             site: Site configuration dictionary
-            start_year: Year to start fetching from
             all_agendas: Whether to fetch all agendas
+            start_date_str: ISO 8601 start date (ie, 2019-08-14)
+            end_date_str: ISO 8601 end date (ie, 2024-08-14)
         """
         # Set attributes directly instead of calling parent __init__
         # to avoid filesystem and database setup
         self.site = site
         self.subdomain = site["subdomain"]
-        self.start_year = start_year
+        self.start_year = site["start_year"]
         self.all_agendas = all_agendas
+
+        self.today = datetime.today()
+        if not start_date_str:
+            self.start_date = datetime(site["start_year"], 1, 1)
+        else:
+            self.start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+
+        if not end_date_str:
+            self.end_date = self.today + relativedelta.relativedelta(months=6)
+        else:
+            self.end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
 
         # Test tracking attributes
         self.events_fetched: list[dict[str, Any]] = []
@@ -107,17 +127,28 @@ class SlowFetcher(MockFetcher):
     """Mock fetcher that simulates slow operations for performance testing."""
 
     def __init__(
-        self, site: dict[str, Any], start_year: int, all_agendas: bool = False, delay: float = 0.5
+        self,
+        site: dict[str, Any],
+        all_agendas: bool = False,
+        start_date_str: str | None = None,
+        end_date_str: str | None = None,
+        delay: float = 0.5,
     ):
         """Initialize the slow fetcher.
 
         Args:
             site: Site configuration dictionary
-            start_year: Year to start fetching from
             all_agendas: Whether to fetch all agendas
+            start_date_str: ISO 8601 start date (ie, 2019-08-14)
+            end_date_str: ISO 8601 end date (ie, 2024-08-14)
             delay: Delay in seconds for each operation
         """
-        super().__init__(site, start_year, all_agendas)
+        super().__init__(
+            site,
+            all_agendas=all_agendas,
+            start_date_str=start_date_str,
+            end_date_str=end_date_str,
+        )
         self.delay = delay
 
     def fetch_events(self) -> None:
@@ -146,19 +177,26 @@ class FilesystemFetcher(MockFetcher):
     def __init__(
         self,
         site: dict[str, Any],
-        start_year: int,
         all_agendas: bool = False,
+        start_date_str: str | None = None,
+        end_date_str: str | None = None,
         storage_dir: Path | None = None,
     ):
         """Initialize the filesystem fetcher.
 
         Args:
             site: Site configuration dictionary
-            start_year: Year to start fetching from
             all_agendas: Whether to fetch all agendas
+            start_date_str: ISO 8601 start date (ie, 2019-08-14)
+            end_date_str: ISO 8601 end date (ie, 2024-08-14)
             storage_dir: Path to storage directory
         """
-        super().__init__(site, start_year, all_agendas)
+        super().__init__(
+            site,
+            all_agendas=all_agendas,
+            start_date_str=start_date_str,
+            end_date_str=end_date_str,
+        )
         self.storage_dir = storage_dir or Path("../sites")
 
     def fetch_events(self) -> None:

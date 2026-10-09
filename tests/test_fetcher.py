@@ -201,7 +201,7 @@ class TestMockFetcherInheritance:
         from tests.mocks.mock_fetchers import MockFetcher
 
         site = {"subdomain": "test", "start_year": 2020, "pages": 0}
-        mock = MockFetcher(site, 2020)
+        mock = MockFetcher(site, start_date_str="2020-01-01")
 
         assert isinstance(mock, Fetcher)
         assert isinstance(mock, MockFetcher)

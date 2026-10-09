@@ -210,7 +210,7 @@ Basic mock fetcher for testing:
 ```python
 from tests.mocks.mock_fetchers import MockFetcher
 
-fetcher = MockFetcher(site, start_year=2020, all_agendas=False)
+fetcher = MockFetcher(site, all_agendas=False, start_date_str="2020-01-01")
 fetcher.fetch_events()
 assert fetcher.events_fetched
 ```

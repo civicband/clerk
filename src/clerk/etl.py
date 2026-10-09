@@ -126,7 +126,7 @@ def update(ctx, next_site, all_years, skip_fetch, all_agendas, start_date, end_d
         if start_date:
             job_kwargs["start_date_str"] = start_date
         if all_years:
-            job_kwargs["start_date_str"] = site["start_year"]
+            job_kwargs["start_date_str"] = f"{site['start_year']}-01-01"
         if all_agendas:
             job_kwargs["all_agendas"] = True
         if end_date:

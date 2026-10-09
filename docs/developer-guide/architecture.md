@@ -190,10 +190,18 @@ Custom fetchers must implement:
 
 ```python
 class MyFetcher:
-    def __init__(self, site: dict, start_year: int, all_agendas: bool):
+    def __init__(
+        self,
+        site: dict,
+        all_agendas: bool = False,
+        start_date_str: str | None = None,
+        end_date_str: str | None = None,
+    ):
         self.site = site
-        self.start_year = start_year
+        self.start_year = site["start_year"]
         self.all_agendas = all_agendas
+        self.start_date_str = start_date_str or f"{site['start_year']}-01-01"
+        self.end_date_str = end_date_str
 
     def fetch_events(self):
         """Download meeting data."""

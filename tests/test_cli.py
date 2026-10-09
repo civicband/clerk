@@ -1,13 +1,16 @@
 """Unit tests for clerk.cli module."""
 
+from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
 
+import pluggy
 import pytest
 import sqlite_utils
 
+from clerk import hookimpl
 from clerk.cli import cli
 from clerk.fetcher import fetch_internal, get_fetcher
+from clerk.hookspecs import ClerkSpec
 from clerk.utils import (
     build_db_from_text_internal,
     build_table_from_text,
@@ -235,36 +238,56 @@ class TestGetFetcher:
         assert hasattr(fetcher, "ocr")
         assert hasattr(fetcher, "transform")
 
-    def test_get_fetcher_respects_last_updated(self, sample_site_data):
-        """Test that fetcher start year is based on last_updated."""
-        sample_site_data["last_updated"] = "2023-06-15T10:00:00"
+    def test_get_fetcher_forwards_start_and_end_date(self, sample_site_data, monkeypatch):
+        """get_fetcher forwards start_date_str/end_date_str to the fetcher class."""
+        import clerk.fetcher as fetcher_module
+        from tests.mocks.mock_fetchers import MockFetcher
+
+        captured: dict = {}
+
+        class CapturingFetcher(MockFetcher):
+            def __init__(self, site, **kwargs):
+                captured.update(kwargs)
+                super().__init__(site, **kwargs)
+
+        class CapturingPlugin:
+            @hookimpl
+            def fetcher_class(self, label):
+                if label == "test_scraper":
+                    return CapturingFetcher
+                return None
+
+        pm = pluggy.PluginManager("civicband.clerk")
+        pm.add_hookspecs(ClerkSpec)
+        pm.register(CapturingPlugin())
+        monkeypatch.setattr(fetcher_module, "pm", pm)
+
+        sample_site_data["scraper"] = "test_scraper"
+        fetcher = get_fetcher(
+            sample_site_data,
+            all_agendas=False,
+            start_date_str="2019-08-14",
+            end_date_str="2024-08-14",
+        )
+
+        assert captured["start_date_str"] == "2019-08-14"
+        assert captured["end_date_str"] == "2024-08-14"
+        assert fetcher.start_date == datetime(2019, 8, 14)
+        assert fetcher.end_date == datetime(2024, 8, 14)
+
+    def test_get_fetcher_defaults_to_site_start_year(
+        self, sample_site_data, mock_plugin_manager, monkeypatch
+    ):
+        """Without a start_date_str, the fetcher defaults to the site's start_year."""
+        import clerk.fetcher as fetcher_module
+
+        monkeypatch.setattr(fetcher_module, "pm", mock_plugin_manager)
+
+        sample_site_data["scraper"] = "test_scraper"
         sample_site_data["start_year"] = 2020
+        fetcher = get_fetcher(sample_site_data, all_agendas=False)
 
-        with patch("clerk.cli.pm") as mock_pm:
-            mock_pm.hook.fetcher_class.return_value = [None]
-
-            # Since we're not using all_years, should use last_updated year
-            # This will fail to get a fetcher, but we're testing the logic
-            try:
-                get_fetcher(sample_site_data, all_agendas=False)
-            except (TypeError, AttributeError):
-                # Expected to fail since we're mocking
-                pass
-
-    def test_get_fetcher_all_years(self, sample_site_data):
-        """Test that all_years flag uses start_year."""
-        sample_site_data["last_updated"] = "2023-06-15T10:00:00"
-        sample_site_data["start_year"] = 2020
-
-        with patch("clerk.cli.pm") as mock_pm:
-            mock_pm.hook.fetcher_class.return_value = [MagicMock()]
-
-            # With all_years=True, should use start_year
-            try:
-                get_fetcher(sample_site_data, all_agendas=False)
-            except (TypeError, AttributeError):
-                # May fail due to mocking, but logic is tested
-                pass
+        assert fetcher.start_date == datetime(2020, 1, 1)
 
 
 @pytest.mark.unit

@@ -273,7 +273,6 @@ class Fetcher:
     def __init__(
         self,
         site: dict[str, Any],
-        start_year: int | None = None,
         all_agendas: bool = False,
         start_date_str: str | None = None,
         end_date_str: str | None = None,
@@ -1224,14 +1223,14 @@ def get_fetcher(site, all_agendas=False, start_date_str=None, end_date_str=None)
         fetcher_class = fetcher_class[0]
 
     if fetcher_class:
-        return fetcher_class(
-            site, all_agendas=all_agendas, start_date=start_date_str, end_date=end_date_str
-        )  # type: ignore[no-any-return, operator]  # pyright: ignore[reportCallIssue]
+        return fetcher_class(  # type: ignore[no-any-return, operator]
+            site, all_agendas=all_agendas, start_date_str=start_date_str, end_date_str=end_date_str
+        )  # pyright: ignore[reportCallIssue]
     if site["scraper"] == "custom":
         import importlib
 
         module_path = f"fetchers.custom.{site['subdomain'].replace('.', '_')}"
         fetcher = importlib.import_module(module_path)
-        return fetcher.custom_fetcher(
-            site, all_agendas=all_agendas, start_date=start_date_str, end_date=end_date_str
-        )  # type: ignore[no-any-return]
+        return fetcher.custom_fetcher(  # type: ignore[no-any-return]
+            site, all_agendas=all_agendas, start_date_str=start_date_str, end_date_str=end_date_str
+        )
