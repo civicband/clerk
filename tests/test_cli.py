@@ -275,19 +275,62 @@ class TestGetFetcher:
         assert fetcher.start_date == datetime(2019, 8, 14)
         assert fetcher.end_date == datetime(2024, 8, 14)
 
-    def test_get_fetcher_defaults_to_site_start_year(
+    def test_get_fetcher_defaults_start_date_to_start_year(
         self, sample_site_data, mock_plugin_manager, monkeypatch
     ):
-        """Without a start_date_str, the fetcher defaults to the site's start_year."""
+        """Without a start_date_str, the fetcher defaults to the site's start_year.
+
+        The last_updated timestamp must not influence start_year; incremental
+        updates are handled by the update command, not the Fetcher.
+        """
         import clerk.fetcher as fetcher_module
 
         monkeypatch.setattr(fetcher_module, "pm", mock_plugin_manager)
 
         sample_site_data["scraper"] = "test_scraper"
-        sample_site_data["start_year"] = 2020
+        sample_site_data["start_year"] = 2003
+        sample_site_data["last_updated"] = "2024-06-15T10:00:00"
         fetcher = get_fetcher(sample_site_data, all_agendas=False)
 
-        assert fetcher.start_date == datetime(2020, 1, 1)
+        assert fetcher.start_date == datetime(2003, 1, 1)
+        assert fetcher.start_year == 2003
+
+
+@pytest.mark.unit
+class TestUpdateStartDate:
+    """Tests for the default start date used by the update command."""
+
+    def test_defaults_to_last_updated_year(self, tmp_path, monkeypatch, cli_runner, sample_db):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+
+        captured = {}
+        monkeypatch.setattr(
+            "clerk.etl.enqueue_job",
+            lambda *args, **kwargs: captured.update({"args": args, "kwargs": kwargs}),
+        )
+
+        result = cli_runner.invoke(cli, ["etl", "--subdomain", "pending.civic.band", "update"])
+
+        assert result.exit_code == 0, result.output
+        assert captured["kwargs"]["start_date_str"] == "2023-01-01"
+
+    def test_all_years_uses_start_year(self, tmp_path, monkeypatch, cli_runner, sample_db):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+
+        captured = {}
+        monkeypatch.setattr(
+            "clerk.etl.enqueue_job",
+            lambda *args, **kwargs: captured.update({"args": args, "kwargs": kwargs}),
+        )
+
+        result = cli_runner.invoke(
+            cli, ["etl", "--subdomain", "pending.civic.band", "update", "--all-years"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert captured["kwargs"]["start_date_str"] == "2022-01-01"
 
 
 @pytest.mark.unit

@@ -93,6 +93,7 @@ def update(ctx, next_site, all_years, skip_fetch, all_agendas, start_date, end_d
         # Update last_updated BEFORE enqueueing to prevent race condition
         # (multiple cron runs picking the same site)
         with civic_db_connection() as conn:
+            oldest_site = get_site_by_subdomain(conn, oldest_subdomain)
             upsert_site(
                 conn,
                 {
@@ -101,12 +102,22 @@ def update(ctx, next_site, all_years, skip_fetch, all_agendas, start_date, end_d
                 },
             )
 
+        job_kwargs: dict[str, Any] = {}
+        if oldest_site:
+            try:
+                start_year = datetime.datetime.strptime(
+                    oldest_site["last_updated"], "%Y-%m-%dT%H:%M:%S"
+                ).year
+            except (KeyError, TypeError, ValueError):
+                start_year = oldest_site["start_year"]
+            job_kwargs["start_date_str"] = f"{start_year}-01-01"
+
         if fetch_local:
             from .workers import fetch_job_with_trace
 
-            fetch_job_with_trace(oldest_subdomain, generate_run_id(oldest_subdomain))
+            fetch_job_with_trace(oldest_subdomain, generate_run_id(oldest_subdomain), **job_kwargs)
         else:
-            enqueue_job("fetch-site", oldest_subdomain, priority="normal")
+            enqueue_job("fetch-site", oldest_subdomain, priority="normal", **job_kwargs)
         return
 
     if subdomain:
@@ -125,8 +136,16 @@ def update(ctx, next_site, all_years, skip_fetch, all_agendas, start_date, end_d
         job_kwargs["proceed"] = ctx.obj.get("PROCEED")
         if start_date:
             job_kwargs["start_date_str"] = start_date
-        if all_years:
+        elif all_years:
             job_kwargs["start_date_str"] = f"{site['start_year']}-01-01"
+        else:
+            try:
+                start_year = datetime.datetime.strptime(
+                    site["last_updated"], "%Y-%m-%dT%H:%M:%S"
+                ).year
+            except (KeyError, TypeError, ValueError):
+                start_year = site["start_year"]
+            job_kwargs["start_date_str"] = f"{start_year}-01-01"
         if all_agendas:
             job_kwargs["all_agendas"] = True
         if end_date:
