@@ -275,19 +275,47 @@ class TestGetFetcher:
         assert fetcher.start_date == datetime(2019, 8, 14)
         assert fetcher.end_date == datetime(2024, 8, 14)
 
-    def test_get_fetcher_defaults_to_site_start_year(
+    def test_get_fetcher_defaults_start_date_to_start_year(
         self, sample_site_data, mock_plugin_manager, monkeypatch
     ):
-        """Without a start_date_str, the fetcher defaults to the site's start_year."""
+        """Without a start_date_str, the fetcher defaults to the site's start_year.
+
+        The last_updated timestamp must not influence start_year; incremental
+        updates are handled by the update command, not the Fetcher.
+        """
         import clerk.fetcher as fetcher_module
 
         monkeypatch.setattr(fetcher_module, "pm", mock_plugin_manager)
 
         sample_site_data["scraper"] = "test_scraper"
-        sample_site_data["start_year"] = 2020
+        sample_site_data["start_year"] = 2003
+        sample_site_data["last_updated"] = "2024-06-15T10:00:00"
         fetcher = get_fetcher(sample_site_data, all_agendas=False)
 
-        assert fetcher.start_date == datetime(2020, 1, 1)
+        assert fetcher.start_date == datetime(2003, 1, 1)
+        assert fetcher.start_year == 2003
+
+
+@pytest.mark.unit
+class TestIncrementalStartDate:
+    """Unit tests for the update command's default start date."""
+
+    def test_uses_last_updated_year(self):
+        from clerk.etl import _incremental_start_date_str
+
+        site = {"start_year": 2003, "last_updated": "2024-06-15T10:00:00"}
+        assert _incremental_start_date_str(site) == "2024-01-01"
+
+    def test_falls_back_to_start_year_without_last_updated(self):
+        from clerk.etl import _incremental_start_date_str
+
+        assert _incremental_start_date_str({"start_year": 2003}) == "2003-01-01"
+
+    def test_falls_back_to_start_year_on_invalid_last_updated(self):
+        from clerk.etl import _incremental_start_date_str
+
+        site = {"start_year": 2003, "last_updated": None}
+        assert _incremental_start_date_str(site) == "2003-01-01"
 
 
 @pytest.mark.unit

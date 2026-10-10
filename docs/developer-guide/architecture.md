@@ -200,8 +200,16 @@ class MyFetcher:
         self.site = site
         self.start_year = site["start_year"]
         self.all_agendas = all_agendas
-        self.start_date_str = start_date_str or f"{site['start_year']}-01-01"
-        self.end_date_str = end_date_str
+        self.start_date = (
+            datetime.strptime(start_date_str, "%Y-%m-%d")
+            if start_date_str
+            else datetime(self.start_year, 1, 1)
+        )
+        self.end_date = (
+            datetime.strptime(end_date_str, "%Y-%m-%d")
+            if end_date_str
+            else datetime.today() + relativedelta.relativedelta(months=6)
+        )
 
     def fetch_events(self):
         """Download meeting data."""

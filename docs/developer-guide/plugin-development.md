@@ -109,7 +109,7 @@ class MyFetcher:
         self.start_date = (
             datetime.strptime(start_date_str, "%Y-%m-%d")
             if start_date_str
-            else datetime(site["start_year"], 1, 1)
+            else datetime(self.start_year, 1, 1)
         )
         self.end_date = (
             datetime.strptime(end_date_str, "%Y-%m-%d")
@@ -348,35 +348,28 @@ Here's a complete plugin for Legistar-based municipalities:
 ```python
 """Legistar plugin for Clerk."""
 
+import json
 import os
 import requests
 from pathlib import Path
-from clerk import hookimpl
+from clerk import Fetcher, hookimpl
 
 
-class LegistarFetcher:
+class LegistarFetcher(Fetcher):
     """Fetcher for Legistar API."""
 
-    def __init__(
-        self,
-        site: dict,
-        all_agendas: bool = False,
-        start_date_str: str | None = None,
-        end_date_str: str | None = None,
-    ):
-        self.site = site
-        self.start_year = site["start_year"]
-        self.all_agendas = all_agendas
-        self.start_date_str = start_date_str or f"{site['start_year']}-01-01"
-        self.end_date_str = end_date_str
-        self.base_url = f"https://webapi.legistar.com/v1/{site['extra']['client']}"
+    def child_init(self):
+        # Runs at the end of Fetcher.__init__, which has already set
+        # self.start_date, self.end_date and self.start_year.
+        client = json.loads(self.site["extra"])["client"]
+        self.base_url = f"https://webapi.legistar.com/v1/{client}"
 
     def fetch_events(self):
         """Fetch events from Legistar API."""
         # Get all events since the start date
         events = requests.get(
             f"{self.base_url}/events",
-            params={"$filter": f"EventDate ge {self.start_date_str}"}
+            params={"$filter": f"EventDate ge {self.start_date:%Y-%m-%d}"},
         ).json()
 
         # Download minutes PDFs

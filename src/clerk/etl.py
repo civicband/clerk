@@ -19,6 +19,19 @@ from clerk.workers import (
 from .output import logger
 
 
+def _incremental_start_date_str(site: dict[str, Any]) -> str:
+    """Default start date for an incremental update.
+
+    Uses the year of the site's last_updated timestamp so a normal update only
+    re-scans recent data. Falls back to the site's configured start_year.
+    """
+    try:
+        year = datetime.datetime.strptime(site["last_updated"], "%Y-%m-%dT%H:%M:%S").year
+    except (KeyError, TypeError, ValueError):
+        year = site["start_year"]
+    return f"{year}-01-01"
+
+
 @click.group()
 @click.option("--subdomain", "-s", help="Subdomain to process")
 @click.option(
@@ -93,6 +106,7 @@ def update(ctx, next_site, all_years, skip_fetch, all_agendas, start_date, end_d
         # Update last_updated BEFORE enqueueing to prevent race condition
         # (multiple cron runs picking the same site)
         with civic_db_connection() as conn:
+            oldest_site = get_site_by_subdomain(conn, oldest_subdomain)
             upsert_site(
                 conn,
                 {
@@ -101,12 +115,16 @@ def update(ctx, next_site, all_years, skip_fetch, all_agendas, start_date, end_d
                 },
             )
 
+        job_kwargs: dict[str, Any] = {}
+        if oldest_site:
+            job_kwargs["start_date_str"] = _incremental_start_date_str(oldest_site)
+
         if fetch_local:
             from .workers import fetch_job_with_trace
 
-            fetch_job_with_trace(oldest_subdomain, generate_run_id(oldest_subdomain))
+            fetch_job_with_trace(oldest_subdomain, generate_run_id(oldest_subdomain), **job_kwargs)
         else:
-            enqueue_job("fetch-site", oldest_subdomain, priority="normal")
+            enqueue_job("fetch-site", oldest_subdomain, priority="normal", **job_kwargs)
         return
 
     if subdomain:
@@ -125,8 +143,10 @@ def update(ctx, next_site, all_years, skip_fetch, all_agendas, start_date, end_d
         job_kwargs["proceed"] = ctx.obj.get("PROCEED")
         if start_date:
             job_kwargs["start_date_str"] = start_date
-        if all_years:
+        elif all_years:
             job_kwargs["start_date_str"] = f"{site['start_year']}-01-01"
+        else:
+            job_kwargs["start_date_str"] = _incremental_start_date_str(site)
         if all_agendas:
             job_kwargs["all_agendas"] = True
         if end_date:
