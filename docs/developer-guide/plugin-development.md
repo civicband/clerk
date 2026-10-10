@@ -86,17 +86,36 @@ Your fetcher class must implement:
 
 ```python
 class MyFetcher:
-    def __init__(self, site: dict, start_year: int, all_agendas: bool):
+    def __init__(
+        self,
+        site: dict,
+        all_agendas: bool = False,
+        start_date_str: str | None = None,
+        end_date_str: str | None = None,
+    ):
         """Initialize the fetcher.
 
         Args:
             site: Site configuration from civic.db
-            start_year: Year to start fetching from
             all_agendas: Whether to fetch all agendas
+            start_date_str: ISO 8601 start date (ie, 2019-08-14).
+                Defaults to January 1st of the site's start_year.
+            end_date_str: ISO 8601 end date (ie, 2024-08-14).
+                Defaults to six months from today.
         """
         self.site = site
-        self.start_year = start_year
+        self.start_year = site["start_year"]
         self.all_agendas = all_agendas
+        self.start_date = (
+            datetime.strptime(start_date_str, "%Y-%m-%d")
+            if start_date_str
+            else datetime(site["start_year"], 1, 1)
+        )
+        self.end_date = (
+            datetime.strptime(end_date_str, "%Y-%m-%d")
+            if end_date_str
+            else datetime.today() + relativedelta.relativedelta(months=6)
+        )
 
     def fetch_events(self):
         """Download meeting data (PDFs, HTML, etc.)."""
@@ -338,18 +357,26 @@ from clerk import hookimpl
 class LegistarFetcher:
     """Fetcher for Legistar API."""
 
-    def __init__(self, site: dict, start_year: int, all_agendas: bool):
+    def __init__(
+        self,
+        site: dict,
+        all_agendas: bool = False,
+        start_date_str: str | None = None,
+        end_date_str: str | None = None,
+    ):
         self.site = site
-        self.start_year = start_year
+        self.start_year = site["start_year"]
         self.all_agendas = all_agendas
+        self.start_date_str = start_date_str or f"{site['start_year']}-01-01"
+        self.end_date_str = end_date_str
         self.base_url = f"https://webapi.legistar.com/v1/{site['extra']['client']}"
 
     def fetch_events(self):
         """Fetch events from Legistar API."""
-        # Get all events since start_year
+        # Get all events since the start date
         events = requests.get(
             f"{self.base_url}/events",
-            params={"$filter": f"EventDate ge {self.start_year}-01-01"}
+            params={"$filter": f"EventDate ge {self.start_date_str}"}
         ).json()
 
         # Download minutes PDFs

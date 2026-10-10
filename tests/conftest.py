@@ -271,7 +271,7 @@ def mock_fetcher(sample_site_data):
     """Create a mock fetcher instance."""
     from tests.mocks.mock_fetchers import MockFetcher
 
-    return MockFetcher(sample_site_data, start_year=2020, all_agendas=False)
+    return MockFetcher(sample_site_data, all_agendas=False, start_date_str="2020-01-01")
 
 
 @pytest.fixture
