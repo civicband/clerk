@@ -297,25 +297,40 @@ class TestGetFetcher:
 
 
 @pytest.mark.unit
-class TestIncrementalStartDate:
-    """Unit tests for the update command's default start date."""
+class TestUpdateStartDate:
+    """Tests for the default start date used by the update command."""
 
-    def test_uses_last_updated_year(self):
-        from clerk.etl import _incremental_start_date_str
+    def test_defaults_to_last_updated_year(self, tmp_path, monkeypatch, cli_runner, sample_db):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("DATABASE_URL", raising=False)
 
-        site = {"start_year": 2003, "last_updated": "2024-06-15T10:00:00"}
-        assert _incremental_start_date_str(site) == "2024-01-01"
+        captured = {}
+        monkeypatch.setattr(
+            "clerk.etl.enqueue_job",
+            lambda *args, **kwargs: captured.update({"args": args, "kwargs": kwargs}),
+        )
 
-    def test_falls_back_to_start_year_without_last_updated(self):
-        from clerk.etl import _incremental_start_date_str
+        result = cli_runner.invoke(cli, ["etl", "--subdomain", "pending.civic.band", "update"])
 
-        assert _incremental_start_date_str({"start_year": 2003}) == "2003-01-01"
+        assert result.exit_code == 0, result.output
+        assert captured["kwargs"]["start_date_str"] == "2023-01-01"
 
-    def test_falls_back_to_start_year_on_invalid_last_updated(self):
-        from clerk.etl import _incremental_start_date_str
+    def test_all_years_uses_start_year(self, tmp_path, monkeypatch, cli_runner, sample_db):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("DATABASE_URL", raising=False)
 
-        site = {"start_year": 2003, "last_updated": None}
-        assert _incremental_start_date_str(site) == "2003-01-01"
+        captured = {}
+        monkeypatch.setattr(
+            "clerk.etl.enqueue_job",
+            lambda *args, **kwargs: captured.update({"args": args, "kwargs": kwargs}),
+        )
+
+        result = cli_runner.invoke(
+            cli, ["etl", "--subdomain", "pending.civic.band", "update", "--all-years"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert captured["kwargs"]["start_date_str"] == "2022-01-01"
 
 
 @pytest.mark.unit

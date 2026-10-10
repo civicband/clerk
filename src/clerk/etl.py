@@ -19,19 +19,6 @@ from clerk.workers import (
 from .output import logger
 
 
-def _incremental_start_date_str(site: dict[str, Any]) -> str:
-    """Default start date for an incremental update.
-
-    Uses the year of the site's last_updated timestamp so a normal update only
-    re-scans recent data. Falls back to the site's configured start_year.
-    """
-    try:
-        year = datetime.datetime.strptime(site["last_updated"], "%Y-%m-%dT%H:%M:%S").year
-    except (KeyError, TypeError, ValueError):
-        year = site["start_year"]
-    return f"{year}-01-01"
-
-
 @click.group()
 @click.option("--subdomain", "-s", help="Subdomain to process")
 @click.option(
@@ -117,7 +104,13 @@ def update(ctx, next_site, all_years, skip_fetch, all_agendas, start_date, end_d
 
         job_kwargs: dict[str, Any] = {}
         if oldest_site:
-            job_kwargs["start_date_str"] = _incremental_start_date_str(oldest_site)
+            try:
+                start_year = datetime.datetime.strptime(
+                    oldest_site["last_updated"], "%Y-%m-%dT%H:%M:%S"
+                ).year
+            except (KeyError, TypeError, ValueError):
+                start_year = oldest_site["start_year"]
+            job_kwargs["start_date_str"] = f"{start_year}-01-01"
 
         if fetch_local:
             from .workers import fetch_job_with_trace
@@ -146,7 +139,13 @@ def update(ctx, next_site, all_years, skip_fetch, all_agendas, start_date, end_d
         elif all_years:
             job_kwargs["start_date_str"] = f"{site['start_year']}-01-01"
         else:
-            job_kwargs["start_date_str"] = _incremental_start_date_str(site)
+            try:
+                start_year = datetime.datetime.strptime(
+                    site["last_updated"], "%Y-%m-%dT%H:%M:%S"
+                ).year
+            except (KeyError, TypeError, ValueError):
+                start_year = site["start_year"]
+            job_kwargs["start_date_str"] = f"{start_year}-01-01"
         if all_agendas:
             job_kwargs["all_agendas"] = True
         if end_date:
