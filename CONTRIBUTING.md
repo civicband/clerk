@@ -302,4 +302,4 @@ Thank you for contributing to Clerk! 🎉
 
 ## Code of Conduct
 
-We use Civic Band's organization-level [Code of Conduct](https://github.com/civicband/.github/blob/main/CODE_OF_CONDUCT.md).
+We use CivicBand's organization-level [Code of Conduct](https://github.com/civicband/.github/blob/main/CODE_OF_CONDUCT.md).
