@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.12", "3.13"]
+        python-version: ["3.12", "3.13", "3.14", "3.15"]
         sqlalchemy-version: ["2.1.*"]
 
     services:
@@ -68,7 +68,7 @@ jobs:
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
-        if: matrix.python-version == '3.12'
+        if: matrix.python-version == '3.15'
         with:
           file: ./coverage.xml
           fail_ci_if_error: false
