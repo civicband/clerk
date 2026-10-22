@@ -58,7 +58,7 @@ def generate_run_id(subdomain):
 
 
 # Canonical list of all RQ queue names (single source of truth for metrics, etc.)
-QUEUE_NAMES = ["high", "fetch", "ocr", "compilation", "extraction", "deploy", "finance"]
+QUEUE_NAMES = ["high", "fetch", "ocr", "compilation", "deploy", "finance"]
 
 
 def get_high_queue():
@@ -79,11 +79,6 @@ def get_ocr_queue():
 def get_compilation_queue():
     """Get compilation jobs queue (coordinator, db compilation)."""
     return Queue("compilation", connection=get_redis())
-
-
-def get_extraction_queue():
-    """Get extraction jobs queue."""
-    return Queue("extraction", connection=get_redis())
 
 
 def get_deploy_queue():
@@ -153,7 +148,6 @@ def enqueue_job(job_type, site_id, priority="normal", run_id=None, **kwargs):
             "fetch": get_fetch_queue(),
             "ocr": get_ocr_queue(),
             "compilation": get_compilation_queue(),
-            "extraction": get_extraction_queue(),
             "deploy": get_deploy_queue(),
             "finance": get_finance_queue(),
         }

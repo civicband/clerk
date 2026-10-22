@@ -168,8 +168,8 @@ class TestErrorHandling:
         assert "old_data" in backup_db.table_names()
         assert backup_db["old_data"].count == 1
 
-    def test_no_cache_produces_empty_json(self, tmp_path, monkeypatch):
-        """Without extraction cache, JSON columns have empty structures."""
+    def test_placeholder_json_columns_are_empty(self, tmp_path, monkeypatch):
+        """Retained placeholder JSON columns are empty structures."""
         import json
 
         import sqlite_utils
@@ -198,7 +198,7 @@ class TestErrorHandling:
         entities = json.loads(rows[0]["entities_json"])
         votes = json.loads(rows[0]["votes_json"])
 
-        # Without cache, should have empty structures
+        # Placeholder columns should have empty structures
         assert entities == {"persons": [], "orgs": [], "locations": []}
         assert votes == {"votes": []}
 

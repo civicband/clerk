@@ -50,7 +50,6 @@ Checks the number of pending jobs in each queue and compares against thresholds:
 | fetch | 25 | 50 |
 | ocr | 250 | 500 |
 | compilation | 50 | 100 |
-| extraction | 50 | 100 |
 | deploy | 25 | 50 |
 
 **Warning**: If queue depth exceeds warning threshold, you may need to scale workers.
@@ -105,7 +104,6 @@ Queue Depths:
   fetch: 2
   ocr: 45
   compilation: 1
-  extraction: 3
   deploy: 0
 
 Workers:
@@ -138,7 +136,6 @@ Queue Depths:
   fetch: 150 ⚠ (threshold: 50)
   ocr: 350 ⚠ (threshold: 500)
   compilation: 12
-  extraction: 8
   deploy: 2
 
 Workers:
@@ -211,7 +208,6 @@ $ clerk health --json
       "fetch": 2,
       "ocr": 45,
       "compilation": 1,
-      "extraction": 3,
       "deploy": 0,
       "warnings": []
     },

@@ -41,29 +41,20 @@ sudo dnf install python3.12 python3-pip
 Using pip:
 
 ```bash
-python3.12 -m pip install --user "civicband-clerk[pdf,extraction] @ git+https://github.com/civicband/clerk.git"
+python3.12 -m pip install --user "civicband-clerk[pdf] @ git+https://github.com/civicband/clerk.git"
 ```
 
 Or using uv (faster):
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
-uv pip install "civicband-clerk[pdf,extraction] @ git+https://github.com/civicband/clerk.git"
+uv pip install "civicband-clerk[pdf] @ git+https://github.com/civicband/clerk.git"
 ```
 
 **Extras explained:**
 - `pdf` - PDF processing (pdfkit, pdf2image, pypdf)
-- `extraction` - Entity extraction with spaCy
 
-### 3. Install spaCy Model
-
-For entity extraction:
-
-```bash
-python3.12 -m spacy download en_core_web_md
-```
-
-### 4. Configure Environment
+### 3. Configure Environment
 
 Create `.env` file:
 
@@ -73,23 +64,21 @@ STORAGE_DIR=../sites
 DATABASE_URL=postgresql://localhost/clerk_civic
 REDIS_URL=redis://localhost:6379
 DEFAULT_OCR_BACKEND=tesseract
-ENABLE_EXTRACTION=0
 FETCH_WORKERS=2
 OCR_WORKERS=4
 COMPILATION_WORKERS=2
-EXTRACTION_WORKERS=0
 DEPLOY_WORKERS=1
 EOF
 ```
 
-### 5. Add Clerk to PATH
+### 4. Add Clerk to PATH
 
 ```bash
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
-### 6. Initialize Database
+### 5. Initialize Database
 
 ```bash
 clerk db upgrade
@@ -101,7 +90,7 @@ INFO  [alembic.runtime.migration] Running upgrade -> 45db71312424, initial schem
 INFO  [alembic.runtime.migration] Running upgrade 45db71312424 -> c27bd77144ce, add queue tables
 ```
 
-### 7. Verify Installation
+### 6. Verify Installation
 
 Check Clerk version:
 

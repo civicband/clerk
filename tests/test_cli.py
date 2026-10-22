@@ -583,31 +583,6 @@ class TestWorkerCommand:
         # Verify burst mode was enabled
         mock_work.assert_called_once_with(with_scheduler=True, burst=True)
 
-    def test_worker_extraction_multiple_workers(self, cli_runner, mocker):
-        """Test starting multiple extraction workers with worker pool."""
-        # Mock Redis connection
-        mock_redis = mocker.MagicMock()
-        mocker.patch("clerk.queue.get_redis", return_value=mock_redis)
-
-        # Mock queues
-        mock_high_queue = mocker.MagicMock()
-        mock_extraction_queue = mocker.MagicMock()
-        mocker.patch("clerk.queue.get_high_queue", return_value=mock_high_queue)
-        mocker.patch("clerk.queue.get_extraction_queue", return_value=mock_extraction_queue)
-
-        # Mock WorkerPool class
-        mock_pool = mocker.MagicMock()
-        mock_pool.__enter__ = mocker.Mock(return_value=mock_pool)
-        mock_pool.__exit__ = mocker.Mock(return_value=False)
-        mocker.patch("rq.worker_pool.WorkerPool", return_value=mock_pool)
-
-        result = cli_runner.invoke(cli, ["worker", "extraction", "-n", "2"])
-
-        assert result.exit_code == 0
-        # Verify pool.start() was called
-        mock_pool.start.assert_called_once()
-        # Note: worker_class parameter is now passed, so we don't check exact call signature
-
     def test_worker_deploy_type(self, cli_runner, mocker):
         """Test starting deploy worker."""
         # Mock Redis connection
@@ -674,7 +649,7 @@ class TestWorkerCommand:
 
     def test_worker_all_worker_types(self, cli_runner, mocker):
         """Test all valid worker types are accepted."""
-        worker_types = ["fetch", "ocr", "extraction", "deploy"]
+        worker_types = ["fetch", "ocr", "compilation", "deploy"]
 
         for worker_type in worker_types:
             # Mock Redis connection

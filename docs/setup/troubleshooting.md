@@ -27,7 +27,7 @@ source ~/.zshrc
 **Fix (alternative - reinstall with correct target):**
 
 ```bash
-pip install --user "clerk[pdf,extraction] @ git+https://github.com/civicband/clerk.git"
+pip install --user "clerk[pdf] @ git+https://github.com/civicband/clerk.git"
 ```
 
 ### Module not found errors
@@ -39,7 +39,7 @@ pip install --user "clerk[pdf,extraction] @ git+https://github.com/civicband/cle
 ```bash
 pip install -e .  # If in development directory
 # OR
-pip install "clerk[pdf,extraction] @ git+https://github.com/civicband/clerk.git"
+pip install "clerk[pdf] @ git+https://github.com/civicband/clerk.git"
 ```
 
 ## Service Connection Issues
@@ -226,7 +226,7 @@ pip install -e .  # Reinstall clerk
 **`ImportError: cannot import name 'ClerkSpec'`:**
 
 ```bash
-pip install --upgrade "clerk[pdf,extraction] @ git+https://github.com/civicband/clerk.git"
+pip install --upgrade "clerk[pdf] @ git+https://github.com/civicband/clerk.git"
 ```
 
 **`ConnectionError: Error connecting to Redis`:**
@@ -318,19 +318,6 @@ brew install poppler
 sudo apt install poppler-utils
 ```
 
-**`MemoryError` during extraction:**
-
-Reduce extraction workers or disable extraction:
-
-```bash
-# Edit .env
-EXTRACTION_WORKERS=0  # Or reduce to 1
-
-# Restart workers
-clerk uninstall-workers
-clerk install-workers
-```
-
 ## Performance Issues
 
 ### OCR extremely slow
@@ -377,32 +364,16 @@ clerk install-workers
 ps aux | grep "clerk worker" | awk '{print $4, $11}'
 ```
 
-**Fix (extraction workers using too much RAM):**
+**Fix (workers using too much RAM):**
 
-Disable or reduce extraction workers:
-
-```bash
-# Edit .env
-EXTRACTION_WORKERS=0  # Or set to 1
-
-# Restart workers
-clerk uninstall-workers
-clerk install-workers
-```
-
-Use distributed setup to run extraction on separate machine:
-
-See [Distributed Setup](distributed.md).
-
-**Fix (reduce spaCy parallel processing):**
+Reduce the relevant worker counts:
 
 ```bash
 # Edit .env
-SPACY_N_PROCESS=1  # Default is 2
-
-# Restart extraction workers
-systemctl --user restart clerk-worker-extraction-*
+OCR_WORKERS=2  # Or reduce further
 ```
+
+Restart your worker services. See [Distributed Setup](distributed.md) to move OCR workers to dedicated machines.
 
 ## Diagnostic Tools
 

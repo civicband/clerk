@@ -19,7 +19,7 @@ A Python library for managing civic data pipelines for civic.band. Clerk handles
 ## Quick Install
 
 ```bash
-pip install "civicband-clerk[pdf,extraction] @ git+https://github.com/civicband/clerk.git"
+pip install "civicband-clerk[pdf] @ git+https://github.com/civicband/clerk.git"
 ```
 
 ## Documentation
@@ -74,7 +74,6 @@ Clerk uses a distributed task queue (RQ) with specialized worker types:
 - **fetch** - Download meeting data from city websites
 - **ocr** - Extract text from PDFs (parallel, CPU-intensive)
 - **compilation** - Build databases and coordinate pipeline
-- **extraction** - Entity and vote extraction (optional, memory-intensive)
 - **deploy** - Upload to storage/CDN
 
 Workers can run on a single machine or distributed across multiple machines for better performance.

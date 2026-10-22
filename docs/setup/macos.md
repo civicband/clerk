@@ -18,28 +18,19 @@ Before starting, complete [Prerequisites](prerequisites.md) to install:
 Using pip:
 
 ```bash
-pip install "civicband-clerk[pdf,extraction] @ git+https://github.com/civicband/clerk.git"
+pip install "civicband-clerk[pdf] @ git+https://github.com/civicband/clerk.git"
 ```
 
 Or using uv (faster):
 
 ```bash
-uv pip install "civicband-clerk[pdf,extraction] @ git+https://github.com/civicband/clerk.git"
+uv pip install "civicband-clerk[pdf] @ git+https://github.com/civicband/clerk.git"
 ```
 
 **Extras explained:**
 - `pdf` - PDF processing (pdfkit, pdf2image, pypdf)
-- `extraction` - Entity extraction with spaCy
 
-### 2. Install spaCy Model
-
-For entity extraction:
-
-```bash
-python -m spacy download en_core_web_md
-```
-
-### 3. Configure Environment
+### 2. Configure Environment
 
 Create `.env` file:
 
@@ -49,16 +40,14 @@ STORAGE_DIR=../sites
 DATABASE_URL=postgresql://localhost/clerk_civic
 REDIS_URL=redis://localhost:6379
 DEFAULT_OCR_BACKEND=tesseract
-ENABLE_EXTRACTION=0
 FETCH_WORKERS=2
 OCR_WORKERS=4
 COMPILATION_WORKERS=2
-EXTRACTION_WORKERS=0
 DEPLOY_WORKERS=1
 EOF
 ```
 
-### 4. Initialize Database
+### 3. Initialize Database
 
 ```bash
 clerk db upgrade
@@ -70,7 +59,7 @@ INFO  [alembic.runtime.migration] Running upgrade -> 45db71312424, initial schem
 INFO  [alembic.runtime.migration] Running upgrade 45db71312424 -> c27bd77144ce, add queue tables
 ```
 
-### 5. Verify Installation
+### 4. Verify Installation
 
 Check Clerk version:
 

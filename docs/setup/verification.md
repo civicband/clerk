@@ -189,8 +189,7 @@ time clerk build-db-from-text -s test-verification.civic.band
 Expected: Completes without errors
 
 Typical speeds:
-- Without extraction: 10-30 seconds for 100 pages
-- With extraction: 5-10 minutes for 100 pages
+- 10-30 seconds for 100 pages
 
 ## Verification Checklist
 

@@ -57,26 +57,12 @@ clerk etl update --next-site
 Build the searchable database from extracted text:
 
 ```bash
-# Fast build (no entity extraction)
-clerk build-db-from-text --subdomain berkeleyca.civic.band
-
-# With entity extraction (slower)
-clerk build-db-from-text --subdomain berkeleyca.civic.band --with-extraction
+clerk etl --subdomain berkeleyca.civic.band compile
 ```
 
 This creates `meetings.db` with full-text search enabled.
 
-## Step 4: Extract Entities (Optional)
-
-For entity and vote extraction, run separately:
-
-```bash
-clerk extract-entities --subdomain berkeleyca.civic.band
-```
-
-This is memory-intensive (~5GB) and runs as a background job.
-
-## Step 5: Build Aggregate Database
+## Step 4: Build Aggregate Database
 
 Combine all sites into one searchable database:
 

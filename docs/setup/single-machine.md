@@ -4,13 +4,12 @@ Configure Clerk workers to run on a single machine.
 
 ## Overview
 
-Clerk uses a distributed task queue (RQ) with 5 worker types:
+Clerk uses a distributed task queue (RQ) with 4 worker types:
 
 1. **fetch** - Download meeting data from city websites
 2. **ocr** - Extract text from PDFs (CPU-intensive)
 3. **compilation** - Build databases, coordinate jobs
-4. **extraction** - Entity and vote extraction (optional, memory-intensive)
-5. **deploy** - Upload to CDN/storage
+4. **deploy** - Upload to CDN/storage
 
 ## Architecture
 
@@ -23,9 +22,9 @@ Clerk uses a distributed task queue (RQ) with 5 worker types:
 │  └────┬─────┘  └─────┬────┘  └───────┬───────┘ │
 │       │              │                │         │
 │  ┌────┴──────────────┴────────────────┴──────┐ │
-│  │           Clerk Workers (5 types)         │ │
+│  │           Clerk Workers (4 types)         │ │
 │  │  fetch(2) ocr(4) compilation(2)          │ │
-│  │  extraction(0) deploy(1)                  │ │
+│  │  deploy(1)                                │ │
 │  └───────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────┘
 ```
@@ -42,15 +41,10 @@ FETCH_WORKERS=2       # Parallel site fetching
 OCR_WORKERS=4         # Parallel OCR processing (CPU-bound)
 COMPILATION_WORKERS=2 # Database builds, coordination
 DEPLOY_WORKERS=1      # Upload to storage
-
-# Optional workers (memory-intensive)
-EXTRACTION_WORKERS=0  # Set to 0 if not using extraction
-                      # Set to 1-2 if extraction enabled
 ```
 
 **Memory considerations:**
 - Each OCR worker: ~500 MB
-- Each extraction worker: ~5 GB (with spaCy)
 - Recommended: 8 GB RAM for full pipeline
 
 ### 2. Install Worker Services
@@ -143,14 +137,12 @@ Queue Status:
   fetch: 0 jobs
   ocr: 0 jobs
   compilation: 0 jobs
-  extraction: 0 jobs
   deploy: 0 jobs
 
 Active Workers:
   fetch: 2 workers
   ocr: 4 workers
   compilation: 2 workers
-  extraction: 0 workers
   deploy: 1 worker
 ```
 
@@ -240,8 +232,4 @@ This command shows:
 
 ### High memory usage
 
-If extraction workers consume too much memory:
-
-1. Set `EXTRACTION_WORKERS=0` in `.env`
-2. Restart workers
-3. Use [Distributed Setup](distributed.md) to run extraction on separate machine
+If workers consume too much memory, reduce the worker counts in `.env` and restart the workers.

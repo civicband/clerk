@@ -35,21 +35,6 @@ Includes:
 - pdf2image - Convert PDFs to images
 - pypdf - PDF manipulation
 
-### Text Extraction
-
-For entity and vote extraction with spaCy:
-
-```bash
-uv pip install civicband-clerk[extraction]
-```
-
-Then download the spaCy language model:
-
-```bash
-python -m spacy download en_core_web_md
-export ENABLE_EXTRACTION=1
-```
-
 ### Vision Framework (macOS only)
 
 For faster OCR on Apple Silicon:
@@ -65,7 +50,7 @@ Requires macOS 10.15+ (M1+ recommended for best performance).
 Install everything:
 
 ```bash
-uv pip install civicband-clerk[pdf,extraction,vision]
+uv pip install civicband-clerk[pdf]
 ```
 
 ## Development Installation

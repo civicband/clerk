@@ -10,7 +10,7 @@ import os
 import click
 from dotenv import find_dotenv, load_dotenv
 
-# Load .env file BEFORE local imports so extraction.py can read env vars
+# Load .env file BEFORE local imports so modules can read env vars
 # Use find_dotenv() to search parent directories for .env file
 load_dotenv(find_dotenv())
 # ruff: noqa: E402
@@ -31,7 +31,7 @@ STORAGE_DIR = os.environ.get("STORAGE_DIR", "../sites")
 
 
 @click.group()
-@click.version_option()
+@click.version_option(package_name="civicband-clerk")
 @click.option(
     "--plugins-dir",
     default="./plugins",
@@ -73,9 +73,7 @@ _load_entry_point_plugins()
 
 
 @cli.command()
-@click.argument(
-    "worker_type", type=click.Choice(["fetch", "ocr", "compilation", "extraction", "deploy"])
-)
+@click.argument("worker_type", type=click.Choice(["fetch", "ocr", "compilation", "deploy"]))
 @click.option("--num-workers", "-n", type=int, default=1, help="Number of workers to start")
 @click.option("--burst", is_flag=True, help="Exit when queue empty (for testing)")
 def worker(worker_type, num_workers, burst):
@@ -110,7 +108,6 @@ def worker(worker_type, num_workers, burst):
     from .queue import (
         get_compilation_queue,
         get_deploy_queue,
-        get_extraction_queue,
         get_fetch_queue,
         get_high_queue,
         get_ocr_queue,
@@ -129,7 +126,6 @@ def worker(worker_type, num_workers, burst):
         "fetch": [get_high_queue(), get_fetch_queue()],
         "ocr": [get_high_queue(), get_ocr_queue()],
         "compilation": [get_high_queue(), get_compilation_queue()],
-        "extraction": [get_high_queue(), get_extraction_queue()],
         "deploy": [get_high_queue(), get_deploy_queue()],
     }
 
@@ -139,7 +135,6 @@ def worker(worker_type, num_workers, burst):
         "fetch": 3600,  # 1 hour - fetching PDFs from city websites
         "ocr": 3600,  # 1 hour - OCR can be slow, especially with Vision
         "compilation": 3600,  # 1 hour - database compilation with large datasets
-        "extraction": 7200,  # 2 hours - LLM-based entity extraction
         "deploy": 600,  # 10 minutes - S3 upload and CDN deployment
     }
 

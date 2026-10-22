@@ -463,7 +463,7 @@ def recover_stuck_site(subdomain: str) -> bool:
             click.echo(f"  {subdomain}: Already has coordinator enqueued, skipping")
             return False
 
-    elif stage in ["compilation", "extraction", "deploy"]:
+    elif stage in ["compilation", "deploy"]:
         # These are 1:1 jobs - simpler recovery
         # For now just log, could implement re-enqueue logic
         click.echo(f"  {subdomain}: Stuck in {stage} stage (TODO: implement recovery)")

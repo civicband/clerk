@@ -1,6 +1,6 @@
 # Task Queue System
 
-clerk uses a distributed task queue system powered by [RQ (Redis Queue)](https://python-rq.org/) to process civic meeting data at scale. The queue system orchestrates the entire data pipeline from fetching PDFs through OCR, entity extraction, and deployment.
+clerk uses a distributed task queue system powered by [RQ (Redis Queue)](https://python-rq.org/) to process civic meeting data at scale. The queue system orchestrates the data pipeline from fetching PDFs through OCR, compilation, and deployment.
 
 ## Overview
 
@@ -25,20 +25,19 @@ clerk enqueue <subdomain> [--priority high]
 Downloads PDFs → Spawns N × ocr_page_job → [ocr queue]
   ↓
 ocr_complete_coordinator (waits for ALL OCR jobs)
-  ├─→ db_compilation_job(entities=False) → [extraction queue] (fast path)
-  └─→ extraction_job → db_compilation_job(entities=True) → deploy_job
+  ↓
+db_compilation_job → deploy_job
 ```
 
 ### Queue Types
 
-clerk uses five specialized queues:
+clerk uses specialized queues:
 
 | Queue | Purpose | Workers | Concurrency |
 |-------|---------|---------|-------------|
 | **high** | Priority jobs | 1-2 | Low |
 | **fetch** | Download PDFs | 2-4 | Medium |
 | **ocr** | OCR processing | 4-8 | High |
-| **extraction** | Entity extraction + DB compilation | 2-4 | Medium |
 | **deploy** | Deploy to production | 1-2 | Low |
 
 ### Fan-Out/Fan-In Pattern
@@ -47,11 +46,7 @@ The queue system uses a fan-out/fan-in pattern for efficient parallel processing
 
 1. **Fan-Out**: One fetch job spawns many OCR jobs (one per PDF page)
 2. **Fan-In**: A coordinator job waits for ALL OCR jobs to complete
-3. **Parallel Paths**: After OCR, two paths run simultaneously:
-   - Fast path: Database compilation without entity extraction
-   - Full path: Entity extraction → Database compilation → Deployment
-
-This ensures users get quick results (fast path) while comprehensive data builds in the background (full path).
+3. **Compile and Deploy**: After OCR, the database is compiled and deployed
 
 ## Prerequisites
 
@@ -146,7 +141,6 @@ DEFAULT_OCR_BACKEND=tesseract
 # Number of background workers for each queue
 FETCH_WORKERS=2
 OCR_WORKERS=4
-EXTRACTION_WORKERS=2
 DEPLOY_WORKERS=1
 ```
 
@@ -182,8 +176,8 @@ clerk worker fetch -n 2
 # Start OCR workers (parallel OCR processing)
 clerk worker ocr -n 4
 
-# Start extraction workers (entity extraction + DB compilation)
-clerk worker extraction -n 2
+# Start compilation workers (database builds + coordinator)
+clerk worker compilation -n 2
 
 # Start deploy worker (deployment to production)
 clerk worker deploy -n 1
@@ -334,7 +328,6 @@ Queue Status
 high         0 jobs
 fetch        2 jobs
 ocr          47 jobs
-extraction   1 jobs
 deploy       0 jobs
 
 Active Sites
@@ -364,7 +357,6 @@ Last Updated: 2026-01-08 14:25:42
 Pipeline Stages:
   ✓ fetch    - Complete
   → ocr      - In Progress (23/50)
-    extraction - Pending
     deploy   - Pending
 ```
 
@@ -514,7 +506,6 @@ top
 
 - **Fetch**: Slow website, network issues → Increase `FETCH_WORKERS`
 - **OCR**: CPU-bound → Increase `OCR_WORKERS` or use faster OCR backend (`vision` on macOS)
-- **Extraction**: CPU-bound → Increase `EXTRACTION_WORKERS`
 
 ## Advanced Topics
 
@@ -524,7 +515,6 @@ Jobs have default timeouts to prevent hanging:
 
 - Fetch: 10 minutes
 - OCR: 10 minutes
-- Extraction: 2 hours
 - Deploy: 10 minutes
 
 Modify in `src/clerk/workers.py` if needed.
@@ -590,18 +580,16 @@ High-priority jobs go to the `high` queue which workers check first before polli
 **Development (local machine)**:
 - Fetch: 1-2 workers
 - OCR: 2-4 workers (CPU-bound)
-- Extraction: 1-2 workers
 - Deploy: 1 worker
 
 **Production (dedicated server)**:
 - Fetch: 2-4 workers
 - OCR: 4-8 workers (scale with CPU cores)
-- Extraction: 2-4 workers
 - Deploy: 1-2 workers
 
 **Production (distributed)**:
 - Dedicated OCR machines with 8-16 workers each
-- Fetch/extraction/deploy on separate machines
+- Fetch/deploy on separate machines
 
 ### Monitoring
 
@@ -624,7 +612,7 @@ queue_depth = Gauge('clerk_queue_depth', 'Jobs in queue', ['queue'])
 
 def collect_metrics():
     redis_conn = Redis.from_url(os.getenv('REDIS_URL'))
-    for queue_name in ['fetch', 'ocr', 'extraction', 'deploy']:
+    for queue_name in ['fetch', 'ocr', 'deploy']:
         queue = Queue(queue_name, connection=redis_conn)
         queue_depth.labels(queue=queue_name).set(len(queue))
 

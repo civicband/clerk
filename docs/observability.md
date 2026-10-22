@@ -37,7 +37,6 @@ How it fits together:
 | fetch | 9801 |
 | ocr | 9802 |
 | compilation | 9803 |
-| extraction | 9804 |
 | deploy | 9805 |
 
 - The exporter sweeps stale multiproc files whose writer pid is dead (best-effort, never fatal). This sweep is only correct because of `pid: "host"` — the exporter must see the same pids the writers used.
@@ -47,7 +46,7 @@ Metrics exported:
 
 - `clerk_jobs_total{container, stage, job_type, status}` — counter of processed RQ jobs
 - `clerk_job_duration_seconds{container, stage, job_type}` — histogram of job durations
-- `clerk_queue_depth{queue}` — gauge of pending jobs, read live from Redis at scrape time, for all 7 RQ queues (`high`, `fetch`, `ocr`, `compilation`, `extraction`, `deploy`, `finance`)
+- `clerk_queue_depth{queue}` — gauge of pending jobs, read live from Redis at scrape time, for all 6 RQ queues (`high`, `fetch`, `ocr`, `compilation`, `deploy`, `finance`)
 
 ## Grafana datasources
 
@@ -77,7 +76,6 @@ Bare-metal fallback (per-worker servers, used only when `METRICS_PORT` is unset)
 #           - "clerk-host:9801"  # fetch
 #           - "clerk-host:9802"  # ocr
 #           - "clerk-host:9803"  # compilation
-#           - "clerk-host:9804"  # extraction
 #           - "clerk-host:9805"  # deploy
 ```
 

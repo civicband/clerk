@@ -346,7 +346,7 @@ Tests run automatically on GitHub Actions:
 ```
 
 Tests run on:
-- Python 3.12 and 3.13
+- Python 3.12, 3.13, and 3.14
 - Every push to main
 - Every pull request
 

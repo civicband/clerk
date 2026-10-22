@@ -25,7 +25,6 @@ METRICS_PORTS = {
     "fetch": 9801,
     "ocr": 9802,
     "compilation": 9803,
-    "extraction": 9804,
     "deploy": 9805,
 }
 

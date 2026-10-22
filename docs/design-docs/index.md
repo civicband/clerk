@@ -26,7 +26,7 @@ Documents covering system design and infrastructure decisions.
 
 ### Feature Designs
 
-Designs for specific features like OCR processing, entity extraction, and caching.
+Designs for specific features like OCR processing, database compilation, and caching.
 
 ### Implementation Plans
 
