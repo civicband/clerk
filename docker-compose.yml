@@ -63,7 +63,7 @@ services:
       - "9800:9800"
 
   vector:
-    image: timberio/vector:0.46.0-distroless-libc # check for newer tag
+    image: timberio/vector:0.46.1-distroless-libc # check for newer tag
     container_name: vector
     restart: unless-stopped
     env_file: .env
