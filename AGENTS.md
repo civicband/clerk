@@ -37,7 +37,7 @@ pre-commit run --all-files  # hooks: trailing-whitespace, ruff, mypy
 - **`src/clerk/fetcher.py`** — `Fetcher` base class + `get_fetcher()` dispatcher
 - **`src/clerk/plugin_loader.py`** — pluggy-based plugin system via `civicband.clerk` hookspec namespace
 - **`src/clerk/db.py`** — SQLAlchemy + SQLite conn management; alembic migrations in `alembic/`
-- **`src/clerk/queue.py`** — RQ queue helpers; 5 worker types: fetch, ocr, compilation, extraction, deploy
+- **`src/clerk/queue.py`** — RQ queue helpers; 4 worker types: fetch, ocr, compilation, deploy
 - Plugin entry points: `clerk.plugins` group; hookimpl namespace: `civicband.clerk`
 - Shared data at install time: `deployment/`, `scripts/`, `alembic.ini`, `alembic/` → `share/clerk/`
 - `.env` required at runtime (template at `.env.example`)

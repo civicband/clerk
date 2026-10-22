@@ -162,7 +162,6 @@ class Settings:
         self.FETCH_WORKERS: int = get_env_int("FETCH_WORKERS", 2) or 2
         self.OCR_WORKERS: int = get_env_int("OCR_WORKERS", 4) or 4
         self.COMPILATION_WORKERS: int = get_env_int("COMPILATION_WORKERS", 2) or 2
-        self.EXTRACTION_WORKERS: int = get_env_int("EXTRACTION_WORKERS", 0) or 0
         self.DEPLOY_WORKERS: int = get_env_int("DEPLOY_WORKERS", 1) or 1
 
         # Sentry Configuration

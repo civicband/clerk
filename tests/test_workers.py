@@ -285,10 +285,6 @@ def test_ocr_complete_coordinator_accepts_run_id(mocker):
     mock_compilation_queue.enqueue.return_value = mocker.MagicMock(id="comp-job")
     mocker.patch("clerk.queue.get_compilation_queue", return_value=mock_compilation_queue)
 
-    mock_extraction_queue = mocker.MagicMock()
-    mock_extraction_queue.enqueue.return_value = mocker.MagicMock(id="ext-job")
-    mocker.patch("clerk.queue.get_extraction_queue", return_value=mock_extraction_queue)
-
     mock_logger = mocker.MagicMock()
     mocker.patch("clerk.workers.ClerkLogger", return_value=mock_logger)
 

@@ -52,7 +52,6 @@ The following topics will be added to this section:
 - Site management in detail
 - Data pipeline configuration
 - OCR backends and options
-- Entity and vote extraction
 - Full-text search capabilities
 - Caching and performance
 
@@ -69,7 +68,6 @@ The following topics will be added to this section:
 
 ### Advanced Topics
 - Database schema and migrations
-- Custom extraction rules
 - Performance tuning
 - Multi-database architecture
 

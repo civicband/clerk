@@ -16,7 +16,7 @@ def initialize_stage(subdomain: str, stage: str, total_jobs: int) -> None:
 
     Args:
         subdomain: Site subdomain
-        stage: Pipeline stage (fetch/ocr/compilation/extraction/deploy)
+        stage: Pipeline stage (fetch/ocr/compilation/deploy)
         total_jobs: Total number of jobs for this stage
     """
     with civic_db_connection() as conn:

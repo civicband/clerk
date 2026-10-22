@@ -17,7 +17,7 @@ System requirements for running Clerk.
 ### Memory
 
 - **Minimum:** 4 GB RAM
-- **Recommended:** 8 GB RAM (for OCR and extraction)
+- **Recommended:** 8 GB RAM (for OCR)
 - **Production:** 16 GB+ RAM for distributed setups
 
 ### Disk Space
@@ -143,14 +143,6 @@ export DYLD_LIBRARY_PATH="/opt/homebrew/lib:$DYLD_LIBRARY_PATH"  # Apple Silicon
 export DYLD_LIBRARY_PATH="/usr/local/lib:$DYLD_LIBRARY_PATH"     # Intel Mac
 ```
 
-### spaCy Language Model
-
-Entity extraction (optional).
-
-```bash
-python -m spacy download en_core_web_md
-```
-
 ## Environment Variables
 
 Create `.env` file in your working directory:
@@ -168,14 +160,10 @@ REDIS_URL=redis://localhost:6379
 # OCR backend (tesseract or vision)
 DEFAULT_OCR_BACKEND=tesseract
 
-# Entity extraction (optional, requires spaCy)
-ENABLE_EXTRACTION=0
-
 # Worker counts (set in worker setup)
 FETCH_WORKERS=2
 OCR_WORKERS=4
 COMPILATION_WORKERS=2
-EXTRACTION_WORKERS=0
 DEPLOY_WORKERS=1
 ```
 

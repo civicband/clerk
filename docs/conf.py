@@ -66,7 +66,6 @@ autodoc_mock_imports = [
     "pdfkit",
     "pdf2image",
     "pypdf",
-    "spacy",
 ]
 
 # Napoleon settings for docstring parsing

@@ -6,9 +6,7 @@ Scale Clerk across multiple machines for better performance and resource isolati
 
 Distributed setup allows you to:
 - Run OCR workers on dedicated machines (CPU-intensive)
-- Run extraction workers on separate machines (memory-intensive)
 - Scale horizontally by adding more worker machines
-- Isolate core pipeline from optional extraction
 
 ## Architecture
 
@@ -29,11 +27,6 @@ Distributed setup allows you to:
 ┌─────────────────────────────────────────────────┐
 │ Machine 2: OCR Workers                          │
 │  ocr(8)                                         │
-└─────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────┐
-│ Machine 3: Extraction Workers (Optional)        │
-│  extraction(2)                                  │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -115,13 +108,11 @@ STORAGE_DIR=../sites
 DATABASE_URL=postgresql://user:pass@SERVICE_HOST:5432/clerk_civic
 REDIS_URL=redis://:YOUR_PASSWORD@SERVICE_HOST:6379
 DEFAULT_OCR_BACKEND=tesseract
-ENABLE_EXTRACTION=0
 
 # Only core pipeline workers
 FETCH_WORKERS=2
 OCR_WORKERS=0
 COMPILATION_WORKERS=2
-EXTRACTION_WORKERS=0
 DEPLOY_WORKERS=1
 EOF
 
@@ -131,29 +122,11 @@ STORAGE_DIR=../sites
 DATABASE_URL=postgresql://user:pass@SERVICE_HOST:5432/clerk_civic
 REDIS_URL=redis://:YOUR_PASSWORD@SERVICE_HOST:6379
 DEFAULT_OCR_BACKEND=tesseract
-ENABLE_EXTRACTION=0
 
 # Only OCR workers
 FETCH_WORKERS=0
 OCR_WORKERS=8
 COMPILATION_WORKERS=0
-EXTRACTION_WORKERS=0
-DEPLOY_WORKERS=0
-EOF
-
-# Machine 3: Extraction Workers
-cat > .env <<'EOF'
-STORAGE_DIR=../sites
-DATABASE_URL=postgresql://user:pass@SERVICE_HOST:5432/clerk_civic
-REDIS_URL=redis://:YOUR_PASSWORD@SERVICE_HOST:6379
-DEFAULT_OCR_BACKEND=tesseract
-ENABLE_EXTRACTION=1
-
-# Only extraction workers
-FETCH_WORKERS=0
-OCR_WORKERS=0
-COMPILATION_WORKERS=0
-EXTRACTION_WORKERS=2
 DEPLOY_WORKERS=0
 EOF
 ```
@@ -207,14 +180,12 @@ Queue Status:
   fetch: 0 jobs
   ocr: 0 jobs
   compilation: 0 jobs
-  extraction: 0 jobs
   deploy: 0 jobs
 
 Active Workers:
   fetch: 2 workers
   ocr: 8 workers
   compilation: 2 workers
-  extraction: 2 workers
   deploy: 1 worker
 ```
 
@@ -244,7 +215,7 @@ Use deployment plugins to upload directly to S3. Workers don't need shared files
 If using deployment plugins (recommended for production):
 - Each machine has local `STORAGE_DIR`
 - Deploy workers upload to S3/CDN
-- OCR/extraction workers only need temporary storage
+- OCR workers only need temporary storage
 
 ## Monitoring Distributed Workers
 
@@ -268,7 +239,6 @@ watch -n 5 clerk status
 
 If queues grow:
 - OCR queue growing → Add more OCR workers
-- Extraction queue growing → Add more extraction workers
 
 ### Centralized Logging
 
@@ -289,8 +259,6 @@ See [Operations: Monitoring](../operations/monitoring.md) for detailed log queri
 ### When to Scale
 
 - **OCR queue depth > 100** → Add OCR workers or machines
-- **Extraction queue depth > 10** → Add extraction workers
-- **Memory pressure** → Separate extraction to dedicated machine
 - **CPU saturation** → Add more OCR worker machines
 
 ### Adding Worker Capacity

@@ -158,7 +158,7 @@ class ClerkLogger:
             subdomain: Optional subdomain prefix (uses default if not provided)
             level: Log level - "debug", "info", "warning", "error"
             run_id: Pipeline execution identifier
-            stage: Current pipeline stage (fetch/ocr/compilation/extraction/deploy)
+            stage: Current pipeline stage (fetch/ocr/compilation/deploy)
             job_id: Current RQ job ID
             parent_job_id: Parent RQ job ID for spawned jobs
             **kwargs: Additional structured fields for logging

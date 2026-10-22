@@ -89,17 +89,6 @@ class MeetingDateGroup:
     page_indices: list[int]
 
 
-@dataclass
-class PageData:
-    """Page data with cache information for extraction."""
-
-    page_id: str
-    text: str
-    page_file_path: str
-    content_hash: str | None
-    cached_extraction: dict | None  # {"entities": ..., "votes": ...}
-
-
 pm = pluggy.PluginManager("civicband.clerk")
 pm.add_hookspecs(ClerkSpec)
 
@@ -291,11 +280,10 @@ def build_table_from_text(
     table_name,
     municipality=None,
 ):
-    """Build database table from text files, reading cached extraction results.
+    """Build database table from text files.
 
-    This is a pure data-assembly step. It reads cached extraction results
-    (produced by `clerk extract run`) but never runs extraction itself.
-    Pages without cached results get empty entities/votes.
+    This is a pure data-assembly step. The entities/votes columns are
+    retained as empty placeholders for downstream schema compatibility.
 
     Args:
         subdomain: Site subdomain (e.g., "alameda.ca.civic.band")
@@ -409,8 +397,7 @@ def build_table_from_text(
 def build_db_from_text_internal(subdomain):
     """Build meetings database from text files.
 
-    This is a pure data-assembly step that reads cached extraction results
-    but never runs extraction.
+    This is a pure data-assembly step.
 
     Args:
         subdomain: Site subdomain

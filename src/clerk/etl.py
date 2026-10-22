@@ -212,8 +212,6 @@ def new(ctx):
                 "lat": lat_lng.split(",")[0].strip(),
                 "lng": lat_lng.split(",")[1].strip(),
                 "extra": json.dumps(extra) if extra else "{}",
-                "extraction_status": "pending",
-                "last_extracted": None,
             },
         )
 

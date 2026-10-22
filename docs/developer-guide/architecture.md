@@ -19,8 +19,9 @@ The CLI layer provides command-line interface using Click:
 **Commands:**
 - `new`: Create a new site
 - `update`: Update site data
-- `build-db-from-text`: Build database from processed text files
-- `build-full-db`: Create aggregate database from all sites
+- `ocr`: OCR processing for a site or single PDF
+- `compile`: Build database from processed text files
+- `deploy`: Deploy a site's database
 
 **Key Functions:**
 - `update_site_internal()`: Orchestrates the full pipeline
@@ -135,14 +136,13 @@ logfire.instrument_sqlite3()
 │  OCR Phase      │  ← Calls fetcher.ocr()
 │                 │  ← Extracts text from PDFs
 │                 │  ← Saves to {subdomain}/txt/
-│  → needs_extraction  ← Updates civic.db status
+│  → needs_compilation  ← Updates civic.db status
 └──────┬──────────┘
        │
        ▼
 ┌─────────────────┐
 │ Transform Phase │  ← Calls fetcher.transform()
 │                 │  ← Calls build_db_from_text()
-│                 │  ← spaCy entity/vote extraction
 │                 │  ← Creates meetings.db
 │                 │  ← Generates record IDs (SHA256)
 │  → needs_deploy │  ← Updates civic.db status
@@ -230,7 +230,7 @@ class MyFetcher:
 Sites progress through these statuses:
 
 ```
-new → fetching → needs_ocr → needs_extraction → needs_deploy → deployed
+new → fetching → needs_ocr → needs_compilation → needs_deploy → deployed
                                 ↓
                           (errors/manual intervention)
 ```

@@ -55,24 +55,8 @@ This command:
 ### Build from Text
 
 ```bash
-# Fast build (uses cached entity extractions)
-clerk build-db-from-text --subdomain example.civic.band
-
-# Extract entities for uncached pages
-clerk build-db-from-text --subdomain example.civic.band --extract-entities
-
-# Re-extract all pages (ignore cache)
-clerk build-db-from-text --subdomain example.civic.band --extract-entities --ignore-cache
-```
-
-### Entity Extraction
-
-```bash
-# Specific site
-clerk extract-entities --subdomain example.civic.band
-
-# Next site needing extraction
-clerk extract-entities --next-site
+# Rebuild a site's meetings.db from OCR text
+clerk etl --subdomain example.civic.band compile
 ```
 
 ### Aggregate Database
@@ -111,15 +95,6 @@ Create `.env` file:
 # Storage location
 STORAGE_DIR=../sites
 
-# Enable entity extraction
-ENABLE_EXTRACTION=1
-
-# Extraction confidence threshold (0.0-1.0)
-ENTITY_CONFIDENCE_THRESHOLD=0.7
-
-# Parallel processing (1-4)
-SPACY_N_PROCESS=2
-
 # PDF chunk size
 PDF_CHUNK_SIZE=20
 
@@ -142,9 +117,6 @@ clerk --plugins-dir=/path/to/plugins update --subdomain example.civic.band
 ```bash
 # Every 6 hours: update next site
 0 */6 * * * clerk etl update --next-site
-
-# Every 30 minutes: extract entities
-*/30 * * * * clerk extract-entities --next-site
 ```
 
 ### Initial Site Setup
@@ -157,17 +129,14 @@ clerk etl new
 clerk etl update --subdomain example.civic.band --all-years
 
 # 3. Build database (fast)
-clerk build-db-from-text --subdomain example.civic.band
-
-# 4. Extract entities (background)
-clerk extract-entities --subdomain example.civic.band
+clerk etl --subdomain example.civic.band compile
 ```
 
 ### Rebuild After Changes
 
 ```bash
 # 1. Rebuild database (FTS index is automatically rebuilt)
-clerk build-db-from-text --subdomain example.civic.band
+clerk etl --subdomain example.civic.band compile
 
 # 2. Build aggregate database
 clerk build-full-db

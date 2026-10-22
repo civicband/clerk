@@ -34,10 +34,6 @@ sites_table = Table(
     Column("compilation_total", Integer, server_default="0"),
     Column("compilation_completed", Integer, server_default="0"),
     Column("compilation_failed", Integer, server_default="0"),
-    # Extraction counters
-    Column("extraction_total", Integer, server_default="0"),
-    Column("extraction_completed", Integer, server_default="0"),
-    Column("extraction_failed", Integer, server_default="0"),
     # Deploy counters
     Column("deploy_total", Integer, server_default="0"),
     Column("deploy_completed", Integer, server_default="0"),
@@ -58,10 +54,8 @@ sites_table = Table(
     Column("last_error_at", DateTime(timezone=True)),
     # Deprecated (keep during migration)
     Column("status", String),
-    Column("extraction_status", String, server_default="pending"),
     Column("last_updated", String),
     Column("last_deployed", String),
-    Column("last_extracted", String),
 )
 
 site_progress_table = Table(

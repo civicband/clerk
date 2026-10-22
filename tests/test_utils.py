@@ -62,8 +62,6 @@ class TestAssertDbExists:
             "last_deployed",
             "lat",
             "lng",
-            "extraction_status",
-            "last_extracted",
             # Pipeline state columns
             "current_stage",
             "started_at",
@@ -77,9 +75,6 @@ class TestAssertDbExists:
             "compilation_total",
             "compilation_completed",
             "compilation_failed",
-            "extraction_total",
-            "extraction_completed",
-            "extraction_failed",
             "deploy_total",
             "deploy_completed",
             "deploy_failed",
