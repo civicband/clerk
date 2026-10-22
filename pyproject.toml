@@ -127,7 +127,7 @@ exclude_lines = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py314"
+target-version = "py312"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
@@ -148,7 +148,7 @@ ignore = [
 "tests/**/*.py" = ["S101"]  # Allow assert in tests
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false  # Start lenient, tighten over time
