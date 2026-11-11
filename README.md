@@ -78,7 +78,7 @@ Clerk uses a distributed task queue (RQ) with specialized worker types:
 
 Workers can run on a single machine or distributed across multiple machines for better performance.
 
-See the [Worker Architecture Guide](docs/developer-guide/architecture.md) for details.
+See the [Distributed Setup guide](docs/setup/distributed.md) for details.
 
 ## Contributing
 
