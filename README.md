@@ -49,7 +49,7 @@ pip install "civicband-clerk[pdf] @ git+https://github.com/civicband/clerk.git"
 
 - **[Quickstart](docs/getting-started/quickstart.md)** - Get started with Clerk
 - **[Worker Architecture](docs/developer-guide/architecture.md)** - Understanding task queues
-- **[Custom Fetcher](examples/custom_fetcher.py)** - Example fetcher plugin
+- **[Custom Fetcher](docs/developer-guide/plugin-development.md)** - Build a fetcher plugin
 - **[Setup Verification](docs/setup/verification.md)** - Verify your installation
 
 ## Quick Start
@@ -91,5 +91,5 @@ BSD 3-Clause License - See [LICENSE](LICENSE) for details.
 ## Links
 
 - **Documentation**: [docs/](docs/)
-- **Issues**: https://github.com/civicband/clerk/issues
-- **civic.band**: https://civic.band
+- **Issues**: <https://github.com/civicband/clerk/issues>
+- **civic.band**: <https://civic.band>
