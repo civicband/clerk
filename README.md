@@ -34,23 +34,23 @@ pip install "civicband-clerk[pdf] @ git+https://github.com/civicband/clerk.git"
 
 ### Operations
 
-- **[Daily Tasks](docs/operations/daily-tasks.md)** - Common operational tasks
-- **[Monitoring](docs/operations/monitoring.md)** - Health checks and metrics
-- **[Troubleshooting](docs/operations/troubleshooting.md)** - Fix common issues
-- **[Scaling](docs/operations/scaling.md)** - Add workers and scale horizontally
+- **[Daily Tasks](docs/getting-started/basic-usage.md)** - Common operational workflows
+- **[Monitoring](docs/user-guide/monitoring.md)** - Health checks and metrics
+- **[Troubleshooting](docs/user-guide/troubleshooting-workers.md)** - Fix common worker issues
+- **[Scaling](docs/setup/distributed.md)** - Add workers across multiple machines
 
 ### Reference
 
-- **[CLI Reference](docs/reference/cli/index.md)** - Complete command-line reference
-- **[Python API](docs/reference/python-api/index.md)** - Python library reference
-- **[Plugin API](docs/reference/plugin-api/index.md)** - Plugin development guide
+- **[CLI Reference](docs/api/cli.md)** - Command-line reference
+- **[Python API](docs/api/index.md)** - Python library reference
+- **[Plugin API](docs/developer-guide/plugin-development.md)** - Plugin development guide
 
 ### Guides
 
-- **[Your First Site](docs/guides/first-site.md)** - Complete beginner tutorial
-- **[Worker Architecture](docs/guides/worker-architecture.md)** - Understanding task queues
-- **[Custom Fetcher](docs/guides/custom-fetcher.md)** - Build a fetcher plugin
-- **[Production Checklist](docs/guides/production-checklist.md)** - Pre-launch validation
+- **[Quickstart](docs/getting-started/quickstart.md)** - Get started with Clerk
+- **[Worker Architecture](docs/developer-guide/architecture.md)** - Understanding task queues
+- **[Custom Fetcher](examples/custom_fetcher.py)** - Example fetcher plugin
+- **[Setup Verification](docs/setup/verification.md)** - Verify your installation
 
 ## Quick Start
 
@@ -65,7 +65,7 @@ clerk etl update --subdomain example.civic.band
 clerk status
 ```
 
-See [Your First Site Tutorial](docs/guides/first-site.md) for a complete walkthrough.
+See the [Quickstart](docs/getting-started/quickstart.md) for a walkthrough.
 
 ## Architecture
 
@@ -78,7 +78,7 @@ Clerk uses a distributed task queue (RQ) with specialized worker types:
 
 Workers can run on a single machine or distributed across multiple machines for better performance.
 
-See [Worker Architecture Guide](docs/guides/worker-architecture.md) for details.
+See the [Worker Architecture Guide](docs/developer-guide/architecture.md) for details.
 
 ## Contributing
 
